@@ -7,10 +7,12 @@ from celery import Celery
 from serpsense.adapters.cache.health import RedisHealthCheck
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
-from serpsense.adapters.jobs.celery_factory import create_celery
+from serpsense.adapters.jobs.celery_factory import HEARTBEAT_TASK, create_celery
 from serpsense.config import AppEnv, Settings
 from serpsense.observability import configure_logging
 from serpsense.ports.health import HealthCheck
+
+__all__ = ["HEARTBEAT_TASK", "Container", "build_celery", "build_container", "build_settings"]
 
 
 @dataclass(frozen=True)

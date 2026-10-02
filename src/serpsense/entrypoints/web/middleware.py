@@ -52,13 +52,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
         started = time.perf_counter()
-        try:
-            response = await call_next(request)
-        except Exception:
-            log.exception(
-                "http.request_failed", method=request.method, route=route_template(request)
-            )
-            raise
+        response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         log.info(
             "http.request_completed",

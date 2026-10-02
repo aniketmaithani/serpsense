@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.entrypoints.web.app import create_app
+from serpsense.observability import configure_logging
 from tests.factories import make_settings
 
 pytestmark = pytest.mark.api
@@ -70,17 +71,25 @@ def test_hsts_is_sent_in_production() -> None:
     assert response.headers["Strict-Transport-Security"].startswith("max-age=")
 
 
-def test_unhandled_errors_return_generic_500_with_security_headers(settings: Settings) -> None:
+@pytest.mark.usefixtures("restore_logging")
+def test_unhandled_errors_return_generic_500_with_security_headers(
+    settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging(level="INFO", json=True)
     client = client_with(settings)
 
     @client.app.get("/boom")  # type: ignore[attr-defined]  # TestClient.app is the FastAPI app
     def boom() -> None:
-        raise RuntimeError("internal detail that must not leak")
+        raise RuntimeError("internal detail ?api_key=leakme321")
 
     response = client.get("/boom")
     assert response.status_code == 500
     assert response.text == "Internal Server Error"
     assert response.headers["X-Frame-Options"] == "DENY"
+    out = capsys.readouterr().out
+    assert out.count("http.request_failed") == 1
+    assert '"route": "/boom"' in out
+    assert "leakme321" not in out
 
 
 def test_api_docs_are_not_exposed(settings: Settings) -> None:

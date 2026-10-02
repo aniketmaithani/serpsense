@@ -57,6 +57,7 @@ def create_celery(broker_url: str) -> Celery:
         timezone="UTC",
         enable_utc=True,
         beat_sync_every=1,
+        beat_schedule_filename=BEAT_SCHEDULE_FILE,
         beat_schedule={
             "heartbeat": {"task": HEARTBEAT_TASK, "schedule": HEARTBEAT_INTERVAL},
         },
