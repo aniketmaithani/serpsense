@@ -70,6 +70,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_otp_codes")),
     )
     op.create_index("ix_otp_codes_email_created_at", "otp_codes", ["email", "created_at"])
+    op.create_index(
+        "uq_otp_codes_one_live_per_email",
+        "otp_codes",
+        ["email"],
+        unique=True,
+        postgresql_where=sa.text("consumed_at IS NULL AND superseded_at IS NULL"),
+    )
 
     op.create_table(
         "otp_verify_attempts",
@@ -88,14 +95,23 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_otp_verify_attempts_otp_code_id"), "otp_verify_attempts", ["otp_code_id"]
     )
+    op.create_index(
+        "uq_otp_verify_attempts_one_success_per_code",
+        "otp_verify_attempts",
+        ["otp_code_id"],
+        unique=True,
+        postgresql_where=sa.text("succeeded"),
+    )
     _append_only("otp_verify_attempts")
 
 
 def downgrade() -> None:
     for statement in drop_append_only_triggers("otp_verify_attempts"):
         op.execute(statement)
+    op.drop_index("uq_otp_verify_attempts_one_success_per_code", table_name="otp_verify_attempts")
     op.drop_index(op.f("ix_otp_verify_attempts_otp_code_id"), table_name="otp_verify_attempts")
     op.drop_table("otp_verify_attempts")
+    op.drop_index("uq_otp_codes_one_live_per_email", table_name="otp_codes")
     op.drop_index("ix_otp_codes_email_created_at", table_name="otp_codes")
     op.drop_table("otp_codes")
     op.drop_table("users")

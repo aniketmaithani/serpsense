@@ -50,10 +50,10 @@ No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
 | superseded_at | timestamptz null | set when a newer code is issued |
 | request_ip | inet null | nulled on deletion |
 
-`ck_otp_codes_single_terminal`: not both `consumed_at` and `superseded_at`. `ck_otp_codes_expires_after_created`. Verification locks the row `FOR UPDATE`. Per-email request limits (1/60 s, 5/h) are counted from this table.
+`ck_otp_codes_single_terminal`: not both `consumed_at` and `superseded_at`. `ck_otp_codes_expires_after_created`. **`uq_otp_codes_one_live_per_email`**: partial unique index on `email` where neither consumed nor superseded — at most one live code per email, so concurrent requests can't multiply the guess budget (issuing a code supersedes the previous live one). Verification locks the row `FOR UPDATE`. Per-email request limits (1/60 s, 5/h) are counted from this table.
 
 ### 🔒 `otp_verify_attempts`
-`id`, `otp_code_id` fk (RESTRICT, `ix_otp_verify_attempts_otp_code_id`), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5).
+`id`, `otp_code_id` fk (RESTRICT, `ix_otp_verify_attempts_otp_code_id`), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5). **`uq_otp_verify_attempts_one_success_per_code`**: partial unique index on `otp_code_id` where `succeeded` — a code verifies successfully at most once.
 
 ### `sessions` (mutable)
 | Column | Type | Notes |
