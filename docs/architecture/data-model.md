@@ -99,7 +99,7 @@ Each has `id`, the key FK, `document jsonb` (must be a JSON object: `ck_<table>_
 | brand_id | uuid | fk → brands (RESTRICT); `uq_brand_schedule_versions_brand_id_created_at` |
 | interval_minutes | integer null | one of 60/180/360/720/1440 (`ck_brand_schedule_versions_interval_allowed`); null = manual only |
 | quiet_start / quiet_end | time null | local time in `timezone`; both null, or both set and different (`ck_brand_schedule_versions_quiet_hours_valid`); start > end means overnight |
-| timezone | text | IANA name, default `Asia/Kolkata`; 1–64 non-whitespace chars (`ck_brand_schedule_versions_timezone_format`); validity checked by the application |
+| timezone | text | IANA name, default `Asia/Kolkata`; 1–64 non-whitespace chars (`ck_brand_schedule_versions_timezone_format`); validity checked by the application (a CHECK can't consult `pg_timezone_names`; an invalid name would break `AT TIME ZONE` queries, so the dispatcher must not rely on SQL time-zone maths without validating) |
 | created_at | timestamptz | |
 
 Resolution order: system defaults → user defaults → brand settings → per-run override; resolved result snapshotted into `scans.settings_snapshot` / `llm_calls.request_settings`.

@@ -23,7 +23,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base
 
-SCHEDULE_INTERVALS_MINUTES = (60, 180, 360, 720, 1440)
 DEFAULT_TIMEZONE = "Asia/Kolkata"
 
 
@@ -85,9 +84,7 @@ class BrandScheduleVersion(Base):
     __table_args__ = (
         UniqueConstraint("brand_id", "created_at"),
         # NULL interval passes (manual scans only).
-        CheckConstraint(
-            f"interval_minutes IN {SCHEDULE_INTERVALS_MINUTES}", name="interval_allowed"
-        ),
+        CheckConstraint("interval_minutes IN (60, 180, 360, 720, 1440)", name="interval_allowed"),
         CheckConstraint(
             "(quiet_start IS NULL AND quiet_end IS NULL) OR "
             "(quiet_start IS NOT NULL AND quiet_end IS NOT NULL AND quiet_start <> quiet_end)",
