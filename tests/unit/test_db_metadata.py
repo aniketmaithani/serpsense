@@ -26,6 +26,10 @@ def test_metadata_has_expected_tables() -> None:
         "brand_watch_terms",
         "brand_apps",
         "brand_locations",
+        "user_llm_profile_versions",
+        "user_search_default_versions",
+        "brand_search_settings_versions",
+        "brand_schedule_versions",
     }
 
 
