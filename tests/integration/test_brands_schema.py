@@ -7,9 +7,11 @@ import pytest
 from sqlalchemy import Connection, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from tests.integration.db_helpers import add_brand, add_user, table, violation
+from tests.integration.db_helpers import NOW, add_brand, add_user, table, violation
 
 pytestmark = pytest.mark.integration
+
+NOT_NULL_VIOLATION = "23502"
 
 USERS = table("users")
 BRANDS = table("brands")
@@ -44,6 +46,7 @@ def test_slug_is_unique_per_owner_only(conn: Connection) -> None:
     ("overrides", "constraint"),
     [
         ({"name": "   "}, "ck_brands_name_length"),
+        ({"name": "\t\n"}, "ck_brands_name_length"),
         ({"name": "x" * 121}, "ck_brands_name_length"),
         ({"slug": "Volt Box"}, "ck_brands_slug_format"),
         ({"slug": "volt--box"}, "ck_brands_slug_format"),
@@ -60,7 +63,23 @@ def test_brand_checks(conn: Connection, overrides: dict[str, Any], constraint: s
 
 
 def test_brand_accepts_limits(conn: Connection) -> None:
-    add_brand(conn, add_user(conn), name="x" * 120, slug="a" * 64, tone_notes="x" * 2000)
+    values = {"name": "x" * 120, "slug": "a" * 64, "tone_notes": "x" * 2000}
+    brand_id = add_brand(conn, add_user(conn), **values)
+    row = conn.execute(select(BRANDS).where(BRANDS.c.id == brand_id)).one()
+    assert (row.name, row.slug, row.tone_notes) == tuple(values.values())
+
+
+def test_account_deletion_cleanup_is_allowed(conn: Connection) -> None:
+    """ADR-0013: archive the brand and drop tone notes; re-setting the same owner is fine."""
+    owner = add_user(conn)
+    brand_id = add_brand(conn, owner, tone_notes="Mentions the founder by name.")
+    conn.execute(
+        update(BRANDS)
+        .where(BRANDS.c.id == brand_id)
+        .values(archived_at=NOW, tone_notes=None, owner_id=owner)
+    )
+    row = conn.execute(select(BRANDS).where(BRANDS.c.id == brand_id)).one()
+    assert (row.archived_at, row.tone_notes, row.owner_id) == (NOW, None, owner)
 
 
 def test_brand_owner_cannot_change(conn: Connection) -> None:
@@ -95,6 +114,20 @@ def test_competitor_must_share_owner_on_insert(conn: Connection) -> None:
     with pytest.raises(IntegrityError) as exc:
         link(conn, brand, stranger)
     assert violation(exc).constraint_name == "ck_brand_competitors_same_owner"
+
+
+def test_missing_competitor_reports_the_foreign_key(conn: Connection) -> None:
+    with pytest.raises(IntegrityError) as exc:
+        link(conn, add_brand(conn, add_user(conn)), uuid.uuid4())
+    assert violation(exc).constraint_name == "fk_brand_competitors_competitor_brand_id_brands"
+
+
+def test_missing_competitor_id_reports_not_null(conn: Connection) -> None:
+    brand = add_brand(conn, add_user(conn))
+    with pytest.raises(IntegrityError) as exc:
+        conn.execute(insert(COMPETITORS).values(brand_id=brand, competitor_brand_id=None))
+    assert violation(exc).sqlstate == NOT_NULL_VIOLATION
+    assert violation(exc).column_name == "competitor_brand_id"
 
 
 def test_competitor_must_share_owner_on_update(conn: Connection) -> None:
