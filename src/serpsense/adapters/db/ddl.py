@@ -28,6 +28,14 @@ def append_only_triggers(table: str) -> tuple[str, ...]:
     )
 
 
+def no_api_key_check(column: str) -> str:
+    """CHECK SQL: no `api_key` field at any depth, no `api_key=` in any string (ADR-0007)."""
+    return (
+        f"NOT jsonb_path_exists({column}, '$.**.api_key') "
+        f"AND strpos({column}::text, 'api_key=') = 0"
+    )
+
+
 def drop_append_only_triggers(table: str) -> tuple[str, ...]:
     return (
         f"DROP TRIGGER trg_{table}_append_only_truncate ON {table}",
