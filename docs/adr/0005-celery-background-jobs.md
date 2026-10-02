@@ -14,7 +14,7 @@ Scans call many external APIs and must not run in web requests. Scheduled scans,
 
 ### Tooling
 - **Celery 5**, Redis broker (ADR-0004), **Beat** for periodic tasks, result backend disabled, `acks_late=True`, `task_reject_on_worker_lost=True`.
-- Queues: `scans`, `outbox`, `maintenance`. Every task has a hard time limit; the broker `visibility_timeout` is set **above the largest time limit** (scan limit 15 min → visibility timeout 30 min).
+- Queues: `scans`, `outbox`, `maintenance`, consumed by two worker services: `worker` (`scans`, `maintenance`) and `worker-outbox` (`outbox` only, so email delivery is never stuck behind a scan; ADR-0006 amendment). Every task has a hard time limit; the broker `visibility_timeout` is set **above the largest time limit** (scan limit 15 min → visibility timeout 30 min).
 - Services enqueue through the **`JobQueue` port**. Enqueues are registered with the unit of work and sent **only after commit**.
 - Errors are classified as retryable (network, 429, 5xx) or permanent (validation, other 4xx). **Retries happen per external call inside the task** (tenacity, capped exponential backoff + jitter). **Scan tasks never use Celery `retry`**: a re-run would find the scan `running`, fail the claim and exit, leaving it for the sweep. A scan task that can't finish records `partial`/`failed` itself.
 

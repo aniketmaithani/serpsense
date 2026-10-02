@@ -11,6 +11,7 @@ Judges must run the project locally from a fresh clone; the demo must show it ru
 - One multi-stage `Dockerfile` (non-root user, pinned base image, no secrets baked in) used by `web`, `worker`, `beat`.
 - `docker-compose.yml` services: `migrate` (one-off `alembic upgrade head`), `web`, `worker`, `beat`, `postgres`, `redis`, `mailpit` (dev mail catcher, web inbox on `:8025`). Health checks on every long-running service; `web`, `worker` and `beat` start only after `migrate` completes successfully and DB/Redis are healthy.
 - Configuration only via environment (`.env`, never committed; `.env.example` lists names).
+- **Amendment (2026-10-03):** a dedicated `worker-outbox` service consumes only the `outbox` queue, and `worker` consumes `scans` and `maintenance`. Long scans therefore can't delay OTP or alert emails. Each worker's healthcheck pings its own node.
 - `docker-compose.prod.yml` (P2) swaps Mailpit for a real SMTP provider and adds a TLS reverse proxy; single host only.
 
 ## Alternatives considered
