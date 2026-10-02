@@ -14,7 +14,7 @@ Web and worker processes share durable state: users, OTPs, sessions, brands, sca
 - **JSONB is permitted only for:**
   1. raw provider payloads (`raw_responses.payload`, redacted) — stored for replay/re-parsing, never filtered on;
   2. immutable settings snapshots (`scans.settings_snapshot`, `llm_calls.request_settings`) — audit/reproducibility records;
-  3. settings documents always read and written whole and validated by Pydantic, stored as **append-only versions** (`*_settings_versions`, `*_profile_versions`);
+  3. settings documents always read and written whole and validated by Pydantic, stored as **append-only versions** (`*_versions` tables: settings, defaults and profiles);
   4. message/audit payloads read whole by one consumer (`outbox_messages.template_data`, `audit_events.details`).
   Anything queried or filtered (aliases, languages, locations, app ids, watch terms, budgets, statuses) is relational. See `docs/architecture/data-model.md`.
 - Timestamps are `timestamptz`, stored in UTC.
