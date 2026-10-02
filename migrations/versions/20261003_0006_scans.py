@@ -24,12 +24,9 @@ CREATE FUNCTION serpsense_scan_identity_immutable() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     -- Only status may change after insert; observations and the Trends comparison rely on
-    -- a scan's brand, slot and settings never changing.
-    IF (NEW.id, NEW.brand_id, NEW."trigger", NEW.scheduled_for, NEW.requested_by,
-        NEW.settings_snapshot, NEW.estimated_searches, NEW.created_at)
-       IS DISTINCT FROM
-       (OLD.id, OLD.brand_id, OLD."trigger", OLD.scheduled_for, OLD.requested_by,
-        OLD.settings_snapshot, OLD.estimated_searches, OLD.created_at) THEN
+    -- a scan's brand, slot and settings never changing. Comparing whole rows covers columns
+    -- added later too.
+    IF to_jsonb(NEW) - 'status' IS DISTINCT FROM to_jsonb(OLD) - 'status' THEN
         RAISE EXCEPTION 'only a scan''s status can change'
             USING ERRCODE = 'check_violation', CONSTRAINT = 'ck_scans_identity_immutable';
     END IF;
