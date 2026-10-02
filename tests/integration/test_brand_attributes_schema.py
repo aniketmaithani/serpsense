@@ -4,9 +4,10 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection, delete, insert, select
+from sqlalchemy import Connection, delete, insert, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 
+from serpsense.domain.enums import AppStore
 from tests.integration.db_helpers import NOW, add, add_brand, add_user, table, violation
 
 pytestmark = pytest.mark.integration
@@ -148,3 +149,25 @@ def test_brand_with_attributes_cannot_be_deleted(
     with pytest.raises(IntegrityError) as exc:
         conn.execute(delete(table("brands")).where(table("brands").c.id == brand_id))
     assert violation(exc).constraint_name == f"fk_{name}_brand_id_brands"
+
+
+@pytest.mark.parametrize(
+    ("name", "values"),
+    [
+        ("brand_aliases", {"alias": "x" * 120}),
+        ("brand_watch_terms", {"term": "x" * 80}),
+        ("brand_locations", {"query": "x" * 200}),
+        ("brand_apps", {"store": PLAY, "app_id": "x" * 255}),
+    ],
+)
+def test_attribute_limits_are_accepted(conn: Connection, name: str, values: dict[str, Any]) -> None:
+    row_id = add(conn, table(name), brand_id=brand(conn), **values)
+    row = conn.execute(select(table(name)).where(table(name).c.id == row_id)).one()
+    for column, value in values.items():
+        assert getattr(row, column) == value
+
+
+def test_app_store_enum_matches_domain(conn: Connection) -> None:
+    """alembic check doesn't compare enum values, so guard the mirror explicitly."""
+    labels = conn.execute(text("SELECT unnest(enum_range(NULL::app_store))::text")).scalars()
+    assert list(labels) == [store.value for store in AppStore]
