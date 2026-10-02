@@ -168,7 +168,7 @@ running → failed                      (reason timed_out, by the maintenance sw
 ```
 
 ### 🔒 `scan_status_transitions`
-`id`, `scan_id` fk (RESTRICT), `from_status scan_status null`, `to_status scan_status`, `actor` enum `transition_actor` (`system`, `user`), `actor_user_id null` fk → users (RESTRICT), `reason text`, `at`. Index `ix_scan_status_transitions_scan_id_at`. Started/finished times are derived from here.
+`id`, `scan_id` fk (RESTRICT), `from_status scan_status null`, `to_status scan_status`, `actor` enum `transition_actor` (`system`, `user`), `actor_user_id null` fk → users (RESTRICT), `reason text`, `at`. Index `ix_scan_status_transitions_scan_id_at`; **`uq_scan_status_transitions_scan_id_to_status`** (no scan reaches the same status twice). Started/finished times are derived from here.
 - **`ck_scan_status_transitions_allowed_transition`**: only the state machine above (creation = `NULL → queued`), written as a NULL-safe `CASE` — defence in depth for `domain/scan_state.py`.
 - `ck_scan_status_transitions_actor_user_matches`: `actor = 'user'` ⇔ `actor_user_id` is set.
 - `reason` is a machine code (`ck_scan_status_transitions_reason_format`: `^[a-z][a-z0-9_.]{0,63}$`, e.g. `claimed`, `timed_out`, `budget_exhausted`) — never free text or personal data.
