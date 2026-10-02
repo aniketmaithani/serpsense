@@ -12,11 +12,11 @@ from tests.integration.db_helpers import (
     RESTRICT_VIOLATION,
     add,
     add_brand,
+    add_scan,
     add_user,
     table,
     violation,
 )
-from tests.integration.test_scans_schema import add_scan
 
 pytestmark = pytest.mark.integration
 

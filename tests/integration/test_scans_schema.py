@@ -16,25 +16,13 @@ from serpsense.domain.enums import (
     SurfaceOutcome,
     TransitionActor,
 )
-from tests.integration.db_helpers import NOW, add, add_brand, add_user, table, violation
+from tests.integration.db_helpers import NOW, add_brand, add_scan, add_user, table, violation
 
 pytestmark = pytest.mark.integration
 
 LOCK_NOT_AVAILABLE = "55P03"
 SCANS = table("scans")
 TERMINAL = ["succeeded", "partial", "failed", "skipped"]
-
-
-def add_scan(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
-    values: dict[str, Any] = {
-        "trigger": "schedule",
-        "scheduled_for": NOW,
-        "status": "queued",
-        "settings_snapshot": {"preset": "standard"},
-        "estimated_searches": 14,
-        "created_at": NOW,
-    }
-    return add(conn, SCANS, brand_id=brand_id, **{**values, **overrides})
 
 
 def brand(conn: Connection) -> uuid.UUID:
