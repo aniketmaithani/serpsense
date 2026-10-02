@@ -67,6 +67,9 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f(f"pk_{TRANSITIONS}")),
+        sa.UniqueConstraint(
+            "scan_id", "to_status", name=op.f(f"uq_{TRANSITIONS}_scan_id_to_status")
+        ),
     )
     op.create_index(f"ix_{TRANSITIONS}_scan_id_at", TRANSITIONS, ["scan_id", "at"])
 
