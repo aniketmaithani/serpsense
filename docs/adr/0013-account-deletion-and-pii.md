@@ -14,7 +14,7 @@ The owner wants users to be able to delete their account now. Ledgers and audit 
   2. In **one transaction**:
      - `users.email` → `deleted+<user_id>@serpsense.invalid` (RFC 2606 reserved TLD), `deleted_at` = now
      - delete all `sessions` rows for the user
-     - `otp_codes` for the old email: email pseudonymised, `request_ip` nulled
+     - `otp_codes` for the old email: email pseudonymised, `request_ip` nulled, `code_hash` overwritten with zero bytes (an HMAC of a 6-digit code could otherwise confirm a guessed address to someone holding the database and `SECRET_KEY`)
      - `outbox_messages` for the user/email: `recipient_email` pseudonymised, `sensitive_data_encrypted` nulled, pending rows → `dropped`
      - delete `audit_event_network` rows where the user is the actor **or** the event targets one of the user's OTP codes (pre-login events have no actor)
      - archive all the user's brands (`archived_at`), so no further scans run; queued scans → `skipped` (reason `account_deleted`); running scans see `deleted_at`/`archived_at` at their next stage and finish `skipped` without LLM calls, alerts or emails; the sweep ignores archived brands
@@ -22,7 +22,7 @@ The owner wants users to be able to delete their account now. Ledgers and audit 
      - write audit event `account.deleted` (no email in details, **no network row**)
   3. Clear the cookie.
 - Ledgers, scans, mentions and model output remain, linked to a pseudonymous user. The same email can sign up again as a new user.
-- **Retention defaults:** `otp_codes` older than 30 days → email pseudonymised and IP nulled by the maintenance job; expired sessions deleted after 30 days; `audit_event_network` older than 90 days deleted.
+- **Retention defaults:** `otp_codes` older than 30 days → email pseudonymised, IP nulled and `code_hash` zeroed by the maintenance job; expired sessions deleted after 30 days; `audit_event_network` older than 90 days deleted.
 
 ## Alternatives considered
 - **Hard delete with cascades** — impossible with append-only ledgers; would also destroy cost and audit history.
