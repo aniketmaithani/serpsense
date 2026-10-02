@@ -3,11 +3,20 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base
+from serpsense.domain.enums import AppStore
+
+APP_STORE = Enum(
+    AppStore, name="app_store", values_callable=lambda members: [m.value for m in members]
+)
+
+
+def _brand_fk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="RESTRICT"))
 
 
 class Brand(Base):
@@ -51,3 +60,81 @@ class BrandCompetitor(Base):
     competitor_brand_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("brands.id", ondelete="RESTRICT"), primary_key=True
     )
+
+
+class BrandAlias(Base):
+    """Other names the brand goes by; unique per brand ignoring case (citext)."""
+
+    __tablename__ = "brand_aliases"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "alias"),
+        CheckConstraint("char_length(btrim(alias)) BETWEEN 1 AND 120", name="alias_length"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = _brand_fk()
+    alias: Mapped[str] = mapped_column(CITEXT)
+
+
+class BrandLanguage(Base):
+    """Languages to search in, as lowercase BCP-47 tags (e.g. `en`, `hi`, `zh-cn`)."""
+
+    __tablename__ = "brand_languages"
+    __table_args__ = (
+        CheckConstraint(
+            "language_code ~ '^[a-z]{2,3}(-[a-z0-9]{2,8})*$'", name="language_code_format"
+        ),
+    )
+
+    brand_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("brands.id", ondelete="RESTRICT"), primary_key=True
+    )
+    language_code: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
+class BrandWatchTerm(Base):
+    """Words that flag a negative mention (e.g. refund, scam); unique per brand ignoring case."""
+
+    __tablename__ = "brand_watch_terms"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "term"),
+        CheckConstraint("char_length(btrim(term)) BETWEEN 1 AND 80", name="term_length"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = _brand_fk()
+    term: Mapped[str] = mapped_column(CITEXT)
+
+
+class BrandApp(Base):
+    """A companion app whose store reviews are collected."""
+
+    __tablename__ = "brand_apps"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "store", "app_id"),
+        CheckConstraint("app_id ~ '^\\S{1,255}$'", name="app_id_format"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = _brand_fk()
+    store: Mapped[AppStore] = mapped_column(APP_STORE)
+    app_id: Mapped[str] = mapped_column(Text)
+
+
+class BrandLocation(Base):
+    """A Maps search for a physical location; resolved once to a place data id."""
+
+    __tablename__ = "brand_locations"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "query"),
+        CheckConstraint("char_length(btrim(query)) BETWEEN 1 AND 200", name="query_length"),
+        CheckConstraint(
+            "(resolved_data_id IS NULL) = (resolved_at IS NULL)", name="resolution_together"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = _brand_fk()
+    query: Mapped[str] = mapped_column(CITEXT)
+    resolved_data_id: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
