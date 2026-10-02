@@ -7,8 +7,14 @@ import pytest
 from sqlalchemy import Connection, Executable, delete, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from tests.integration.db_helpers import RESTRICT_VIOLATION, add_brand, add_user, table, violation
-from tests.integration.test_scans_schema import add_scan
+from tests.integration.db_helpers import (
+    RESTRICT_VIOLATION,
+    add_brand,
+    add_scan,
+    add_user,
+    table,
+    violation,
+)
 
 pytestmark = pytest.mark.integration
 

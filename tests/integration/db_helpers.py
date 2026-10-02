@@ -36,6 +36,18 @@ def add_brand(
     return add(conn, table("brands"), created_at=NOW, **{**values, **overrides})
 
 
+def add_scan(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
+    values: dict[str, Any] = {
+        "trigger": "schedule",
+        "scheduled_for": NOW,
+        "status": "queued",
+        "settings_snapshot": {"preset": "standard"},
+        "estimated_searches": 14,
+        "created_at": NOW,
+    }
+    return add(conn, table("scans"), brand_id=brand_id, **{**values, **overrides})
+
+
 def violation(exc: pytest.ExceptionInfo[DBAPIError]) -> Any:
     """psycopg's diagnostics for the error Postgres raised."""
     return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
