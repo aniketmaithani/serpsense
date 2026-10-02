@@ -26,6 +26,7 @@ def test_celery_entrypoint_registers_heartbeat_and_owns_logging(
     # The beat schedule and the registered task must agree, or the heartbeat silently stops.
     assert module.app.conf.beat_schedule["heartbeat"]["task"] == HEARTBEAT_TASK
     assert HEARTBEAT_TASK in module.app.tasks
-    # A setup_logging receiver stops Celery from installing its own unscrubbed handlers.
-    assert any(receiver for receiver in setup_logging.receivers)
+    # Our receiver must be connected: it stops Celery from installing unscrubbed handlers.
+    responders = [receiver for receiver, _ in setup_logging.send(sender=None)]
+    assert module._keep_our_logging in responders
     module.heartbeat()

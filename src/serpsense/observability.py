@@ -57,14 +57,21 @@ REDACTED = "[redacted]"
 _QUERY_SECRET = re.compile(
     r"(?i)\b(api_key|apikey|access_token|token|password|secret|key)=([^&\s\"']+)"
 )
-# Username may be empty (redis://:password@host); password may contain "/".
-_URL_CREDENTIALS = re.compile(r"://[^/\s:@]*:[^@\s]+@")
+# Userinfo is everything in the URL authority up to its last "@" (so an unencoded "@" in a
+# password is covered); the authority ends at "/", "?", "#" or whitespace, so "@" in a path or
+# query is never touched. Configured secrets (e.g. DATABASE_URL) are also scrubbed verbatim.
+_URL_USERINFO = re.compile(r"://([^/?#\s]*)@")
 _NOISY_LOGGERS = ("urllib3", "requests", "httpx", "httpcore", "celery.utils.functional")
 # Frameworks that install their own handlers (often with propagate=False) before our setup runs;
 # we strip those so every record reaches the scrubbing root handler.
 _FRAMEWORK_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "celery", "celery.task")
 # uvicorn re-logs exceptions our 500 handler already logged with request context.
 _UVICORN_DUPLICATE_ERROR = "Exception in ASGI application"
+
+
+def _redact_userinfo(match: re.Match[str]) -> str:
+    userinfo = match.group(1)
+    return f"://{REDACTED}@" if ":" in userinfo else match.group(0)
 
 
 def is_forbidden_key(key: str) -> bool:
@@ -92,7 +99,7 @@ class ValueScrubber:
         for secret in self._known:
             text = text.replace(secret, REDACTED)
         text = _QUERY_SECRET.sub(lambda m: f"{m.group(1)}={REDACTED}", text)
-        return _URL_CREDENTIALS.sub(f"://{REDACTED}@", text)
+        return _URL_USERINFO.sub(_redact_userinfo, text)
 
     def __call__(self, _: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
         for key, value in event_dict.items():
@@ -152,7 +159,8 @@ class _DropDuplicate(logging.Filter):
         self._message = message
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return record.getMessage() != self._message
+        # uvicorn logs the message with a trailing newline.
+        return record.getMessage().strip() != self._message
 
 
 def get_logger(name: str) -> structlog.typing.FilteringBoundLogger:
