@@ -12,6 +12,7 @@ from tests.integration.db_helpers import NOW, add, add_brand, add_user, table, v
 pytestmark = pytest.mark.integration
 
 INVALID_TEXT_REPRESENTATION = "22P02"
+PLAY = "google_play"
 # Tables whose per-brand value is unique ignoring case (citext): table -> value column.
 CASE_INSENSITIVE = {
     "brand_aliases": "alias",
@@ -65,16 +66,8 @@ def test_value_is_unique_per_brand_ignoring_case(conn: Connection, name: str, co
             {"query": "VoltBox Indiranagar", "resolved_at": NOW},
             "ck_brand_locations_resolution_together",
         ),
-        (
-            "brand_apps",
-            {"store": "google_play", "app_id": "com voltbox"},
-            "ck_brand_apps_app_id_format",
-        ),
-        (
-            "brand_apps",
-            {"store": "google_play", "app_id": "x" * 256},
-            "ck_brand_apps_app_id_format",
-        ),
+        ("brand_apps", {"store": PLAY, "app_id": "com voltbox"}, "ck_brand_apps_app_id_format"),
+        ("brand_apps", {"store": PLAY, "app_id": "x" * 256}, "ck_brand_apps_app_id_format"),
     ],
 )
 def test_attribute_checks(
