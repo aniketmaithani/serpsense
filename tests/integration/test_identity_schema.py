@@ -1,33 +1,26 @@
 """Identity schema rules enforced by Postgres itself: users and OTP (data-model.md §1)."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection, Executable, Table, delete, insert, select, text, update
+from sqlalchemy import Connection, Executable, delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from serpsense.adapters.db import models  # noqa: F401  (registers tables)
-from serpsense.adapters.db.base import Base
+from tests.integration.db_helpers import (
+    NOW,
+    RESTRICT_VIOLATION,
+    add,
+    add_user,
+    table,
+    violation,
+)
 
 pytestmark = pytest.mark.integration
 
-NOW = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
-RESTRICT_VIOLATION = "23001"
-USERS: Table = Base.metadata.tables["users"]
-OTP_CODES: Table = Base.metadata.tables["otp_codes"]
-ATTEMPTS: Table = Base.metadata.tables["otp_verify_attempts"]
-
-
-def add(conn: Connection, table: Table, **values: Any) -> uuid.UUID:
-    row_id = uuid.uuid4()
-    conn.execute(insert(table).values(id=row_id, **values))
-    return row_id
-
-
-def add_user(conn: Connection, email: str = "owner@example.com") -> uuid.UUID:
-    return add(conn, USERS, email=email, created_at=NOW)
+OTP_CODES = table("otp_codes")
+ATTEMPTS = table("otp_verify_attempts")
 
 
 def add_otp(conn: Connection, **overrides: Any) -> uuid.UUID:
@@ -42,11 +35,6 @@ def add_otp(conn: Connection, **overrides: Any) -> uuid.UUID:
 
 def add_attempt(conn: Connection, otp_code_id: uuid.UUID, *, succeeded: bool) -> uuid.UUID:
     return add(conn, ATTEMPTS, otp_code_id=otp_code_id, attempted_at=NOW, succeeded=succeeded)
-
-
-def violation(exc: pytest.ExceptionInfo[IntegrityError]) -> Any:
-    """psycopg's diagnostics for the error Postgres raised."""
-    return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
 
 
 def test_user_email_is_unique_case_insensitively(conn: Connection) -> None:
