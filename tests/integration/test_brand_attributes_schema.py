@@ -124,7 +124,7 @@ def test_app_is_unique_per_brand_store_and_id(conn: Connection) -> None:
 def test_unknown_app_store_is_rejected(conn: Connection) -> None:
     with pytest.raises(DataError) as exc:
         add_app(conn, brand(conn), store="apple_app_store")
-    assert exc.value.orig.diag.sqlstate == INVALID_TEXT_REPRESENTATION  # type: ignore[union-attr]  # orig is the DBAPI error
+    assert violation(exc).sqlstate == INVALID_TEXT_REPRESENTATION
 
 
 @pytest.mark.parametrize(
