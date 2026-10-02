@@ -17,6 +17,12 @@ from serpsense.adapters.db.models.identity import (
     UserSearchBudget,
     UserSession,
 )
+from serpsense.adapters.db.models.settings import (
+    BrandScheduleVersion,
+    BrandSearchSettingsVersion,
+    UserLlmProfileVersion,
+    UserSearchDefaultVersion,
+)
 
 __all__ = [
     "Brand",
@@ -25,11 +31,15 @@ __all__ = [
     "BrandCompetitor",
     "BrandLanguage",
     "BrandLocation",
+    "BrandScheduleVersion",
+    "BrandSearchSettingsVersion",
     "BrandWatchTerm",
     "OtpCode",
     "OtpVerifyAttempt",
     "User",
     "UserLlmBudget",
+    "UserLlmProfileVersion",
     "UserSearchBudget",
+    "UserSearchDefaultVersion",
     "UserSession",
 ]
