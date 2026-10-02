@@ -1,6 +1,8 @@
 """SQLAlchemy declarative base with the project's constraint naming convention."""
 
-from sqlalchemy import DateTime, MetaData
+from enum import StrEnum
+
+from sqlalchemy import DateTime, Enum, MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 NAMING_CONVENTION = {
@@ -14,6 +16,11 @@ NAMING_CONVENTION = {
 
 # Every timestamp column is timezone-aware and stored in UTC (AGENTS.md §3).
 TIMESTAMPTZ = DateTime(timezone=True)
+
+
+def pg_enum(enum: type[StrEnum], name: str) -> Enum:
+    """A Postgres enum that stores the StrEnum's values (not its member names)."""
+    return Enum(enum, name=name, values_callable=lambda members: [m.value for m in members])
 
 
 class Base(DeclarativeBase):

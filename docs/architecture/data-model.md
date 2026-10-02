@@ -143,17 +143,17 @@ All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `c
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| brand_id | uuid | fk → brands, `ix_scans_brand_id_created_at` |
-| trigger | enum `scan_trigger` (`schedule`, `manual`, `replay`) | |
-| scheduled_for | timestamptz null | start of the schedule slot; **`uq_scans_brand_id_scheduled_for`** (partial, not null) |
-| requested_by | uuid null | fk → users |
-| status | enum `scan_status` | named exception (see conventions) |
-| 📄 settings_snapshot | jsonb | resolved settings, immutable |
-| estimated_searches | integer | |
+| brand_id | uuid | fk → brands (RESTRICT), `ix_scans_brand_id_created_at` |
+| trigger | enum `scan_trigger` (`schedule`, `manual`, `replay`; mirrors `domain.enums.ScanTrigger`) | |
+| scheduled_for | timestamptz null | start of the schedule slot; **`uq_scans_brand_id_scheduled_for`** (a plain unique constraint: NULLs are distinct, so only scheduled scans can collide) |
+| requested_by | uuid null | fk → users (RESTRICT); set exactly for manual scans (`ck_scans_requested_by_manual`) |
+| status | enum `scan_status` (mirrors `domain.enums.ScanStatus`) | named exception (see conventions) |
+| 📄 settings_snapshot | jsonb | resolved settings, immutable; must be a JSON object (`ck_scans_settings_snapshot_is_object`) |
+| estimated_searches | integer | ≥ 0 (`ck_scans_estimated_searches_non_negative`) |
 | created_at | timestamptz | |
 
 - `ck_scans_scheduled_for_schedule`: `trigger = 'schedule'` ⇔ `scheduled_for is not null`.
-- **`uq_scans_brand_id_active`**: unique (brand_id) where `status in ('queued','running')` — one active scan per brand; "Scan now" during an active scan is rejected and shows the active scan.
+- **`uq_scans_brand_id_active`**: partial unique index on (brand_id) where `status in ('queued','running')` — one active scan per brand, even across concurrent transactions; "Scan now" during an active scan is rejected and shows the active scan.
 
 **Transitions** (`domain/scan_state.py`; anything else raises `IllegalTransition`):
 ```
