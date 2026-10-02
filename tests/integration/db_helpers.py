@@ -1,5 +1,6 @@
 """Row builders and error inspection shared by the schema integration tests."""
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -36,6 +37,11 @@ def add_brand(
     return add(conn, table("brands"), created_at=NOW, **{**values, **overrides})
 
 
+def add_owned_brand(conn: Connection, slug: str = "voltbox") -> uuid.UUID:
+    """A brand with its own owner, so brands built in one test never share an owner."""
+    return add_brand(conn, add_user(conn, f"{slug}@example.com"), slug=slug)
+
+
 def add_scan(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
     values: dict[str, Any] = {
         "trigger": "schedule",
@@ -46,6 +52,30 @@ def add_scan(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UU
         "created_at": NOW,
     }
     return add(conn, table("scans"), brand_id=brand_id, **{**values, **overrides})
+
+
+def add_mention(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
+    values: dict[str, Any] = {
+        "source": "news",
+        "identity_key": hashlib.sha256(b"https://news.example.in/voltbox-battery").hexdigest(),
+        "text": "VoltBox earbuds recalled after battery complaints",
+        "url": "https://news.example.in/voltbox-battery",
+        "outlet": "Example News",
+        "language_code": "en",
+        "published_at": NOW,
+        "created_at": NOW,
+    }
+    return add(conn, table("mentions"), brand_id=brand_id, **{**values, **overrides})
+
+
+def add_location(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
+    values = {"query": "VoltBox Indiranagar", **overrides}
+    return add(conn, table("brand_locations"), brand_id=brand_id, **values)
+
+
+def add_app(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
+    values = {"store": "google_play", "app_id": "com.voltbox.connect", **overrides}
+    return add(conn, table("brand_apps"), brand_id=brand_id, **values)
 
 
 def violation(exc: pytest.ExceptionInfo[DBAPIError]) -> Any:
