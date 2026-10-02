@@ -8,7 +8,7 @@ from sqlalchemy import Connection, delete, insert, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 
 from serpsense.domain.enums import AppStore
-from tests.integration.db_helpers import NOW, add, add_brand, add_user, table, violation
+from tests.integration.db_helpers import NOW, add, add_app, add_owned_brand, table, violation
 
 pytestmark = pytest.mark.integration
 
@@ -22,22 +22,13 @@ CASE_INSENSITIVE = {
 }
 
 
-def brand(conn: Connection, slug: str = "voltbox") -> uuid.UUID:
-    return add_brand(conn, add_user(conn, f"{slug}@example.com"), slug=slug)
-
-
 def add_language(conn: Connection, brand_id: uuid.UUID, code: str) -> None:
     conn.execute(insert(table("brand_languages")).values(brand_id=brand_id, language_code=code))
 
 
-def add_app(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
-    values = {"store": "google_play", "app_id": "com.voltbox.connect", **overrides}
-    return add(conn, table("brand_apps"), brand_id=brand_id, **values)
-
-
 @pytest.mark.parametrize(("name", "column"), CASE_INSENSITIVE.items())
 def test_value_is_unique_per_brand_ignoring_case(conn: Connection, name: str, column: str) -> None:
-    first, second = brand(conn, "voltbox"), brand(conn, "soundnest")
+    first, second = add_owned_brand(conn, "voltbox"), add_owned_brand(conn, "soundnest")
     add(conn, table(name), brand_id=first, **{column: "Battery Blast"})
     add(conn, table(name), brand_id=second, **{column: "battery blast"})
     with pytest.raises(IntegrityError) as exc:
@@ -75,7 +66,7 @@ def test_attribute_checks(
     conn: Connection, name: str, values: dict[str, Any], constraint: str
 ) -> None:
     with pytest.raises(IntegrityError) as exc:
-        add(conn, table(name), brand_id=brand(conn), **values)
+        add(conn, table(name), brand_id=add_owned_brand(conn), **values)
     assert violation(exc).constraint_name == constraint
 
 
@@ -84,7 +75,7 @@ def test_location_resolution_round_trips(conn: Connection) -> None:
     location_id = add(
         conn,
         locations,
-        brand_id=brand(conn),
+        brand_id=add_owned_brand(conn),
         query="VoltBox service centre Indiranagar",
         resolved_data_id="0x3bae13:0x9f1c",
         resolved_at=NOW,
@@ -95,18 +86,18 @@ def test_location_resolution_round_trips(conn: Connection) -> None:
 
 @pytest.mark.parametrize("code", ["en", "hi", "zh-cn", "en-in", "fil"])
 def test_valid_language_codes_are_accepted(conn: Connection, code: str) -> None:
-    add_language(conn, brand(conn), code)
+    add_language(conn, add_owned_brand(conn), code)
 
 
 @pytest.mark.parametrize("code", ["EN", "english", "e", "en_IN", "en-"])
 def test_invalid_language_codes_are_rejected(conn: Connection, code: str) -> None:
     with pytest.raises(IntegrityError) as exc:
-        add_language(conn, brand(conn), code)
+        add_language(conn, add_owned_brand(conn), code)
     assert violation(exc).constraint_name == "ck_brand_languages_language_code_format"
 
 
 def test_language_is_listed_once_per_brand(conn: Connection) -> None:
-    brand_id = brand(conn)
+    brand_id = add_owned_brand(conn)
     add_language(conn, brand_id, "hi")
     with pytest.raises(IntegrityError) as exc:
         add_language(conn, brand_id, "hi")
@@ -114,7 +105,7 @@ def test_language_is_listed_once_per_brand(conn: Connection) -> None:
 
 
 def test_app_is_unique_per_brand_store_and_id(conn: Connection) -> None:
-    brand_id = brand(conn)
+    brand_id = add_owned_brand(conn)
     add_app(conn, brand_id)
     add_app(conn, brand_id, app_id="com.voltbox.buds")
     with pytest.raises(IntegrityError) as exc:
@@ -124,7 +115,7 @@ def test_app_is_unique_per_brand_store_and_id(conn: Connection) -> None:
 
 def test_unknown_app_store_is_rejected(conn: Connection) -> None:
     with pytest.raises(DataError) as exc:
-        add_app(conn, brand(conn), store="apple_app_store")
+        add_app(conn, add_owned_brand(conn), store="apple_app_store")
     assert violation(exc).sqlstate == INVALID_TEXT_REPRESENTATION
 
 
@@ -141,7 +132,7 @@ def test_unknown_app_store_is_rejected(conn: Connection) -> None:
 def test_brand_with_attributes_cannot_be_deleted(
     conn: Connection, name: str, values: dict[str, Any]
 ) -> None:
-    brand_id = brand(conn)
+    brand_id = add_owned_brand(conn)
     if name == "brand_languages":  # composite key, no surrogate id
         add_language(conn, brand_id, values["language_code"])
     else:
@@ -162,7 +153,7 @@ def test_brand_with_attributes_cannot_be_deleted(
     ],
 )
 def test_attribute_limits_are_accepted(conn: Connection, name: str, values: dict[str, Any]) -> None:
-    row_id = add(conn, table(name), brand_id=brand(conn), **values)
+    row_id = add(conn, table(name), brand_id=add_owned_brand(conn), **values)
     row = conn.execute(select(table(name)).where(table(name).c.id == row_id)).one()
     for column, value in values.items():
         assert getattr(row, column) == value
