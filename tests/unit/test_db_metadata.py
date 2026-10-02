@@ -33,6 +33,8 @@ def test_metadata_has_expected_tables() -> None:
         "scans",
         "scan_status_transitions",
         "scan_surface_results",
+        "serp_calls",
+        "raw_responses",
     }
 
 
