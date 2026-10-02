@@ -9,7 +9,13 @@ import pytest
 from sqlalchemy import Connection, Engine, delete, select, text, update
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 
-from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
+from serpsense.domain.enums import (
+    ScanStatus,
+    ScanTrigger,
+    Surface,
+    SurfaceOutcome,
+    TransitionActor,
+)
 from tests.integration.db_helpers import NOW, add, add_brand, add_user, table, violation
 
 pytestmark = pytest.mark.integration
@@ -189,6 +195,8 @@ def test_requester_of_a_scan_cannot_be_deleted(conn: Connection) -> None:
         ("scan_trigger", ScanTrigger),
         ("scan_status", ScanStatus),
         ("transition_actor", TransitionActor),
+        ("surface", Surface),
+        ("surface_outcome", SurfaceOutcome),
     ],
 )
 def test_scan_enums_match_domain(conn: Connection, pg_type: str, enum: type[StrEnum]) -> None:

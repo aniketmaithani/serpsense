@@ -32,6 +32,7 @@ def test_metadata_has_expected_tables() -> None:
         "brand_schedule_versions",
         "scans",
         "scan_status_transitions",
+        "scan_surface_results",
     }
 
 
