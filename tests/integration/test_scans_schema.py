@@ -93,12 +93,15 @@ def test_finished_manual_scans_share_a_brand(conn: Connection) -> None:
         ("scheduled_for", NOW + timedelta(hours=1)),
         ("settings_snapshot", {"preset": "deep"}),
         ("estimated_searches", 99),
+        ("requested_by", "requester"),  # NULL -> value must be caught too
     ],
 )
 def test_only_status_can_change(conn: Connection, column: str, value: Any) -> None:
     scan_id = add_scan(conn, brand(conn))
     if value == "other_brand":
         value = add_brand(conn, add_user(conn, "other@example.com"))
+    if value == "requester":
+        value = add_user(conn, "requester@example.com")
     conn.execute(update(SCANS).where(SCANS.c.id == scan_id).values(status="running"))
     with pytest.raises(IntegrityError) as exc:
         conn.execute(update(SCANS).where(SCANS.c.id == scan_id).values({column: value}))
