@@ -3,16 +3,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from serpsense.adapters.db.base import TIMESTAMPTZ, Base
+from serpsense.adapters.db.base import TIMESTAMPTZ, Base, pg_enum
 from serpsense.domain.enums import AppStore
 
-APP_STORE = Enum(
-    AppStore, name="app_store", values_callable=lambda members: [m.value for m in members]
-)
+APP_STORE = pg_enum(AppStore, "app_store")
 
 
 def _brand_fk() -> Mapped[uuid.UUID]:
