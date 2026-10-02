@@ -4,12 +4,16 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base, pg_enum
-from serpsense.domain.enums import ScanStatus, ScanTrigger
+from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
+
+SCAN_STATUS = pg_enum(ScanStatus, "scan_status")
+# Machine-readable codes (e.g. claimed, timed_out, budget_exhausted), never free text or PII.
+CODE_FORMAT = "~ '^[a-z][a-z0-9_.]{0,63}$'"
 
 
 class Scan(Base):
@@ -52,7 +56,46 @@ class Scan(Base):
     requested_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    status: Mapped[ScanStatus] = mapped_column(pg_enum(ScanStatus, "scan_status"))
+    status: Mapped[ScanStatus] = mapped_column(SCAN_STATUS)
     settings_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
     estimated_searches: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class ScanStatusTransition(Base):
+    """Append-only history of scan status changes; started/finished times derive from it.
+
+    Postgres rejects any transition outside the scan state machine (defence in depth for
+    domain.scan_state, which is the single place that decides transitions).
+    """
+
+    __tablename__ = "scan_status_transitions"
+    __table_args__ = (
+        Index("ix_scan_status_transitions_scan_id_at", "scan_id", "at"),
+        CheckConstraint(
+            "CASE"
+            " WHEN from_status IS NULL THEN to_status = 'queued'"
+            " WHEN from_status = 'queued' THEN to_status IN ('running', 'skipped')"
+            " WHEN from_status = 'running'"
+            " THEN to_status IN ('succeeded', 'partial', 'failed', 'skipped')"
+            " ELSE false END",
+            name="allowed_transition",
+        ),
+        CheckConstraint(
+            "(actor = 'user') = (actor_user_id IS NOT NULL)", name="actor_user_matches"
+        ),
+        CheckConstraint(f"reason {CODE_FORMAT}", name="reason_format"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT")
+    )
+    from_status: Mapped[ScanStatus | None] = mapped_column(SCAN_STATUS)
+    to_status: Mapped[ScanStatus] = mapped_column(SCAN_STATUS)
+    actor: Mapped[TransitionActor] = mapped_column(pg_enum(TransitionActor, "transition_actor"))
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)

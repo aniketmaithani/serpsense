@@ -26,3 +26,10 @@ class ScanStatus(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class TransitionActor(StrEnum):
+    """Who changed a scan's status (`transition_actor` Postgres enum)."""
+
+    SYSTEM = "system"
+    USER = "user"
