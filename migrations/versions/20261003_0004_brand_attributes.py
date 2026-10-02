@@ -50,7 +50,9 @@ def upgrade() -> None:
     _id_table(
         "brand_aliases",
         sa.Column("alias", postgresql.CITEXT(), nullable=False),
-        _check("brand_aliases", "alias_length", "alias ~ '\\S' AND char_length(alias) <= 120"),
+        _check(
+            "brand_aliases", "alias_length", "alias ~ '^\\S(.*\\S)?$' AND char_length(alias) <= 120"
+        ),
         unique=("brand_id", "alias"),
     )
     op.create_table(
@@ -68,7 +70,9 @@ def upgrade() -> None:
     _id_table(
         "brand_watch_terms",
         sa.Column("term", postgresql.CITEXT(), nullable=False),
-        _check("brand_watch_terms", "term_length", "term ~ '\\S' AND char_length(term) <= 80"),
+        _check(
+            "brand_watch_terms", "term_length", "term ~ '^\\S(.*\\S)?$' AND char_length(term) <= 80"
+        ),
         unique=("brand_id", "term"),
     )
     _id_table(
@@ -83,7 +87,11 @@ def upgrade() -> None:
         sa.Column("query", postgresql.CITEXT(), nullable=False),
         sa.Column("resolved_data_id", sa.Text(), nullable=True),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
-        _check("brand_locations", "query_length", "query ~ '\\S' AND char_length(query) <= 200"),
+        _check(
+            "brand_locations",
+            "query_length",
+            "query ~ '^\\S(.*\\S)?$' AND char_length(query) <= 200",
+        ),
         _check(
             "brand_locations",
             "resolution_together",
