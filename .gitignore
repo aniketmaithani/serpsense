@@ -9,7 +9,7 @@ CLAUDE.local.md
 !.env.example
 *.pem
 *.key
-secrets/
+/secrets/
 
 # --- Python ---
 __pycache__/
@@ -32,13 +32,13 @@ coverage.xml
 htmlcov/
 
 # --- Local runtime data (raw SerpApi/LLM responses may contain request URLs) ---
-data/
-cache/
+/data/
+/cache/
 *.sqlite3
 *.db
 *.dump
-backups/
-logs/
+/backups/
+/logs/
 *.log
 
 # --- Docker local overrides ---
