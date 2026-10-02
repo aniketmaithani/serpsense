@@ -155,6 +155,7 @@ def test_brand_with_attributes_cannot_be_deleted(
     ("name", "values"),
     [
         ("brand_aliases", {"alias": "x" * 120}),
+        ("brand_aliases", {"alias": "é" * 120}),  # limits count characters, not bytes
         ("brand_watch_terms", {"term": "x" * 80}),
         ("brand_locations", {"query": "x" * 200}),
         ("brand_apps", {"store": PLAY, "app_id": "x" * 255}),
