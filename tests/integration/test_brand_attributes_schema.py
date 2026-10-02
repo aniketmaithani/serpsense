@@ -48,6 +48,9 @@ def test_value_is_unique_per_brand_ignoring_case(conn: Connection, name: str, co
     [
         ("brand_aliases", {"alias": "  "}, "ck_brand_aliases_alias_length"),
         ("brand_aliases", {"alias": "x" * 121}, "ck_brand_aliases_alias_length"),
+        ("brand_aliases", {"alias": "Volt "}, "ck_brand_aliases_alias_length"),
+        ("brand_watch_terms", {"term": " refund"}, "ck_brand_watch_terms_term_length"),
+        ("brand_locations", {"query": "VoltBox\t"}, "ck_brand_locations_query_length"),
         ("brand_watch_terms", {"term": "\t"}, "ck_brand_watch_terms_term_length"),
         ("brand_watch_terms", {"term": "x" * 81}, "ck_brand_watch_terms_term_length"),
         ("brand_locations", {"query": "x" * 201}, "ck_brand_locations_query_length"),
