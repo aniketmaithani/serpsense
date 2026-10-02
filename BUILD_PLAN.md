@@ -266,7 +266,7 @@ Rules: ADR-0009. Highlights: HMAC-hashed codes, 10-min expiry, single use, 5 att
 
 ## 10. Scan pipeline
 
-1. **Dispatch** (Beat, every 5 min): for each non-archived brand with a schedule, outside quiet hours, compute `scheduled_for` (start of the current slot) and `INSERT … ON CONFLICT DO NOTHING` into `scans` (`queued`). The insert also respects `uq_scans_brand_id_active`. Enqueue only rows actually inserted, **after commit** (`JobQueue` port). "Scan now" uses the same insert; a conflict returns "scan in progress".
+1. **Dispatch** (Beat, every 5 min): for each non-archived brand with a schedule, outside quiet hours, compute `scheduled_for` (start of the current slot) and `INSERT … ON CONFLICT DO NOTHING` (no conflict target, so both the slot constraint and the active-scan index apply) into `scans` (`queued`). The insert also respects `uq_scans_brand_id_active`. Enqueue only rows actually inserted, **after commit** (`JobQueue` port). "Scan now" uses the same insert; a conflict returns "scan in progress".
 2. **Claim:** `UPDATE scans SET status='running' WHERE id=:id AND status='queued' RETURNING` + transition row, in one transaction. Zero rows → exit without doing anything (a redelivered message, or another worker has it).
 3. **Resolve settings** → snapshot → **estimate** → check the user's budget and the SerpApi quota. If insufficient → `running → skipped` with a reason + notification.
 4. **Collect** with limited concurrency through the SerpApi client (cache → retry → circuit breaker → `serp_calls` row → redaction → `raw_responses`). Each surface records a `scan_surface_results` row.
