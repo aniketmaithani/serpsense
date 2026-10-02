@@ -57,8 +57,14 @@ REDACTED = "[redacted]"
 _QUERY_SECRET = re.compile(
     r"(?i)\b(api_key|apikey|access_token|token|password|secret|key)=([^&\s\"']+)"
 )
-_URL_CREDENTIALS = re.compile(r"://[^/\s:@]+:[^@\s/]+@")
+# Username may be empty (redis://:password@host); password may contain "/".
+_URL_CREDENTIALS = re.compile(r"://[^/\s:@]*:[^@\s]+@")
 _NOISY_LOGGERS = ("urllib3", "requests", "httpx", "httpcore", "celery.utils.functional")
+# Frameworks that install their own handlers (often with propagate=False) before our setup runs;
+# we strip those so every record reaches the scrubbing root handler.
+_FRAMEWORK_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "celery", "celery.task")
+# uvicorn re-logs exceptions our 500 handler already logged with request context.
+_UVICORN_DUPLICATE_ERROR = "Exception in ASGI application"
 
 
 def is_forbidden_key(key: str) -> bool:
@@ -128,9 +134,25 @@ def configure_logging(
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(numeric_level)
+    for name in _FRAMEWORK_LOGGERS:
+        framework_logger = logging.getLogger(name)
+        framework_logger.handlers = []
+        framework_logger.propagate = True
+    uvicorn_error = logging.getLogger("uvicorn.error")
+    uvicorn_error.filters = [f for f in uvicorn_error.filters if not isinstance(f, _DropDuplicate)]
+    uvicorn_error.addFilter(_DropDuplicate(_UVICORN_DUPLICATE_ERROR))
     # HTTP client libraries log full request URLs (SerpApi puts the key in the query string).
     for name in _NOISY_LOGGERS:
         logging.getLogger(name).setLevel(max(logging.WARNING, numeric_level))
+
+
+class _DropDuplicate(logging.Filter):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage() != self._message
 
 
 def get_logger(name: str) -> structlog.typing.FilteringBoundLogger:

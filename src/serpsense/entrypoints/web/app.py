@@ -12,7 +12,11 @@ from serpsense.entrypoints.web.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
     apply_security_headers,
+    route_template,
 )
+from serpsense.observability import get_logger
+
+log = get_logger(__name__)
 
 
 def create_app(container: Container | None = None) -> FastAPI:
@@ -25,9 +29,15 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(health_router)
 
     @app.exception_handler(Exception)
-    def internal_error(_: Request, __: Exception) -> PlainTextResponse:
-        # Runs outside the middleware stack, so headers are applied here too.
-        # The exception itself is logged by RequestContextMiddleware; no details leak to the client.
+    def internal_error(request: Request, exc: Exception) -> PlainTextResponse:
+        # Runs outside the middleware stack, so headers are applied here too. The exception is
+        # logged once, here (scrubbed); the client gets no details.
+        log.error(
+            "http.request_failed",
+            method=request.method,
+            route=route_template(request),
+            exc_info=exc,
+        )
         response = PlainTextResponse("Internal Server Error", status_code=500)
         apply_security_headers(response, hsts=hsts)
         return response

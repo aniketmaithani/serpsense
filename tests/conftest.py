@@ -4,6 +4,9 @@ import pytest
 
 from serpsense.config import Settings
 from tests.factories import make_settings
+from tests.fixtures_logging import restore_logging
+
+__all__ = ["restore_logging", "settings"]
 
 
 @pytest.fixture

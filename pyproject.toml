@@ -179,7 +179,10 @@ source_modules = ["serpsense"]
 forbidden_modules = ["anthropic"]
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
-ignore_imports = ["serpsense.adapters.llm.** -> anthropic"]
+ignore_imports = [
+    "serpsense.adapters.llm -> anthropic",
+    "serpsense.adapters.llm.** -> anthropic",
+]
 
 [[tool.importlinter.contracts]]
 name = "SerpApi SDK only in adapters.serp"
@@ -188,7 +191,10 @@ source_modules = ["serpsense"]
 forbidden_modules = ["serpapi"]
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
-ignore_imports = ["serpsense.adapters.serp.** -> serpapi"]
+ignore_imports = [
+    "serpsense.adapters.serp -> serpapi",
+    "serpsense.adapters.serp.** -> serpapi",
+]
 
 [[tool.importlinter.contracts]]
 name = "Celery/kombu only in adapters.jobs and entrypoints.jobs"
@@ -199,8 +205,11 @@ allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "serpsense.composition -> celery",
+    "serpsense.adapters.jobs -> celery",
     "serpsense.adapters.jobs.** -> celery",
+    "serpsense.adapters.jobs -> kombu",
     "serpsense.adapters.jobs.** -> kombu",
+    "serpsense.entrypoints.jobs -> celery",
     "serpsense.entrypoints.jobs.** -> celery",
 ]
 
@@ -211,7 +220,10 @@ source_modules = ["serpsense"]
 forbidden_modules = ["redis"]
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
-ignore_imports = ["serpsense.adapters.cache.** -> redis"]
+ignore_imports = [
+    "serpsense.adapters.cache -> redis",
+    "serpsense.adapters.cache.** -> redis",
+]
 
 [[tool.importlinter.contracts]]
 name = "cryptography only in adapters.crypto"
@@ -220,7 +232,10 @@ source_modules = ["serpsense"]
 forbidden_modules = ["cryptography"]
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
-ignore_imports = ["serpsense.adapters.crypto.** -> cryptography"]
+ignore_imports = [
+    "serpsense.adapters.crypto -> cryptography",
+    "serpsense.adapters.crypto.** -> cryptography",
+]
 
 [[tool.importlinter.contracts]]
 name = "smtplib only in adapters.mail"
@@ -229,4 +244,7 @@ source_modules = ["serpsense"]
 forbidden_modules = ["smtplib"]
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
-ignore_imports = ["serpsense.adapters.mail.** -> smtplib"]
+ignore_imports = [
+    "serpsense.adapters.mail -> smtplib",
+    "serpsense.adapters.mail.** -> smtplib",
+]

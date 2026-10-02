@@ -1,8 +1,7 @@
 import logging
-from collections.abc import Iterator
 
 import pytest
-import structlog
+import uvicorn
 
 from serpsense.observability import (
     REDACTED,
@@ -62,6 +61,8 @@ def test_event_name_is_never_redacted_by_key_rule() -> None:
     [
         ("GET https://serpapi.com/search?q=x&api_key=abc123def", "abc123def"),
         ("connect postgresql://app:hunter2pw@db:5432/x", "hunter2pw"),
+        ("broker redis://:redispw42@redis:6379/0", "redispw42"),
+        ("dsn postgresql://app:pa/ss99@db/x", "pa/ss99"),
         ("retry with token=tok_live_999", "tok_live_999"),
     ],
 )
@@ -78,15 +79,6 @@ def test_value_scrubber_removes_known_secret_values_anywhere() -> None:
     )
     assert "s3cret-value-xyz" not in event["event"]
     assert "s3cret-value-xyz" not in event["exception"]
-
-
-@pytest.fixture
-def restore_logging() -> Iterator[None]:
-    root = logging.getLogger()
-    handlers, level = root.handlers[:], root.level
-    yield
-    root.handlers, root.level = handlers, level
-    structlog.reset_defaults()
 
 
 @pytest.mark.usefixtures("restore_logging")
@@ -120,3 +112,32 @@ def test_http_client_loggers_are_capped_at_warning() -> None:
     configure_logging(level="DEBUG", json=True)
     assert logging.getLogger("urllib3").level == logging.WARNING
     assert logging.getLogger("httpx").level == logging.WARNING
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_uvicorn_loggers_are_routed_through_the_scrubber(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # uvicorn configures its own handlers (propagate=False) before our app factory runs.
+    uvicorn.Config(app="x:y").configure_logging()
+    configure_logging(level="INFO", json=True)
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    assert logging.getLogger("uvicorn").handlers == []
+    assert uvicorn_logger.handlers == []
+    uvicorn_logger.error("startup failed for ?api_key=leakme555")
+    uvicorn_logger.error("Exception in ASGI application")
+    out = capsys.readouterr().out
+    assert "leakme555" not in out
+    assert "Exception in ASGI application" not in out
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_celery_task_logger_handlers_are_replaced(capsys: pytest.CaptureFixture[str]) -> None:
+    task_logger = logging.getLogger("celery.task")
+    task_logger.addHandler(logging.StreamHandler())
+    task_logger.propagate = False
+    configure_logging(level="INFO", json=True)
+    assert task_logger.handlers == []
+    assert task_logger.propagate is True
+    task_logger.warning("retry ?api_key=leakme888")
+    assert "leakme888" not in capsys.readouterr().out

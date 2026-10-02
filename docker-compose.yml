@@ -100,9 +100,10 @@ services:
 
   beat:
     <<: *app
-    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "beat", "--loglevel", "INFO", "--schedule", "/tmp/celerybeat-schedule"]
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "beat", "--loglevel", "INFO"]
     healthcheck:
-      # Beat sends a heartbeat task every 60 s and syncs its schedule file after each send.
+      # Beat sends a heartbeat task every 60 s and syncs its schedule file (BEAT_SCHEDULE_FILE
+      # in adapters/jobs/celery_factory.py) after each send.
       test: ["CMD", "python", "-c", "import glob, os, sys, time; f = glob.glob('/tmp/celerybeat-schedule*'); sys.exit(0 if f and time.time() - max(map(os.path.getmtime, f)) < 180 else 1)"]
       interval: 30s
       timeout: 5s
