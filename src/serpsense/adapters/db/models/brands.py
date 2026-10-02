@@ -68,7 +68,7 @@ class BrandAlias(Base):
     __tablename__ = "brand_aliases"
     __table_args__ = (
         UniqueConstraint("brand_id", "alias"),
-        CheckConstraint("char_length(btrim(alias)) BETWEEN 1 AND 120", name="alias_length"),
+        CheckConstraint("alias ~ '\\S' AND char_length(alias) <= 120", name="alias_length"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -98,7 +98,7 @@ class BrandWatchTerm(Base):
     __tablename__ = "brand_watch_terms"
     __table_args__ = (
         UniqueConstraint("brand_id", "term"),
-        CheckConstraint("char_length(btrim(term)) BETWEEN 1 AND 80", name="term_length"),
+        CheckConstraint("term ~ '\\S' AND char_length(term) <= 80", name="term_length"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -127,7 +127,7 @@ class BrandLocation(Base):
     __tablename__ = "brand_locations"
     __table_args__ = (
         UniqueConstraint("brand_id", "query"),
-        CheckConstraint("char_length(btrim(query)) BETWEEN 1 AND 200", name="query_length"),
+        CheckConstraint("query ~ '\\S' AND char_length(query) <= 200", name="query_length"),
         CheckConstraint(
             "(resolved_data_id IS NULL) = (resolved_at IS NULL)", name="resolution_together"
         ),
