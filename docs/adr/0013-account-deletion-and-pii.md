@@ -22,7 +22,8 @@ The owner wants users to be able to delete their account now. Ledgers and audit 
      - write audit event `account.deleted` (no email in details, **no network row**)
   3. Clear the cookie.
 - Ledgers, scans, mentions and model output remain, linked to a pseudonymous user. The same email can sign up again as a new user.
-- **Retention defaults:** `otp_codes` older than 30 days → email pseudonymised, IP nulled and `code_hash` zeroed by the maintenance job; expired sessions deleted after 30 days; `audit_event_network` older than 90 days deleted.
+- **Pseudonyms are unique per row:** `deleted+<row id>@serpsense.invalid`, so pseudonymised rows never collide on `uq_users_email` or `uq_otp_codes_one_live_per_email`. The scrub also marks any still-live code as superseded first.
+- **Retention defaults:** `otp_codes` older than 30 days → superseded if still live, email pseudonymised, IP nulled and `code_hash` zeroed by the maintenance job; expired sessions deleted after 30 days; `audit_event_network` older than 90 days deleted.
 
 ## Alternatives considered
 - **Hard delete with cascades** — impossible with append-only ledgers; would also destroy cost and audit history.
