@@ -55,28 +55,28 @@ No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
 ### 🔒 `otp_verify_attempts`
 `id`, `otp_code_id` fk (RESTRICT, `ix_otp_verify_attempts_otp_code_id`), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5). **`uq_otp_verify_attempts_one_success_per_code`**: partial unique index on `otp_code_id` where `succeeded` — a code verifies successfully at most once.
 
-### `sessions` (mutable)
+### `sessions` (mutable; model class `UserSession`)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| user_id | uuid | fk → users, `ix_sessions_user_id` |
-| token_hash | bytea | `uq_sessions_token_hash` |
+| user_id | uuid | fk → users (RESTRICT), `ix_sessions_user_id` |
+| token_hash | bytea | `uq_sessions_token_hash` (SHA-256 of the cookie token) |
 | csrf_secret | bytea | per-session; CSRF tokens are HMAC(K_csrf, secret) |
 | created_at | timestamptz | |
 | expires_at | timestamptz | sliding; refreshed at most once per hour |
 | revoked_at | timestamptz null | logout / log out everywhere |
 | ip | inet null | at creation; scrubbed on deletion |
-| user_agent | text null | truncated to 256; scrubbed on deletion |
+| user_agent | text null | truncated to 256 (`ck_sessions_user_agent_length`); scrubbed on deletion |
 
-Account deletion deletes the user's session rows.
+`ck_sessions_expires_after_created`. Account deletion deletes the user's session rows (nothing references `sessions`).
 
-### `user_search_budgets` / `user_llm_budgets`
+### 🔒 `user_search_budgets` / 🔒 `user_llm_budgets`
 | Table | Columns |
 |---|---|
 | `user_search_budgets` | `id`, `user_id` fk, `monthly_searches integer`, `effective_from`, `created_at` |
 | `user_llm_budgets` | `id`, `user_id` fk, `monthly_micros bigint`, `currency char(3)`, `effective_from`, `created_at` |
 
-Current budget = latest `effective_from ≤ now`; no row → config default.
+Append-only: a budget change is a new row. Both: FK to users RESTRICT; **`uq_<table>_user_id_effective_from`** (at most one row per user per instant, so "latest `effective_from ≤ now`" has a single answer); amounts non-negative (`ck_<table>_monthly_*_non_negative`); `currency` must match `^[A-Z]{3}$` (`ck_user_llm_budgets_currency_iso_4217`). No row → config default (1,500 searches; 30,000,000 micros = US$30).
 
 ---
 
