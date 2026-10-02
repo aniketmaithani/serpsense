@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     LargeBinary,
+    text,
 )
 from sqlalchemy.dialects.postgresql import CITEXT, INET, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -38,6 +39,14 @@ class OtpCode(Base):
         ),
         CheckConstraint("expires_at > created_at", name="expires_after_created"),
         Index("ix_otp_codes_email_created_at", "email", "created_at"),
+        # At most one live (neither consumed nor superseded) code per email, so concurrent
+        # requests can't multiply the guess budget (ADR-0009).
+        Index(
+            "uq_otp_codes_one_live_per_email",
+            "email",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL AND superseded_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -55,6 +64,15 @@ class OtpVerifyAttempt(Base):
     """Append-only (database trigger). No IP is stored; per-IP limits live in Redis."""
 
     __tablename__ = "otp_verify_attempts"
+    __table_args__ = (
+        # A code can be verified successfully only once (defence in depth for single use).
+        Index(
+            "uq_otp_verify_attempts_one_success_per_code",
+            "otp_code_id",
+            unique=True,
+            postgresql_where=text("succeeded"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     otp_code_id: Mapped[uuid.UUID] = mapped_column(
