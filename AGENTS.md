@@ -164,7 +164,7 @@ uv run pip-audit
 - Branch: `agent/issue-<N>-<slug>` (agents) or `feat/<N>-<slug>` (humans). Never commit to `main`.
 - Conventional commits: `feat(scope): summary (#N)`, `fix(…)`, `docs(…)`, `test(…)`, `chore(…)`.
 - PR limit: **400 changed lines or 20 files**. Split bigger work.
-- Squash merge only, after green CI and reviewer approval (architect, python, security, test; observability/prompt-eval when relevant).
+- **Rebase-merge only** (`gh pr merge --rebase`), after green CI and reviewer approval (architect, python, security, test; observability/prompt-eval when relevant). Squash and merge commits are disabled in the repository settings, so each atomic commit lands on `main` as-is and history stays linear. Where an agent definition says `--squash`, use `--rebase`.
 - **Human merge required** (agents stop and hand over) for any PR touching: auth/sessions/OTP, account deletion, `.github/workflows/`, Docker/Compose/infra config, secrets handling, migrations that drop/rename, or new dependencies.
 - **Documented exceptions to the PR size limit:** (1) the one-time repo bootstrap PR (no CI exists yet to gate it); (2) none other — the schema lands as one PR per table group.
 - Batch reviewer runs: run all relevant reviewers in parallel once per PR round, not after every commit.
