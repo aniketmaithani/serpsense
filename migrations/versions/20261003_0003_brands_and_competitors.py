@@ -23,8 +23,10 @@ SAME_OWNER_FUNCTION = """
 CREATE FUNCTION serpsense_brand_competitor_same_owner() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+    -- "<>" (not IS DISTINCT FROM): a missing brand yields NULL and skips this check, so the
+    -- foreign key or NOT NULL constraint reports the real problem.
     IF (SELECT owner_id FROM brands WHERE id = NEW.brand_id)
-       IS DISTINCT FROM (SELECT owner_id FROM brands WHERE id = NEW.competitor_brand_id) THEN
+       <> (SELECT owner_id FROM brands WHERE id = NEW.competitor_brand_id) THEN
         RAISE EXCEPTION 'brand and competitor must have the same owner'
             USING ERRCODE = 'check_violation', CONSTRAINT = 'ck_brand_competitors_same_owner';
     END IF;
@@ -62,7 +64,7 @@ def upgrade() -> None:
         _timestamp("created_at"),
         _timestamp("archived_at", nullable=True),
         sa.CheckConstraint(
-            "char_length(btrim(name)) BETWEEN 1 AND 120", name=op.f("ck_brands_name_length")
+            "name ~ '\\S' AND char_length(name) <= 120", name=op.f("ck_brands_name_length")
         ),
         sa.CheckConstraint(
             "slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 64",
@@ -79,7 +81,7 @@ def upgrade() -> None:
     )
     op.execute(OWNER_IMMUTABLE_FUNCTION)
     op.execute(
-        "CREATE TRIGGER trg_brands_owner_immutable BEFORE UPDATE OF owner_id ON brands "
+        "CREATE TRIGGER trg_brands_owner_immutable BEFORE UPDATE ON brands "
         "FOR EACH ROW EXECUTE FUNCTION serpsense_brand_owner_immutable()"
     )
 
