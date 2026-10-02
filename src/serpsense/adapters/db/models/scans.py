@@ -72,6 +72,8 @@ class ScanStatusTransition(Base):
     __tablename__ = "scan_status_transitions"
     __table_args__ = (
         Index("ix_scan_status_transitions_scan_id_at", "scan_id", "at"),
+        # No scan reaches the same status twice (catches a duplicate creation or finish).
+        UniqueConstraint("scan_id", "to_status"),
         CheckConstraint(
             "CASE"
             " WHEN from_status IS NULL THEN to_status = 'queued'"
