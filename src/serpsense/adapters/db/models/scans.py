@@ -13,7 +13,10 @@ from serpsense.domain.enums import ScanStatus, ScanTrigger
 
 
 class Scan(Base):
-    """One scan of one brand. `status` is a named exception to "no derived values" (see doc)."""
+    """One scan of one brand. `status` is a named exception to "no derived values" (see doc).
+
+    Only `status` can change after insert (trigger `trg_scans_identity_immutable`).
+    """
 
     __tablename__ = "scans"
     __table_args__ = (
