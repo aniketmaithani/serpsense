@@ -82,25 +82,25 @@ Append-only: a budget change is a new row. Both: FK to users RESTRICT; **`uq_<ta
 
 ## 2. Settings (versioned, read whole)
 
-Validated by Pydantic (`domain/settings/*`), always read whole. **New version = new row**; current = latest `created_at`.
+Validated by Pydantic (`domain/settings/*`), always read whole. All four tables below are 🔒 **append-only**: a change is a new row, and the current version is the latest `created_at` per key. **`uq_<table>_<key>_created_at`** allows one version per key per instant, so "latest" has a single answer; its index also serves the "latest version" lookup.
 
-| Table | Key | 📄 `document` contents |
+| Table | Key (FK, RESTRICT) | 📄 `document` contents |
 |---|---|---|
-| `user_llm_profile_versions` | user_id | per-task model/effort/display/max_tokens/temperature/caching/fallback + preset |
-| `user_search_default_versions` | user_id | default country, languages, device, cache, concurrency, caps |
-| `brand_search_settings_versions` | brand_id | per-engine knobs (templates, pages, filters, TTLs) |
+| 🔒 `user_llm_profile_versions` | user_id → users | per-task model/effort/display/max_tokens/temperature/caching/fallback + preset |
+| 🔒 `user_search_default_versions` | user_id → users | default country, languages, device, cache, concurrency, caps |
+| 🔒 `brand_search_settings_versions` | brand_id → brands | per-engine knobs (templates, pages, filters, TTLs) |
 
-Each has `id`, the key fk, `document jsonb`, `schema_version smallint`, `created_at`, index on (key, created_at desc).
+Each has `id`, the key FK, `document jsonb` (must be a JSON object: `ck_<table>_document_is_object`), `schema_version smallint` (≥ 1: `ck_<table>_schema_version_positive`) and `created_at`.
 
-### `brand_schedule_versions` (relational: the dispatcher filters on it)
+### 🔒 `brand_schedule_versions` (relational: the dispatcher filters on it)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| brand_id | uuid | fk → brands |
-| interval_minutes | integer | 60/180/360/720/1440; null = manual only |
-| quiet_start / quiet_end | time null | local time in `timezone` |
-| timezone | text | default `Asia/Kolkata` |
-| created_at | timestamptz | `ix_brand_schedule_versions_brand_id_created_at` |
+| brand_id | uuid | fk → brands (RESTRICT); `uq_brand_schedule_versions_brand_id_created_at` |
+| interval_minutes | integer null | one of 60/180/360/720/1440 (`ck_brand_schedule_versions_interval_allowed`); null = manual only |
+| quiet_start / quiet_end | time null | local time in `timezone`; both null, or both set and different (`ck_brand_schedule_versions_quiet_hours_valid`); start > end means overnight |
+| timezone | text | IANA name, default `Asia/Kolkata`; 1–64 non-whitespace chars (`ck_brand_schedule_versions_timezone_format`); validity checked by the application |
+| created_at | timestamptz | |
 
 Resolution order: system defaults → user defaults → brand settings → per-run override; resolved result snapshotted into `scans.settings_snapshot` / `llm_calls.request_settings`.
 
