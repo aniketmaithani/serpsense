@@ -41,7 +41,7 @@
 - **Webhooks dropped** (user-supplied URLs are an SSRF risk, ADR-0011). Alerts: email + in-app.
 - **LLM work follows the prompt-eval rules:** SDK behind a port with a fake, prompts as versioned files, golden sets, eval runner and reports, provenance labels, author names stripped, prompts never logged.
 - **Layered architecture** enforced by import-linter; runbooks for each failure mode; no APM vendor.
-- **Workflow:** issue → branch → PR (≤ 400 lines) → reviewers → squash merge; some areas need **your** merge.
+- **Workflow:** issue → branch → atomic commits → PR (≤ 400 lines) → reviewers → rebase-merge; some areas need **your** merge.
 
 ---
 
@@ -458,7 +458,7 @@ LOG_LEVEL=INFO
 ## 19. Workflow (from `AGENTS.md` §11 and the `github-issue-picker` agent)
 
 - Each schedule item below becomes **GitHub issues** with checkable acceptance criteria.
-- Branch → PR (≤ 400 changed lines / 20 files) → reviewers (architect, python, security, test; observability and prompt-eval when relevant) → green CI → squash merge.
+- Branch → PR (≤ 400 changed lines / 20 files) → reviewers (architect, python, security, test; observability and prompt-eval when relevant) → green CI → rebase-merge (atomic commits land on `main` unchanged).
 - **Your merge is required** for PRs touching: auth/OTP/sessions, `.github/workflows/`, Docker/Compose, secrets handling, destructive migrations, new dependencies. In this plan that covers the Day 0 bootstrap, the Day 1 schema PRs (they add dependencies and infra), Day 5 auth + account deletion, and any new package.
 - **The schema lands as one PR per table group** (identity · settings + brands · scans + search data · model output + scores · alerts + outbox + audit) to respect the 400-line limit.
 - Run all relevant reviewers **in parallel once per PR round**.
