@@ -9,6 +9,7 @@ Create Date: 2026-10-03
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 
 import sqlalchemy as sa
 from alembic import op
@@ -32,7 +33,7 @@ def _append_only(table: str) -> None:
         op.execute(statement)
 
 
-def _timestamp(name: str, *, nullable: bool = False) -> sa.Column[sa.DateTime]:
+def _timestamp(name: str, *, nullable: bool = False) -> sa.Column[datetime]:
     return sa.Column(name, sa.DateTime(timezone=True), nullable=nullable)
 
 
