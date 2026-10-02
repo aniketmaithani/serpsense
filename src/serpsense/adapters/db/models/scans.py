@@ -9,7 +9,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     text,
@@ -123,7 +122,6 @@ class ScanSurfaceResult(Base):
 
     __tablename__ = "scan_surface_results"
     __table_args__ = (
-        PrimaryKeyConstraint("scan_id", "surface"),
         CheckConstraint(
             "(outcome = 'failed') = (error_code IS NOT NULL)", name="error_code_iff_failed"
         ),
@@ -131,8 +129,8 @@ class ScanSurfaceResult(Base):
     )
 
     scan_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT")
+        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT"), primary_key=True
     )
-    surface: Mapped[Surface] = mapped_column(pg_enum(Surface, "surface"))
+    surface: Mapped[Surface] = mapped_column(pg_enum(Surface, "surface"), primary_key=True)
     outcome: Mapped[SurfaceOutcome] = mapped_column(pg_enum(SurfaceOutcome, "surface_outcome"))
     error_code: Mapped[str | None] = mapped_column(Text)
