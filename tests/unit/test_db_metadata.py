@@ -21,6 +21,11 @@ def test_metadata_has_expected_tables() -> None:
         "user_llm_budgets",
         "brands",
         "brand_competitors",
+        "brand_aliases",
+        "brand_languages",
+        "brand_watch_terms",
+        "brand_apps",
+        "brand_locations",
     }
 
 
