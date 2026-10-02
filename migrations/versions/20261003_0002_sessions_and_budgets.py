@@ -6,6 +6,8 @@ Create Date: 2026-10-03
 """
 
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -21,7 +23,7 @@ depends_on: str | Sequence[str] | None = None
 BUDGET_TABLES = ("user_search_budgets", "user_llm_budgets")
 
 
-def _timestamp(name: str, *, nullable: bool = False) -> sa.Column[sa.DateTime]:
+def _timestamp(name: str, *, nullable: bool = False) -> sa.Column[datetime]:
     return sa.Column(name, sa.DateTime(timezone=True), nullable=nullable)
 
 
@@ -31,7 +33,7 @@ def _user_fk(table: str) -> sa.ForeignKeyConstraint:
     )
 
 
-def _budget_table(table: str, *columns: sa.Column[sa.Integer], checks: dict[str, str]) -> None:
+def _budget_table(table: str, *columns: sa.Column[Any], checks: dict[str, str]) -> None:
     op.create_table(
         table,
         sa.Column("id", sa.UUID(), nullable=False),
