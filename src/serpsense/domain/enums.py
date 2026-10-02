@@ -33,3 +33,27 @@ class TransitionActor(StrEnum):
 
     SYSTEM = "system"
     USER = "user"
+
+
+class Surface(StrEnum):
+    """A search surface a scan collects (`surface` Postgres enum)."""
+
+    SEARCH_PAGE = "search_page"
+    AI_OVERVIEW = "ai_overview"
+    AUTOCOMPLETE = "autocomplete"
+    NEWS = "news"
+    TRENDS = "trends"
+    PLAY = "play"
+    MAPS = "maps"
+    YOUTUBE = "youtube"
+
+
+class SurfaceOutcome(StrEnum):
+    """How collecting one surface went (`surface_outcome` Postgres enum)."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    DISABLED = "disabled"
+    NOT_SHOWN = "not_shown"
+    CIRCUIT_OPEN = "circuit_open"
+    BUDGET_EXHAUSTED = "budget_exhausted"

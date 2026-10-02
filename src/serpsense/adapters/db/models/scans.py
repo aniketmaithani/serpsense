@@ -4,12 +4,27 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    PrimaryKeyConstraint,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base, pg_enum
-from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
+from serpsense.domain.enums import (
+    ScanStatus,
+    ScanTrigger,
+    Surface,
+    SurfaceOutcome,
+    TransitionActor,
+)
 
 SCAN_STATUS = pg_enum(ScanStatus, "scan_status")
 # Machine-readable codes (e.g. claimed, timed_out, budget_exhausted), never free text or PII.
@@ -101,3 +116,23 @@ class ScanStatusTransition(Base):
     )
     reason: Mapped[str] = mapped_column(Text)
     at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class ScanSurfaceResult(Base):
+    """Append-only: how each surface went in a scan (drives the "partial scan" UI)."""
+
+    __tablename__ = "scan_surface_results"
+    __table_args__ = (
+        PrimaryKeyConstraint("scan_id", "surface"),
+        CheckConstraint(
+            "(outcome = 'failed') = (error_code IS NOT NULL)", name="error_code_iff_failed"
+        ),
+        CheckConstraint(f"error_code {CODE_FORMAT}", name="error_code_format"),
+    )
+
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT")
+    )
+    surface: Mapped[Surface] = mapped_column(pg_enum(Surface, "surface"))
+    outcome: Mapped[SurfaceOutcome] = mapped_column(pg_enum(SurfaceOutcome, "surface_outcome"))
+    error_code: Mapped[str | None] = mapped_column(Text)
