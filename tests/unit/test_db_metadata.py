@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 TABLES = list(Base.metadata.sorted_tables)
 
 
-def test_metadata_has_identity_tables() -> None:
+def test_metadata_has_expected_tables() -> None:
     assert {t.name for t in TABLES} >= {
         "users",
         "otp_codes",
@@ -19,6 +19,8 @@ def test_metadata_has_identity_tables() -> None:
         "sessions",
         "user_search_budgets",
         "user_llm_budgets",
+        "brands",
+        "brand_competitors",
     }
 
 

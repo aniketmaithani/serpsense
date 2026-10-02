@@ -29,6 +29,13 @@ def add_user(conn: Connection, email: str = "owner@example.com") -> uuid.UUID:
     return add(conn, table("users"), email=email, created_at=NOW)
 
 
+def add_brand(
+    conn: Connection, owner_id: uuid.UUID, slug: str = "voltbox", **overrides: Any
+) -> uuid.UUID:
+    values: dict[str, Any] = {"owner_id": owner_id, "name": "VoltBox", "slug": slug}
+    return add(conn, table("brands"), created_at=NOW, **{**values, **overrides})
+
+
 def violation(exc: pytest.ExceptionInfo[IntegrityError]) -> Any:
     """psycopg's diagnostics for the error Postgres raised."""
     return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
