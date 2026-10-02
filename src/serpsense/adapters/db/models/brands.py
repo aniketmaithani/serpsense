@@ -3,13 +3,11 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from serpsense.adapters.db.base import Base
-
-TIMESTAMPTZ = DateTime(timezone=True)
+from serpsense.adapters.db.base import TIMESTAMPTZ, Base
 
 
 class Brand(Base):
