@@ -30,6 +30,7 @@ def test_metadata_has_expected_tables() -> None:
         "user_search_default_versions",
         "brand_search_settings_versions",
         "brand_schedule_versions",
+        "scans",
     }
 
 
