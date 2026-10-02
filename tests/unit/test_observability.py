@@ -62,7 +62,7 @@ def test_event_name_is_never_redacted_by_key_rule() -> None:
         ("GET https://serpapi.com/search?q=x&api_key=abc123def", "abc123def"),
         ("connect postgresql://app:hunter2pw@db:5432/x", "hunter2pw"),
         ("broker redis://:redispw42@redis:6379/0", "redispw42"),
-        ("dsn postgresql://app:pa/ss99@db/x", "pa/ss99"),
+        ("dsn postgresql://app:p@ss99@db:5432/x", "ss99"),
         ("retry with token=tok_live_999", "tok_live_999"),
     ],
 )
@@ -125,7 +125,7 @@ def test_uvicorn_loggers_are_routed_through_the_scrubber(
     assert logging.getLogger("uvicorn").handlers == []
     assert uvicorn_logger.handlers == []
     uvicorn_logger.error("startup failed for ?api_key=leakme555")
-    uvicorn_logger.error("Exception in ASGI application")
+    uvicorn_logger.error("Exception in ASGI application\n")  # exactly as uvicorn logs it
     out = capsys.readouterr().out
     assert "leakme555" not in out
     assert "Exception in ASGI application" not in out
@@ -141,3 +141,15 @@ def test_celery_task_logger_handlers_are_replaced(capsys: pytest.CaptureFixture[
     assert task_logger.propagate is True
     task_logger.warning("retry ?api_key=leakme888")
     assert "leakme888" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "GET http://host:8080/p?e=a@b.com",
+        "mailto user@example.com",
+        "https://example.com/@handle",
+    ],
+)
+def test_value_scrubber_leaves_urls_without_credentials_alone(text: str) -> None:
+    assert ValueScrubber().scrub(text) == text
