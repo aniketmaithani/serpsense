@@ -1,6 +1,6 @@
 """SQLAlchemy declarative base with the project's constraint naming convention."""
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 NAMING_CONVENTION = {
@@ -10,6 +10,10 @@ NAMING_CONVENTION = {
     "ix": "ix_%(column_0_N_label)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
 }
+
+
+# Every timestamp column is timezone-aware and stored in UTC (AGENTS.md §3).
+TIMESTAMPTZ = DateTime(timezone=True)
 
 
 class Base(DeclarativeBase):

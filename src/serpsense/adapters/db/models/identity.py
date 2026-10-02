@@ -8,7 +8,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -20,9 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import CITEXT, INET, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from serpsense.adapters.db.base import Base
-
-TIMESTAMPTZ = DateTime(timezone=True)
+from serpsense.adapters.db.base import TIMESTAMPTZ, Base
 
 
 def _user_fk() -> Mapped[uuid.UUID]:
