@@ -174,7 +174,7 @@ running → failed                      (reason timed_out, by the maintenance sw
 - `reason` is a machine code (`ck_scan_status_transitions_reason_format`: `^[a-z][a-z0-9_.]{0,63}$`, e.g. `claimed`, `timed_out`, `budget_exhausted`) — never free text or personal data.
 
 ### 🔒 `scan_surface_results`
-`scan_id` fk, `surface` enum, `outcome` enum (`succeeded`, `failed`, `disabled`, `not_shown`, `circuit_open`, `budget_exhausted`), `error_code null`; pk (scan_id, surface).
+`scan_id` fk (RESTRICT), `surface` enum `surface` (`search_page`, `ai_overview`, `autocomplete`, `news`, `trends`, `play`, `maps`, `youtube`), `outcome` enum `surface_outcome` (`succeeded`, `failed`, `disabled`, `not_shown`, `circuit_open`, `budget_exhausted`), `error_code null`; pk (scan_id, surface). `ck_scan_surface_results_error_code_iff_failed` (an error code exactly for failed surfaces) and `ck_scan_surface_results_error_code_format` (same machine-code format). Enums mirror `domain.enums`.
 
 ---
 

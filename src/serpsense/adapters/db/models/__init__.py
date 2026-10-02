@@ -17,7 +17,7 @@ from serpsense.adapters.db.models.identity import (
     UserSearchBudget,
     UserSession,
 )
-from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition
+from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.adapters.db.models.settings import (
     BrandScheduleVersion,
     BrandSearchSettingsVersion,
@@ -39,6 +39,7 @@ __all__ = [
     "OtpVerifyAttempt",
     "Scan",
     "ScanStatusTransition",
+    "ScanSurfaceResult",
     "User",
     "UserLlmBudget",
     "UserLlmProfileVersion",
