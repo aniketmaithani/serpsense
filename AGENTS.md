@@ -163,6 +163,9 @@ uv run pip-audit
 - Work starts from a GitHub issue with checkable acceptance criteria.
 - Branch: `agent/issue-<N>-<slug>` (agents) or `feat/<N>-<slug>` (humans). Never commit to `main`.
 - Conventional commits: `feat(scope): summary (#N)`, `fix(…)`, `docs(…)`, `test(…)`, `chore(…)`.
+- **Atomic commits:** one logical change per commit, and each commit passes the local gate on its own. Split "add X and fix Y" into two commits; never fold unrelated fixes into a catch-all commit.
+- **No AI attribution** anywhere: no `Co-Authored-By` trailers, no "Generated with …" lines in commits, PR descriptions, issues or comments.
+- **No schedule-day labels** ("Day 1", "Day 2", …) in commits, PRs, issues or comments. Name the work itself ("identity schema", "SerpApi client"). The day-by-day table in `BUILD_PLAN.md` is internal planning only.
 - PR limit: **400 changed lines or 20 files**. Split bigger work.
 - **Rebase-merge only** (`gh pr merge --rebase`), after green CI and reviewer approval (architect, python, security, test; observability/prompt-eval when relevant). Squash and merge commits are disabled in the repository settings, so each atomic commit lands on `main` as-is and history stays linear. Where an agent definition says `--squash`, use `--rebase`.
 - **Human merge required** (agents stop and hand over) for any PR touching: auth/sessions/OTP, account deletion, `.github/workflows/`, Docker/Compose/infra config, secrets handling, migrations that drop/rename, or new dependencies.
@@ -170,4 +173,4 @@ uv run pip-audit
 - Batch reviewer runs: run all relevant reviewers in parallel once per PR round, not after every commit.
 
 ### Definition of done
-Acceptance criteria ticked · local gate green · CI green · reviewers approve · data-model doc / ADR / runbook updated where relevant · no secrets anywhere · README updated if behaviour or setup changed.
+Acceptance criteria ticked · atomic commits with no AI attribution or day labels · local gate green · CI green · reviewers approve · data-model doc / ADR / runbook updated where relevant · no secrets anywhere · README updated if behaviour or setup changed.
