@@ -91,7 +91,9 @@ def test_allowed_intervals_are_accepted(conn: Connection, interval: int | None) 
 
 
 def test_timezone_accepts_64_characters(conn: Connection) -> None:
-    add_schedule(conn, owner_of(conn, "brand_id"), timezone="x" * 64)
+    schedule_id = add_schedule(conn, owner_of(conn, "brand_id"), timezone="x" * 64)
+    stored = conn.execute(select(SCHEDULES.c.timezone).where(SCHEDULES.c.id == schedule_id))
+    assert stored.scalar_one() == "x" * 64
 
 
 def test_schedule_defaults_timezone_and_round_trips(conn: Connection) -> None:
