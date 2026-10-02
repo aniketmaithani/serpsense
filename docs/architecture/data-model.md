@@ -125,15 +125,15 @@ Every brand (including competitors) is a full brand with its own settings, sched
 `brand_id` fk, `competitor_brand_id` fk (both RESTRICT); pk (brand_id, competitor_brand_id); `ix_brand_competitors_competitor_brand_id` for reverse lookups ("competitor of …"); `ck_brand_competitors_not_self`. **Same owner** enforced by `trg_brand_competitors_same_owner` (reported as `ck_brand_competitors_same_owner`; a missing brand is left to the FK/NOT NULL constraints so the real error is reported). Comparisons use the competitor's own latest completed scan.
 
 ### Brand attributes
-All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `citext`, so uniqueness ignores case.
+All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `citext`, so uniqueness ignores case; they may not start or end with whitespace, so padding can't sidestep uniqueness (the service trims input).
 
 | Table | Columns | Uniqueness | Checks |
 |---|---|---|---|
-| `brand_aliases` | `id`, `brand_id`, `alias citext` | `uq_brand_aliases_brand_id_alias` | ≤ 120 chars, not only whitespace |
+| `brand_aliases` | `id`, `brand_id`, `alias citext` | `uq_brand_aliases_brand_id_alias` | ≤ 120 chars, no leading/trailing whitespace (`ck_brand_aliases_alias_length`) |
 | `brand_languages` | `brand_id`, `language_code` (lowercase BCP-47, e.g. `en`, `hi`, `zh-cn`) | pk (brand_id, language_code) | `ck_brand_languages_language_code_format` |
-| `brand_watch_terms` | `id`, `brand_id`, `term citext` | `uq_brand_watch_terms_brand_id_term` | ≤ 80 chars, not only whitespace |
-| `brand_apps` | `id`, `brand_id`, `store` enum `app_store` (`google_play`; mirrors `domain.enums.AppStore`), `app_id` | `uq_brand_apps_brand_id_store_app_id` | `app_id`: 1–255 non-whitespace chars |
-| `brand_locations` | `id`, `brand_id`, `query citext`, `resolved_data_id null`, `resolved_at null` | `uq_brand_locations_brand_id_query` | query ≤ 200 chars, not only whitespace; `ck_brand_locations_resolution_together` (both resolution fields set, or neither) |
+| `brand_watch_terms` | `id`, `brand_id`, `term citext` | `uq_brand_watch_terms_brand_id_term` | ≤ 80 chars, no leading/trailing whitespace (`ck_brand_watch_terms_term_length`) |
+| `brand_apps` | `id`, `brand_id`, `store` enum `app_store` (`google_play`; mirrors `domain.enums.AppStore`), `app_id` | `uq_brand_apps_brand_id_store_app_id` | `app_id`: 1–255 non-whitespace chars (`ck_brand_apps_app_id_format`) |
+| `brand_locations` | `id`, `brand_id`, `query citext`, `resolved_data_id null`, `resolved_at null` | `uq_brand_locations_brand_id_query` | query ≤ 200 chars, no leading/trailing whitespace (`ck_brand_locations_query_length`); `ck_brand_locations_resolution_together` (both resolution fields set, or neither) |
 
 ---
 
