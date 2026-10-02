@@ -10,11 +10,11 @@ x-app: &app
     - path: .env
       required: false
   environment:
-    # Development-only wiring to the services below; production supplies its own values.
-    DATABASE_URL: postgresql+psycopg://serpsense:serpsense@postgres:5432/serpsense
-    REDIS_URL: redis://redis:6379/0
-    SMTP_HOST: mailpit
-    SMTP_PORT: "1025"
+    # Development defaults; override any of them in .env. Production refuses the dev DB credentials.
+    DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://serpsense:serpsense@postgres:5432/serpsense}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    SMTP_HOST: ${SMTP_HOST:-mailpit}
+    SMTP_PORT: ${SMTP_PORT:-1025}
   restart: unless-stopped
 
 services:
@@ -95,11 +95,19 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
 
   beat:
     <<: *app
-    # Liveness of beat = the container's main process; tick monitoring lands with the scheduler work.
     command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "beat", "--loglevel", "INFO", "--schedule", "/tmp/celerybeat-schedule"]
+    healthcheck:
+      # Beat sends a heartbeat task every 60 s and syncs its schedule file after each send.
+      test: ["CMD", "python", "-c", "import glob, os, sys, time; f = glob.glob('/tmp/celerybeat-schedule*'); sys.exit(0 if f and time.time() - max(map(os.path.getmtime, f)) < 180 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -150,64 +150,83 @@ source_modules = ["serpsense.adapters"]
 forbidden_modules = ["serpsense.services"]
 
 [[tool.importlinter.contracts]]
-name = "Domain, ports and services stay free of I/O libraries"
+name = "Ports and services stay free of I/O libraries"
 type = "forbidden"
-source_modules = ["serpsense.domain", "serpsense.ports", "serpsense.services"]
+source_modules = ["serpsense.ports", "serpsense.services"]
 forbidden_modules = [
-    "anthropic", "celery", "cryptography", "fastapi", "psycopg", "redis", "serpapi", "sqlalchemy",
+    "anthropic", "celery", "cryptography", "fastapi", "kombu", "psycopg", "redis", "serpapi",
+    "smtplib", "sqlalchemy",
 ]
 
 [[tool.importlinter.contracts]]
+name = "Domain is pure: no I/O, config, logging or frameworks"
+type = "forbidden"
+source_modules = ["serpsense.domain"]
+forbidden_modules = [
+    "serpsense.config", "serpsense.observability", "anthropic", "celery", "cryptography",
+    "fastapi", "kombu", "psycopg", "pydantic_settings", "redis", "serpapi", "smtplib", "socket",
+    "sqlalchemy", "structlog", "tenacity",
+]
+
+# SDK isolation (AGENTS.md §2): one contract per SDK over the whole package, with the single
+# allowed home whitelisted, so new packages are covered automatically. Unmatched whitelist
+# entries are allowed because some adapters don't exist yet. The composition root may import
+# celery only to type the app it wires.
+[[tool.importlinter.contracts]]
 name = "Anthropic SDK only in adapters.llm"
 type = "forbidden"
-allow_indirect_imports = true
-source_modules = [
-    "serpsense.entrypoints", "serpsense.composition", "serpsense.adapters.serp",
-    "serpsense.adapters.mail", "serpsense.adapters.db", "serpsense.adapters.cache",
-    "serpsense.adapters.jobs", "serpsense.adapters.crypto",
-]
+source_modules = ["serpsense"]
 forbidden_modules = ["anthropic"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["serpsense.adapters.llm.** -> anthropic"]
 
 [[tool.importlinter.contracts]]
 name = "SerpApi SDK only in adapters.serp"
 type = "forbidden"
-allow_indirect_imports = true
-source_modules = [
-    "serpsense.entrypoints", "serpsense.composition", "serpsense.adapters.llm",
-    "serpsense.adapters.mail", "serpsense.adapters.db", "serpsense.adapters.cache",
-    "serpsense.adapters.jobs", "serpsense.adapters.crypto",
-]
+source_modules = ["serpsense"]
 forbidden_modules = ["serpapi"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["serpsense.adapters.serp.** -> serpapi"]
 
 [[tool.importlinter.contracts]]
-name = "Celery only in adapters.jobs and entrypoints.jobs"
+name = "Celery/kombu only in adapters.jobs and entrypoints.jobs"
 type = "forbidden"
+source_modules = ["serpsense"]
+forbidden_modules = ["celery", "kombu"]
 allow_indirect_imports = true
-source_modules = [
-    "serpsense.entrypoints.web", "serpsense.composition", "serpsense.adapters.serp",
-    "serpsense.adapters.llm", "serpsense.adapters.mail", "serpsense.adapters.db",
-    "serpsense.adapters.cache", "serpsense.adapters.crypto",
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "serpsense.composition -> celery",
+    "serpsense.adapters.jobs.** -> celery",
+    "serpsense.adapters.jobs.** -> kombu",
+    "serpsense.entrypoints.jobs.** -> celery",
 ]
-forbidden_modules = ["celery"]
 
 [[tool.importlinter.contracts]]
 name = "Redis client only in adapters.cache"
 type = "forbidden"
-allow_indirect_imports = true
-source_modules = [
-    "serpsense.entrypoints", "serpsense.composition", "serpsense.adapters.serp",
-    "serpsense.adapters.llm", "serpsense.adapters.mail", "serpsense.adapters.db",
-    "serpsense.adapters.jobs", "serpsense.adapters.crypto",
-]
+source_modules = ["serpsense"]
 forbidden_modules = ["redis"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["serpsense.adapters.cache.** -> redis"]
 
 [[tool.importlinter.contracts]]
 name = "cryptography only in adapters.crypto"
 type = "forbidden"
-allow_indirect_imports = true
-source_modules = [
-    "serpsense.entrypoints", "serpsense.composition", "serpsense.adapters.serp",
-    "serpsense.adapters.llm", "serpsense.adapters.mail", "serpsense.adapters.db",
-    "serpsense.adapters.cache", "serpsense.adapters.jobs",
-]
+source_modules = ["serpsense"]
 forbidden_modules = ["cryptography"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["serpsense.adapters.crypto.** -> cryptography"]
+
+[[tool.importlinter.contracts]]
+name = "smtplib only in adapters.mail"
+type = "forbidden"
+source_modules = ["serpsense"]
+forbidden_modules = ["smtplib"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["serpsense.adapters.mail.** -> smtplib"]
