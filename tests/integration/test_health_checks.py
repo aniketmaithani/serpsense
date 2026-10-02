@@ -3,7 +3,6 @@
 from collections.abc import Iterator
 
 import pytest
-from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
 from serpsense.adapters.cache.health import RedisHealthCheck
@@ -11,12 +10,6 @@ from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def postgres_url() -> Iterator[str]:
-    with PostgresContainer("postgres:16-alpine", driver="psycopg") as container:
-        yield container.get_connection_url()
 
 
 @pytest.fixture(scope="module")
