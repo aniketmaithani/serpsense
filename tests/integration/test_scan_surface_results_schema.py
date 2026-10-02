@@ -54,12 +54,18 @@ def test_results_round_trip(conn: Connection) -> None:
         ({"outcome": "succeeded", "error_code": "http_500"}, "error_code_iff_failed"),
         ({"outcome": "circuit_open", "error_code": "http_500"}, "error_code_iff_failed"),
         ({"outcome": "failed", "error_code": "HTTP 500"}, "error_code_format"),
+        ({"outcome": "failed", "error_code": ""}, "error_code_format"),
+        ({"outcome": "failed", "error_code": "e" * 65}, "error_code_format"),
     ],
 )
 def test_result_checks(conn: Connection, overrides: dict[str, Any], check: str) -> None:
     with pytest.raises(IntegrityError) as exc:
         add_result(conn, scan(conn), **overrides)
     assert violation(exc).constraint_name == f"ck_scan_surface_results_{check}"
+
+
+def test_error_code_accepts_64_characters(conn: Connection) -> None:
+    add_result(conn, scan(conn), outcome="failed", error_code="e" * 64)
 
 
 def test_one_result_per_surface_per_scan(conn: Connection) -> None:
