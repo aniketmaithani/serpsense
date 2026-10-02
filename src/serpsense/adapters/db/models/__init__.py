@@ -1,6 +1,14 @@
 """ORM models. Importing this package registers every table on `Base.metadata`."""
 
-from serpsense.adapters.db.models.brands import Brand, BrandCompetitor
+from serpsense.adapters.db.models.brands import (
+    Brand,
+    BrandAlias,
+    BrandApp,
+    BrandCompetitor,
+    BrandLanguage,
+    BrandLocation,
+    BrandWatchTerm,
+)
 from serpsense.adapters.db.models.identity import (
     OtpCode,
     OtpVerifyAttempt,
@@ -12,7 +20,12 @@ from serpsense.adapters.db.models.identity import (
 
 __all__ = [
     "Brand",
+    "BrandAlias",
+    "BrandApp",
     "BrandCompetitor",
+    "BrandLanguage",
+    "BrandLocation",
+    "BrandWatchTerm",
     "OtpCode",
     "OtpVerifyAttempt",
     "User",
