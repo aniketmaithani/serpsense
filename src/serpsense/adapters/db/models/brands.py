@@ -19,7 +19,7 @@ class Brand(Base):
     __table_args__ = (
         # Lookups by owner use this constraint's index (owner_id is its leading column).
         UniqueConstraint("owner_id", "slug"),
-        CheckConstraint("char_length(btrim(name)) BETWEEN 1 AND 120", name="name_length"),
+        CheckConstraint("name ~ '\\S' AND char_length(name) <= 120", name="name_length"),
         CheckConstraint(
             "slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 64", name="slug_format"
         ),

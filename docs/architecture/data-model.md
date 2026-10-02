@@ -114,15 +114,15 @@ Every brand (including competitors) is a full brand with its own settings, sched
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| owner_id | uuid | fk → users (RESTRICT); **immutable** (`trg_brands_owner_immutable`, reported as `ck_brands_owner_immutable`) because the competitor same-owner rule depends on it |
-| name | text | 1–120 characters after trimming (`ck_brands_name_length`) |
+| owner_id | uuid | fk → users (RESTRICT); **immutable** (`trg_brands_owner_immutable`, BEFORE UPDATE, reported as `ck_brands_owner_immutable`) because the competitor same-owner rule depends on it |
+| name | text | at most 120 characters and not only whitespace (`ck_brands_name_length`) |
 | slug | text | `uq_brands_owner_id_slug` (its index also serves lookups by owner); lowercase words joined by hyphens, ≤ 64 (`ck_brands_slug_format`) |
 | tone_notes | text null | used by the drafter; ≤ 2000 characters (`ck_brands_tone_notes_length`) |
 | created_at | timestamptz | |
 | archived_at | timestamptz null | archived brands are not scheduled; set for all brands on account deletion |
 
 ### `brand_competitors`
-`brand_id` fk, `competitor_brand_id` fk (both RESTRICT); pk (brand_id, competitor_brand_id); `ix_brand_competitors_competitor_brand_id` for reverse lookups ("competitor of …"); `ck_brand_competitors_not_self`. **Same owner** enforced by `trg_brand_competitors_same_owner` (reported as `ck_brand_competitors_same_owner`). Comparisons use the competitor's own latest completed scan.
+`brand_id` fk, `competitor_brand_id` fk (both RESTRICT); pk (brand_id, competitor_brand_id); `ix_brand_competitors_competitor_brand_id` for reverse lookups ("competitor of …"); `ck_brand_competitors_not_self`. **Same owner** enforced by `trg_brand_competitors_same_owner` (reported as `ck_brand_competitors_same_owner`; a missing brand is left to the FK/NOT NULL constraints so the real error is reported). Comparisons use the competitor's own latest completed scan.
 
 ### Brand attributes
 | Table | Columns | Uniqueness |
