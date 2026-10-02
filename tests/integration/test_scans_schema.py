@@ -53,6 +53,10 @@ def test_scan_round_trips(conn: Connection) -> None:
         ({"trigger": "replay"}, "scheduled_for_schedule"),
         ({"trigger": "manual", "scheduled_for": None}, "requested_by_manual"),
         ({"requested_by": "owner"}, "requested_by_manual"),
+        (
+            {"trigger": "replay", "scheduled_for": None, "requested_by": "owner"},
+            "requested_by_manual",
+        ),
         ({"settings_snapshot": ["standard"]}, "settings_snapshot_is_object"),
         ({"estimated_searches": -1}, "estimated_searches_non_negative"),
     ],
@@ -71,6 +75,34 @@ def test_manual_and_replay_scans_are_accepted(conn: Connection) -> None:
     brand_id = add_brand(conn, owner)
     add_scan(conn, brand_id, trigger="manual", scheduled_for=None, requested_by=owner)
     add_scan(conn, add_brand(conn, owner, slug="soundnest"), trigger="replay", scheduled_for=None)
+
+
+def test_finished_manual_scans_share_a_brand(conn: Connection) -> None:
+    """NULL slots are distinct, so manual scans never collide on the slot constraint."""
+    owner = add_user(conn)
+    brand_id = add_brand(conn, owner)
+    manual = {"trigger": "manual", "scheduled_for": None, "requested_by": owner}
+    add_scan(conn, brand_id, status="succeeded", **manual)
+    add_scan(conn, brand_id, status="failed", **manual)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("brand_id", "other_brand"),
+        ("scheduled_for", NOW + timedelta(hours=1)),
+        ("settings_snapshot", {"preset": "deep"}),
+        ("estimated_searches", 99),
+    ],
+)
+def test_only_status_can_change(conn: Connection, column: str, value: Any) -> None:
+    scan_id = add_scan(conn, brand(conn))
+    if value == "other_brand":
+        value = add_brand(conn, add_user(conn, "other@example.com"))
+    conn.execute(update(SCANS).where(SCANS.c.id == scan_id).values(status="running"))
+    with pytest.raises(IntegrityError) as exc:
+        conn.execute(update(SCANS).where(SCANS.c.id == scan_id).values({column: value}))
+    assert violation(exc).constraint_name == "ck_scans_identity_immutable"
 
 
 def test_one_scan_per_brand_per_slot(conn: Connection) -> None:
