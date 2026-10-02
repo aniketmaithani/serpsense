@@ -129,11 +129,11 @@ All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `c
 
 | Table | Columns | Uniqueness | Checks |
 |---|---|---|---|
-| `brand_aliases` | `id`, `brand_id`, `alias citext` | `uq_brand_aliases_brand_id_alias` | 1–120 chars after trimming |
+| `brand_aliases` | `id`, `brand_id`, `alias citext` | `uq_brand_aliases_brand_id_alias` | ≤ 120 chars, not only whitespace |
 | `brand_languages` | `brand_id`, `language_code` (lowercase BCP-47, e.g. `en`, `hi`, `zh-cn`) | pk (brand_id, language_code) | `ck_brand_languages_language_code_format` |
-| `brand_watch_terms` | `id`, `brand_id`, `term citext` | `uq_brand_watch_terms_brand_id_term` | 1–80 chars after trimming |
+| `brand_watch_terms` | `id`, `brand_id`, `term citext` | `uq_brand_watch_terms_brand_id_term` | ≤ 80 chars, not only whitespace |
 | `brand_apps` | `id`, `brand_id`, `store` enum `app_store` (`google_play`; mirrors `domain.enums.AppStore`), `app_id` | `uq_brand_apps_brand_id_store_app_id` | `app_id`: 1–255 non-whitespace chars |
-| `brand_locations` | `id`, `brand_id`, `query citext`, `resolved_data_id null`, `resolved_at null` | `uq_brand_locations_brand_id_query` | query 1–200 chars; `ck_brand_locations_resolution_together` (both resolution fields set, or neither) |
+| `brand_locations` | `id`, `brand_id`, `query citext`, `resolved_data_id null`, `resolved_at null` | `uq_brand_locations_brand_id_query` | query ≤ 200 chars, not only whitespace; `ck_brand_locations_resolution_together` (both resolution fields set, or neither) |
 
 ---
 
