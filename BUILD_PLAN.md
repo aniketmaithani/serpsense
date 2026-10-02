@@ -579,5 +579,8 @@ Before recording, make sure no `.env`, keys, raw payloads or real personal email
 | No extra Anthropic retention requirement (ADR-0008) |
 | Competitor crises send **email + in-app** alerts, like any brand |
 | Google Trends uses a **joint query** (brand + up to 4 competitors) for comparable share of search |
+| Default budgets kept: 1,500 SerpApi searches and US$30 Claude spend per user per month; global cap 500 searches/day |
+| Dedicated `worker-outbox` service so long scans can't delay OTP/alert email (ADR-0006 amendment) |
+| Rebase-merge only; atomic commits; no AI attribution; no schedule-day labels in commits/PRs/issues |
 
 Also deferred to P2 (not in the data model): a per-user "email alerts on/off" setting. Alerts always go to email + in-app.
