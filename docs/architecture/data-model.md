@@ -10,7 +10,7 @@ Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the 
 - Bounded scores: `smallint` 0–100. Weights and ratios in basis points (`*_bp`, 0–10000).
 - Enums: Postgres enums mirrored by Python `StrEnum`s in `domain/enums.py`.
 - Constraint/index names via SQLAlchemy naming convention:
-  `pk_%(table_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, `uq_%(table_name)s_%(column_0_N_name)s`, `ix_%(column_0_label)s`, `ck_%(table_name)s_%(constraint_name)s`.
+  `pk_%(table_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, `uq_%(table_name)s_%(column_0_N_name)s`, `ix_%(column_0_N_label)s`, `ck_%(table_name)s_%(constraint_name)s`.
 - **Append-only tables** (🔒) get a trigger `trg_<table>_append_only` that raises on UPDATE/DELETE. Inserts that may repeat use `ON CONFLICT DO NOTHING` (never `DO UPDATE`).
 - **Foreign keys into append-only tables' parents** use `ON DELETE RESTRICT`; erasure is by pseudonymisation (ADR-0013), never by deleting referenced rows.
 - **JSONB** only where ADR-0003 allows it (📄). Never filtered on.
