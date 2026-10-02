@@ -3,6 +3,7 @@
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from serpsense.adapters.db import models  # noqa: F401  (registers all tables on Base.metadata)
 from serpsense.adapters.db.base import Base
 from serpsense.config import MigrationSettings
 
