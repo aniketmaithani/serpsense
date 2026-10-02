@@ -1,0 +1,116 @@
+# Local and single-host stack (ADR-0006). Secrets come from .env (never committed).
+# First run:  cp .env.example .env && docker compose run --rm --no-deps tools serpsense gen-secrets >> .env
+
+name: serpsense
+
+x-app: &app
+  build: .
+  image: serpsense:dev
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Development-only wiring to the services below; production supplies its own values.
+    DATABASE_URL: postgresql+psycopg://serpsense:serpsense@postgres:5432/serpsense
+    REDIS_URL: redis://redis:6379/0
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: serpsense
+      POSTGRES_PASSWORD: serpsense
+      POSTGRES_DB: serpsense
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serpsense -d serpsense"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "worker", "-Q", "scans,outbox,maintenance", "--concurrency", "2", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A serpsense.entrypoints.jobs.celery_app inspect ping --timeout 5 >/dev/null"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    # Liveness of beat = the container's main process; tick monitoring lands with the scheduler work.
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "beat", "--loglevel", "INFO", "--schedule", "/tmp/celerybeat-schedule"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  tools:
+    <<: *app
+    profiles: ["tools"]
+    restart: "no"
+    command: ["serpsense", "--help"]
+
+volumes:
+  pgdata:
