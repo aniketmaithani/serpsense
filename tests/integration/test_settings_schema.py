@@ -83,7 +83,15 @@ def test_one_document_version_per_key_per_instant(conn: Connection, name: str) -
 
 @pytest.mark.parametrize("interval", [60, 180, 360, 720, 1440, None])
 def test_allowed_intervals_are_accepted(conn: Connection, interval: int | None) -> None:
-    add_schedule(conn, owner_of(conn, "brand_id"), interval_minutes=interval)
+    schedule_id = add_schedule(conn, owner_of(conn, "brand_id"), interval_minutes=interval)
+    stored = conn.execute(
+        select(SCHEDULES.c.interval_minutes).where(SCHEDULES.c.id == schedule_id)
+    ).scalar_one()
+    assert stored == interval
+
+
+def test_timezone_accepts_64_characters(conn: Connection) -> None:
+    add_schedule(conn, owner_of(conn, "brand_id"), timezone="x" * 64)
 
 
 def test_schedule_defaults_timezone_and_round_trips(conn: Connection) -> None:
@@ -103,6 +111,7 @@ def test_schedule_defaults_timezone_and_round_trips(conn: Connection) -> None:
         ({"quiet_start": time(1, 0), "quiet_end": time(1, 0)}, "quiet_hours_valid"),
         ({"timezone": ""}, "timezone_format"),
         ({"timezone": "Asia/ Kolkata"}, "timezone_format"),
+        ({"timezone": "x" * 65}, "timezone_format"),
     ],
 )
 def test_schedule_checks(conn: Connection, overrides: dict[str, Any], check: str) -> None:
@@ -114,6 +123,7 @@ def test_schedule_checks(conn: Connection, overrides: dict[str, Any], check: str
 def test_one_schedule_version_per_brand_per_instant(conn: Connection) -> None:
     brand_id = owner_of(conn, "brand_id")
     add_schedule(conn, brand_id)
+    add_schedule(conn, brand_id, interval_minutes=60, created_at=NOW + timedelta(seconds=1))
     with pytest.raises(IntegrityError) as exc:
         add_schedule(conn, brand_id, interval_minutes=60)
     assert violation(exc).constraint_name == "uq_brand_schedule_versions_brand_id_created_at"
