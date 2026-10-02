@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import Connection, Table, insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 
 from serpsense.adapters.db import models  # noqa: F401  (registers tables)
 from serpsense.adapters.db.base import Base
@@ -36,6 +36,6 @@ def add_brand(
     return add(conn, table("brands"), created_at=NOW, **{**values, **overrides})
 
 
-def violation(exc: pytest.ExceptionInfo[IntegrityError]) -> Any:
+def violation(exc: pytest.ExceptionInfo[DBAPIError]) -> Any:
     """psycopg's diagnostics for the error Postgres raised."""
     return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
