@@ -11,7 +11,7 @@ Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the 
 - Enums: Postgres enums mirrored by Python `StrEnum`s in `domain/enums.py`.
 - Constraint/index names via SQLAlchemy naming convention:
   `pk_%(table_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, `uq_%(table_name)s_%(column_0_N_name)s`, `ix_%(column_0_N_label)s`, `ck_%(table_name)s_%(constraint_name)s`.
-- **Append-only tables** (🔒) get a trigger `trg_<table>_append_only` that raises on UPDATE/DELETE. Inserts that may repeat use `ON CONFLICT DO NOTHING` (never `DO UPDATE`).
+- **Append-only tables** (🔒) get two triggers from `serpsense.adapters.db.ddl.append_only_triggers()`: `trg_<table>_append_only` (BEFORE UPDATE OR DELETE, per row) and `trg_<table>_append_only_truncate` (BEFORE TRUNCATE, per statement). Both execute the shared function `serpsense_forbid_mutation()` (migration 0001), which raises `restrict_violation` (SQLSTATE 23001). Inserts that may repeat use `ON CONFLICT DO NOTHING` (never `DO UPDATE`).
 - **Foreign keys into append-only tables' parents** use `ON DELETE RESTRICT`; erasure is by pseudonymisation (ADR-0013), never by deleting referenced rows.
 - **JSONB** only where ADR-0003 allows it (📄). Never filtered on.
 - **No raw personal data in append-only tables.** Emails, IP addresses and user agents live only in mutable tables that the account-deletion flow can scrub (ADR-0013).
@@ -50,10 +50,10 @@ No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
 | superseded_at | timestamptz null | set when a newer code is issued |
 | request_ip | inet null | nulled on deletion |
 
-`ck_otp_codes_single_terminal`: not both `consumed_at` and `superseded_at`. Verification locks the row `FOR UPDATE`. Per-email request limits (1/60 s, 5/h) are counted from this table.
+`ck_otp_codes_single_terminal`: not both `consumed_at` and `superseded_at`. `ck_otp_codes_expires_after_created`. Verification locks the row `FOR UPDATE`. Per-email request limits (1/60 s, 5/h) are counted from this table.
 
 ### 🔒 `otp_verify_attempts`
-`id`, `otp_code_id` fk (RESTRICT), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5).
+`id`, `otp_code_id` fk (RESTRICT, `ix_otp_verify_attempts_otp_code_id`), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5).
 
 ### `sessions` (mutable)
 | Column | Type | Notes |
