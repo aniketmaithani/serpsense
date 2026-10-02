@@ -185,21 +185,21 @@ running → failed                      (reason timed_out, by the maintenance sw
 |---|---|---|
 | id | uuid | pk |
 | user_id | uuid | fk → users (RESTRICT), `ix_serp_calls_user_id_created_at` |
-| scan_id | uuid null | fk → scans (null for Preview) |
-| engine | enum `serp_engine` | `ix_serp_calls_engine_created_at` (circuit breaker reads last N per engine) |
-| params_hash | text | sha256 of canonical params (no key) |
-| 📄 params | jsonb | redacted request params |
-| served_from | enum (`local_cache`, `serpapi_cache`, `live`) | billable ⇔ `live` (derived) |
-| outcome | enum (`succeeded`, `failed`, `skipped_budget`, `circuit_open`) | |
-| http_status | smallint null | |
-| error_code | text null | |
-| latency_ms | integer | |
+| scan_id | uuid null | fk → scans (RESTRICT), `ix_serp_calls_scan_id`; null for Preview |
+| engine | enum `serp_engine` (SerpApi engine ids; mirrors `domain.enums.SerpEngine`) | `ix_serp_calls_engine_created_at` (circuit breaker reads last N per engine) |
+| params_hash | text | sha256 hex of canonical params, no key (`ck_serp_calls_params_hash_sha256`) |
+| 📄 params | jsonb | redacted request params; a JSON object (`ck_serp_calls_params_is_object`) with no `api_key` field at any depth and no `api_key=` in any string (`ck_serp_calls_params_no_api_key`), since a leaked key could never be removed from this append-only table; the client applies the same rule before calling SerpApi, so a billed call is never left unrecorded |
+| served_from | enum `served_from` (`local_cache`, `serpapi_cache`, `live`) null | set **exactly for successful calls** (`ck_serp_calls_served_from_iff_succeeded`), so billable ⇔ `live` (derived) never counts failures, retries or skipped calls |
+| outcome | enum `serp_call_outcome` (`succeeded`, `failed`, `skipped_budget`, `circuit_open`) | |
+| http_status | smallint null | 100–599 (`ck_serp_calls_http_status_range`) |
+| error_code | text null | exactly for failed calls (`ck_serp_calls_error_code_iff_failed`); machine code (`ck_serp_calls_error_code_format`) |
+| latency_ms | integer | ≥ 0 |
 | created_at | timestamptz | |
 
-**Circuit breaker** is derived: an engine is open when its last 5 calls (within 15 min) all failed.
+**Circuit breaker** is derived: an engine is open when its last 5 calls (within 15 min) all failed. The service writes `user_id` as the owner of the scanned brand (or the Preview caller).
 
 ### `raw_responses`
-`id`, `serp_call_id` fk (`uq_raw_responses_serp_call_id`), 📄 `payload jsonb` (redacted), `created_at`.
+`id`, `serp_call_id` fk (RESTRICT, `uq_raw_responses_serp_call_id`), 📄 `payload jsonb` (redacted; a JSON object under the same no-key rule: `ck_raw_responses_payload_no_api_key`), `created_at`. Mutable on purpose — not append-only — so a retention job can prune old payloads; the service stores them only for successful calls.
 
 ### `mentions`
 | Column | Type | Notes |

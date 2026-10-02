@@ -18,6 +18,7 @@ from serpsense.adapters.db.models.identity import (
     UserSession,
 )
 from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
+from serpsense.adapters.db.models.search import RawResponse, SerpCall
 from serpsense.adapters.db.models.settings import (
     BrandScheduleVersion,
     BrandSearchSettingsVersion,
@@ -37,9 +38,11 @@ __all__ = [
     "BrandWatchTerm",
     "OtpCode",
     "OtpVerifyAttempt",
+    "RawResponse",
     "Scan",
     "ScanStatusTransition",
     "ScanSurfaceResult",
+    "SerpCall",
     "User",
     "UserLlmBudget",
     "UserLlmProfileVersion",
