@@ -155,6 +155,7 @@ All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `c
 - `ck_scans_scheduled_for_schedule`: `trigger = 'schedule'` ⇔ `scheduled_for is not null`.
 - **`uq_scans_brand_id_active`**: partial unique index on (brand_id) where `status in ('queued','running')` — one active scan per brand, even across concurrent transactions; "Scan now" during an active scan is rejected and shows the active scan.
 - Inserts use `INSERT … ON CONFLICT DO NOTHING` **without a conflict target**, so both uniqueness rules apply (a named target would still raise on the other one).
+- **Only `status` can change after insert** (`trg_scans_identity_immutable`, reported as `ck_scans_identity_immutable`): observations and the Trends comparison rely on a scan's brand, slot and settings never changing.
 - Replay scans have no requester (they are created by the seed/replay CLI), so `requested_by` is set only for manual scans.
 
 **Transitions** (`domain/scan_state.py`; anything else raises `IllegalTransition`):

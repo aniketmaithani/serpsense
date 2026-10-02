@@ -19,6 +19,24 @@ down_revision: str | None = "0005"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+IMMUTABLE_FUNCTION = """
+CREATE FUNCTION serpsense_scan_identity_immutable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    -- Only status may change after insert; observations and the Trends comparison rely on
+    -- a scan's brand, slot and settings never changing.
+    IF (NEW.id, NEW.brand_id, NEW."trigger", NEW.scheduled_for, NEW.requested_by,
+        NEW.settings_snapshot, NEW.estimated_searches, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.brand_id, OLD."trigger", OLD.scheduled_for, OLD.requested_by,
+        OLD.settings_snapshot, OLD.estimated_searches, OLD.created_at) THEN
+        RAISE EXCEPTION 'only a scan''s status can change'
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'ck_scans_identity_immutable';
+    END IF;
+    RETURN NEW;
+END;
+$$
+"""
 SCAN_TRIGGER = ("schedule", "manual", "replay")
 SCAN_STATUS = ("queued", "running", "succeeded", "partial", "failed", "skipped")
 
@@ -67,9 +85,16 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running')"),
     )
+    op.execute(IMMUTABLE_FUNCTION)
+    op.execute(
+        "CREATE TRIGGER trg_scans_identity_immutable BEFORE UPDATE ON scans "
+        "FOR EACH ROW EXECUTE FUNCTION serpsense_scan_identity_immutable()"
+    )
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER trg_scans_identity_immutable ON scans")
+    op.execute("DROP FUNCTION serpsense_scan_identity_immutable()")
     op.drop_index("uq_scans_brand_id_active", table_name="scans")
     op.drop_index("ix_scans_brand_id_created_at", table_name="scans")
     op.drop_table("scans")
