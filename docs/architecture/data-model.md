@@ -1,0 +1,355 @@
+# SerpSense — Data Model
+
+Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the same commit as any migration.**
+
+## Conventions
+
+- Primary keys: `id uuid` (generated in the application, `uuid4`), unless noted.
+- Timestamps: `timestamptz`, UTC, named `*_at` (or `scheduled_for`).
+- Money: integer `*_micros` (10⁻⁶ of the currency unit) + `currency char(3)`. Never float.
+- Bounded scores: `smallint` 0–100. Weights and ratios in basis points (`*_bp`, 0–10000).
+- Enums: Postgres enums mirrored by Python `StrEnum`s in `domain/enums.py`.
+- Constraint/index names via SQLAlchemy naming convention:
+  `pk_%(table_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, `uq_%(table_name)s_%(column_0_N_name)s`, `ix_%(column_0_label)s`, `ck_%(table_name)s_%(constraint_name)s`.
+- **Append-only tables** (🔒) get a trigger `trg_<table>_append_only` that raises on UPDATE/DELETE. Inserts that may repeat use `ON CONFLICT DO NOTHING` (never `DO UPDATE`).
+- **Foreign keys into append-only tables' parents** use `ON DELETE RESTRICT`; erasure is by pseudonymisation (ADR-0013), never by deleting referenced rows.
+- **JSONB** only where ADR-0003 allows it (📄). Never filtered on.
+- **No raw personal data in append-only tables.** Emails, IP addresses and user agents live only in mutable tables that the account-deletion flow can scrub (ADR-0013).
+- **Derived values are not stored.** Computed by query or by pure domain functions: a mention's first/last seen scan, searches used, billable flag, health score, crisis score and level, narrative activity, enrichment "pending", OTP message expiry.
+- **Changing facts are rows**: budgets, settings, schedules, status transitions, observations.
+- **Scoped access:** every user-owned row is reachable from `brands.owner_id` or `user_id`; repositories expose only `scoped(user)` query paths; out-of-scope reads return 404.
+
+### Named exceptions to "no derived values"
+| Column | Why it is stored | Guard |
+|---|---|---|
+| `scans.status` | Compare-and-set claim target (`UPDATE … WHERE status = 'queued'`) and predicate of `uq_scans_brand_id_active` | Transitions validated by `domain/scan_state.py`, written only by `services/scans` with a compare-and-set on the expected current status plus a `scan_status_transitions` row in the same transaction; integration test asserts `status` = latest `to_status` |
+| `outbox_messages.status` | Dispatcher claim predicate and partial index | Written only by `services/outbox` together with an `outbox_attempts` row; derivation rule in §8; consistency test |
+
+---
+
+## 1. Identity & access
+
+### `users`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| email | citext | `uq_users_email`; replaced by `deleted+<id>@serpsense.invalid` (RFC 2606 reserved TLD) on deletion; never logged |
+| created_at | timestamptz | = first successful OTP verification (users are created only then) |
+| deleted_at | timestamptz null | set by the account-deletion flow (ADR-0013) |
+
+No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
+
+### `otp_codes` (mutable: scrubbed on deletion)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| email | citext | `ix_otp_codes_email_created_at`; pseudonymised on deletion |
+| code_hash | bytea | HMAC-SHA256(K_otp, email:code); K_otp derived from `SECRET_KEY` via HKDF |
+| created_at / expires_at | timestamptz | expiry = created + 10 min |
+| consumed_at | timestamptz null | |
+| superseded_at | timestamptz null | set when a newer code is issued |
+| request_ip | inet null | nulled on deletion |
+
+`ck_otp_codes_single_terminal`: not both `consumed_at` and `superseded_at`. Verification locks the row `FOR UPDATE`. Per-email request limits (1/60 s, 5/h) are counted from this table.
+
+### 🔒 `otp_verify_attempts`
+`id`, `otp_code_id` fk (RESTRICT), `attempted_at`, `succeeded boolean`. No IP stored (per-IP limits live in Redis). Attempts per code = row count (limit 5).
+
+### `sessions` (mutable)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| user_id | uuid | fk → users, `ix_sessions_user_id` |
+| token_hash | bytea | `uq_sessions_token_hash` |
+| csrf_secret | bytea | per-session; CSRF tokens are HMAC(K_csrf, secret) |
+| created_at | timestamptz | |
+| expires_at | timestamptz | sliding; refreshed at most once per hour |
+| revoked_at | timestamptz null | logout / log out everywhere |
+| ip | inet null | at creation; scrubbed on deletion |
+| user_agent | text null | truncated to 256; scrubbed on deletion |
+
+Account deletion deletes the user's session rows.
+
+### `user_search_budgets` / `user_llm_budgets`
+| Table | Columns |
+|---|---|
+| `user_search_budgets` | `id`, `user_id` fk, `monthly_searches integer`, `effective_from`, `created_at` |
+| `user_llm_budgets` | `id`, `user_id` fk, `monthly_micros bigint`, `currency char(3)`, `effective_from`, `created_at` |
+
+Current budget = latest `effective_from ≤ now`; no row → config default.
+
+---
+
+## 2. Settings (versioned, read whole)
+
+Validated by Pydantic (`domain/settings/*`), always read whole. **New version = new row**; current = latest `created_at`.
+
+| Table | Key | 📄 `document` contents |
+|---|---|---|
+| `user_llm_profile_versions` | user_id | per-task model/effort/display/max_tokens/temperature/caching/fallback + preset |
+| `user_search_default_versions` | user_id | default country, languages, device, cache, concurrency, caps |
+| `brand_search_settings_versions` | brand_id | per-engine knobs (templates, pages, filters, TTLs) |
+
+Each has `id`, the key fk, `document jsonb`, `schema_version smallint`, `created_at`, index on (key, created_at desc).
+
+### `brand_schedule_versions` (relational: the dispatcher filters on it)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| brand_id | uuid | fk → brands |
+| interval_minutes | integer | 60/180/360/720/1440; null = manual only |
+| quiet_start / quiet_end | time null | local time in `timezone` |
+| timezone | text | default `Asia/Kolkata` |
+| created_at | timestamptz | `ix_brand_schedule_versions_brand_id_created_at` |
+
+Resolution order: system defaults → user defaults → brand settings → per-run override; resolved result snapshotted into `scans.settings_snapshot` / `llm_calls.request_settings`.
+
+---
+
+## 3. Brands
+
+Every brand (including competitors) is a full brand with its own settings, schedule and dashboard.
+
+### `brands`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| owner_id | uuid | fk → users, `ix_brands_owner_id` |
+| name | text | |
+| slug | text | `uq_brands_owner_id_slug` |
+| tone_notes | text null | used by the drafter |
+| created_at | timestamptz | |
+| archived_at | timestamptz null | archived brands are not scheduled; set for all brands on account deletion |
+
+### `brand_competitors`
+`brand_id` fk, `competitor_brand_id` fk; pk (brand_id, competitor_brand_id); `ck_brand_competitors_not_self`. Same owner enforced by a constraint trigger and a test. Comparisons use the competitor's own latest completed scan.
+
+### Brand attributes
+| Table | Columns | Uniqueness |
+|---|---|---|
+| `brand_aliases` | `id`, `brand_id`, `alias` | (brand_id, lower(alias)) |
+| `brand_languages` | `brand_id`, `language_code` (BCP-47) | pk (brand_id, language_code) |
+| `brand_watch_terms` | `id`, `brand_id`, `term` | (brand_id, lower(term)) |
+| `brand_apps` | `id`, `brand_id`, `store` enum (`google_play`), `app_id` | (brand_id, store, app_id) |
+| `brand_locations` | `id`, `brand_id`, `query`, `resolved_data_id null`, `resolved_at null` | (brand_id, lower(query)) |
+
+---
+
+## 4. Scans
+
+### `scans`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| brand_id | uuid | fk → brands, `ix_scans_brand_id_created_at` |
+| trigger | enum `scan_trigger` (`schedule`, `manual`, `replay`) | |
+| scheduled_for | timestamptz null | start of the schedule slot; **`uq_scans_brand_id_scheduled_for`** (partial, not null) |
+| requested_by | uuid null | fk → users |
+| status | enum `scan_status` | named exception (see conventions) |
+| 📄 settings_snapshot | jsonb | resolved settings, immutable |
+| estimated_searches | integer | |
+| created_at | timestamptz | |
+
+- `ck_scans_scheduled_for_schedule`: `trigger = 'schedule'` ⇔ `scheduled_for is not null`.
+- **`uq_scans_brand_id_active`**: unique (brand_id) where `status in ('queued','running')` — one active scan per brand; "Scan now" during an active scan is rejected and shows the active scan.
+
+**Transitions** (`domain/scan_state.py`; anything else raises `IllegalTransition`):
+```
+queued  → running                     (claim: UPDATE … WHERE status='queued' RETURNING)
+queued  → skipped                     (brand archived / account deleted)
+running → skipped                     (budget or SerpApi quota insufficient, checked after claim; brand archived mid-scan)
+running → succeeded | partial | failed (compare-and-set on status = 'running')
+running → failed                      (reason timed_out, by the maintenance sweep; same compare-and-set)
+```
+
+### 🔒 `scan_status_transitions`
+`id`, `scan_id` fk, `from_status null`, `to_status`, `actor` enum (`system`, `user`), `actor_user_id null`, `reason text`, `at`. Started/finished times derived from here.
+
+### 🔒 `scan_surface_results`
+`scan_id` fk, `surface` enum, `outcome` enum (`succeeded`, `failed`, `disabled`, `not_shown`, `circuit_open`, `budget_exhausted`), `error_code null`; pk (scan_id, surface).
+
+---
+
+## 5. Search data
+
+### 🔒 `serp_calls` (ledger)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| user_id | uuid | fk → users (RESTRICT), `ix_serp_calls_user_id_created_at` |
+| scan_id | uuid null | fk → scans (null for Preview) |
+| engine | enum `serp_engine` | `ix_serp_calls_engine_created_at` (circuit breaker reads last N per engine) |
+| params_hash | text | sha256 of canonical params (no key) |
+| 📄 params | jsonb | redacted request params |
+| served_from | enum (`local_cache`, `serpapi_cache`, `live`) | billable ⇔ `live` (derived) |
+| outcome | enum (`succeeded`, `failed`, `skipped_budget`, `circuit_open`) | |
+| http_status | smallint null | |
+| error_code | text null | |
+| latency_ms | integer | |
+| created_at | timestamptz | |
+
+**Circuit breaker** is derived: an engine is open when its last 5 calls (within 15 min) all failed.
+
+### `raw_responses`
+`id`, `serp_call_id` fk (`uq_raw_responses_serp_call_id`), 📄 `payload jsonb` (redacted), `created_at`.
+
+### `mentions`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| brand_id | uuid | fk → brands |
+| source | enum `mention_source` (`serp_result`, `top_story`, `people_also_ask`, `autocomplete`, `ai_overview`, `news`, `trends_query`, `play_review`, `maps_review`, `youtube_video`) | |
+| identity_key | text | stable per source |
+| text | text | author names/handles removed at parse time |
+| url / outlet | text null | |
+| brand_location_id / brand_app_id | uuid null | fks |
+| language_code | text null | |
+| published_at | timestamptz null | |
+| created_at | timestamptz | |
+
+`uq_mentions_brand_id_source_identity_key`.
+
+### Trends comparison (deliberate design)
+Google Trends interest is relative within a single query, so each scan runs **one joint query** (the scan's brand + up to 4 competitors) and stores every series. The rows belong to the **scan** (and so to the scanning brand's owner); `subject_brand_id` says which line of the comparison a row is. Constraint trigger `trg_trends_observations_subject_in_comparison`: the subject must be the scan's brand or one of its `brand_competitors`. A competitor's own scans run their own joint query; series from different scans are never mixed.
+
+### 🔒 Observations
+| Table | Columns | Key |
+|---|---|---|
+| `mention_observations` | `mention_id`, `scan_id`, `position smallint null`, `star_rating smallint null` | pk (mention_id, scan_id) |
+| `app_rating_observations` | `brand_app_id`, `scan_id`, `rating_hundredths smallint`, `review_count integer` | pk (brand_app_id, scan_id) |
+| `trends_observations` | `scan_id`, `subject_brand_id`, `observed_on date`, `interest smallint` | pk (scan_id, subject_brand_id, observed_on) |
+
+---
+
+## 6. Model output (provenance: every row carries `prompt_version` + `llm_call_id`; labelled "AI-generated" in the UI)
+
+### `enrichments`
+`id`, `mention_id` fk, `prompt_version`, `llm_call_id` fk, `sentiment smallint` (−1/0/1), `severity smallint` (0–100), `topic` enum, `is_complaint boolean`, `reason text`, `created_at`; `uq_enrichments_mention_id_prompt_version`. "Pending" = no row for the active prompt version (derived). Only mentions observed in the last 7 days are (re-)enriched, so a prompt-version bump doesn't re-process history.
+
+### `narratives`
+`id`, `brand_id` fk, `label`, `summary`, `prompt_version`, `llm_call_id` fk, `created_at`. **Immutable**; a re-summarised story is a new narrative linked by assignments.
+
+### 🔒 `narrative_assignments`
+`id`, `narrative_id` fk, `mention_id` fk, `llm_call_id` fk, `created_at`. **Latest row per mention wins** (A→B→A allowed). `ix_narrative_assignments_mention_id_created_at`.
+
+### `drafts` / `draft_citations`
+`drafts`: `id`, `narrative_id` fk, `kind` enum (`holding_statement`, `review_reply`, `faq_entry`), `text`, `preset` enum, `prompt_version`, `llm_call_id` fk, `created_by` fk → users, `created_at`.
+`draft_citations`: `draft_id`, `mention_id`; pk both. Unknown citations are rejected by the gateway.
+
+### 🔒 `llm_calls` (ledger)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| user_id | uuid | fk → users (RESTRICT) |
+| scan_id | uuid null | fk → scans |
+| task | enum `llm_task` | |
+| requested_model | text | from settings |
+| served_model | text | from `response.model` (may differ after refusal fallback) |
+| prompt_version | text | |
+| 📄 request_settings | jsonb | resolved effort/thinking/max_tokens/etc. |
+| input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | integer | |
+| cost_micros | bigint | priced on `served_model` |
+| currency | char(3) | `USD` |
+| stop_reason | text null | |
+| outcome | enum (`succeeded`, `refused`, `truncated`, `invalid_output`, `failed`) | |
+| latency_ms | integer | |
+| created_at | timestamptz | `ix_llm_calls_user_id_created_at` |
+
+No prompt or completion content stored.
+
+---
+
+## 7. Scores (results stored; totals derived)
+
+### Reference data (seeded by migration, per scoring version)
+| Table | Columns |
+|---|---|
+| `scoring_versions` | `version text` pk, `created_at` |
+| `scoring_weights` | `version` fk, `kind` enum (`health`, `crisis`), `component text`, `weight_bp smallint`; pk (version, kind, component) |
+| `crisis_level_thresholds` | `version` fk, `level` enum (`low`, `medium`, `high`), `min_score smallint`; pk (version, level) |
+
+### Results
+| Table | Columns | Key |
+|---|---|---|
+| `score_runs` | `scan_id` pk/fk, `version` fk, `computed_at` | — |
+| `surface_scores` | `scan_id`, `surface` enum, `score smallint` | pk (scan_id, surface) |
+| `crisis_components` | `scan_id`, `component` enum (`velocity`, `spread`, `autocomplete`, `trends`, `press`), `value smallint` | pk (scan_id, component) |
+
+Health, crisis score and crisis level are derived in `v_scan_scores` (weights + thresholds joined by version) and mirrored by pure functions in `domain/scoring/` (unit-tested to match the view).
+
+---
+
+## 8. Alerts, notifications, outbox
+
+### `alerts`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| brand_id | uuid | fk → brands, `ix_alerts_brand_id_created_at` |
+| scan_id | uuid | fk → scans |
+| narrative_id | uuid null | fk → narratives |
+| rule | enum (`level_increase`, `new_negative_autocomplete`, `narrative_spread`) | |
+| explanation | text null | model output, labelled AI-generated |
+| explanation_llm_call_id | uuid null | fk → llm_calls |
+| created_at | timestamptz | |
+
+**`uq_alerts_scan_id_rule_narrative_id`** with `NULLS NOT DISTINCT` (PG16): re-running a scan's alert step can't duplicate alerts. Level is read from the scan's derived score. Cooldown is race-free because only one scan per brand is active at a time.
+
+### `notifications` / `notification_reads`
+`notifications`: `id`, `user_id` fk, `alert_id` null fk, `title`, `body`, `created_at`; `uq_notifications_alert_id_user_id`.
+`notification_reads`: `notification_id` pk/fk, `read_at`.
+
+### `outbox_messages` (mutable: scrubbed on deletion)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| kind | enum (`otp_email`, `alert_email`) | |
+| user_id | uuid null | fk → users |
+| otp_code_id | uuid null | fk → otp_codes; expiry derived from the code |
+| alert_id | uuid null | fk → alerts |
+| recipient_email | citext | pseudonymised on deletion |
+| template | text | |
+| 📄 template_data | jsonb null | non-sensitive fields |
+| sensitive_data_encrypted | bytea null | MultiFernet; **nulled after send, drop or expiry** |
+| dedupe_key | text | `uq_outbox_messages_dedupe_key` (`otp:{otp_code_id}`, `alert:{alert_id}:email`) |
+| status | enum (`pending`, `sent`, `dead`, `dropped`) | named exception (see conventions) |
+| next_attempt_at | timestamptz | `ix_outbox_messages_pending` partial on status = 'pending' |
+| created_at | timestamptz | |
+
+`ck_outbox_messages_kind_refs`: `otp_email` ⇒ `otp_code_id` not null; `alert_email` ⇒ `alert_id` not null.
+
+### 🔒 `outbox_attempts`
+`id`, `outbox_message_id` fk, `attempted_at`, `outcome` enum (`sent`, `retryable_error`, `permanent_error`, `dropped`), `error_code null`.
+
+**Status derivation rule** (what the consistency test checks): no attempts or only `retryable_error` attempts fewer than 8 → `pending`; last outcome `sent` → `sent`; last outcome `dropped` (OTP expired, account deleted) → `dropped`; last outcome `permanent_error`, or 8 `retryable_error` attempts → `dead`.
+
+---
+
+## 9. Audit
+
+### 🔒 `audit_events`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| actor_user_id | uuid null | fk → users (RESTRICT) |
+| action | text | `noun.verb_past` |
+| target_type / target_id | text / uuid null | |
+| 📄 details | jsonb null | never contains email, IP, codes or tokens |
+| created_at | timestamptz | `ix_audit_events_actor_user_id_created_at` |
+
+### `audit_event_network` (mutable: scrubbed on deletion)
+`audit_event_id` pk/fk, `ip inet`, `user_agent text`. Network details are kept apart so the append-only log never holds raw personal data.
+
+Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row.
+
+---
+
+## 10. Views (derived, no storage)
+
+- `v_mention_first_last_seen` — min/max scan per mention.
+- `v_scan_usage` — billable searches (`served_from = 'live'`) and LLM cost per scan.
+- `v_user_monthly_usage` — searches and LLM spend per user per month.
+- `v_scan_scores` — health, crisis score, crisis level per scan.
+- `v_narrative_activity` — first/last seen and open/dormant per narrative; current assignment per mention.
+- `v_current_settings`, `v_current_schedule`, `v_current_budgets` — latest version rows.
+- `v_scan_timing` — started/finished from transitions.
