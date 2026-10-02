@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 
 USERS = table("users")
 SESSIONS = table("sessions")
-BUDGETS = {
+BUDGETS: dict[str, dict[str, Any]] = {
     "user_search_budgets": {"monthly_searches": 1500},
     "user_llm_budgets": {"monthly_micros": 30_000_000, "currency": "USD"},
 }
