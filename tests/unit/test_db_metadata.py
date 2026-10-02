@@ -12,7 +12,14 @@ TABLES = list(Base.metadata.sorted_tables)
 
 
 def test_metadata_has_identity_tables() -> None:
-    assert {t.name for t in TABLES} >= {"users", "otp_codes", "otp_verify_attempts"}
+    assert {t.name for t in TABLES} >= {
+        "users",
+        "otp_codes",
+        "otp_verify_attempts",
+        "sessions",
+        "user_search_budgets",
+        "user_llm_budgets",
+    }
 
 
 @pytest.mark.parametrize("table", TABLES, ids=lambda t: t.name)
