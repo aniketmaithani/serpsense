@@ -1,0 +1,56 @@
+{% extends "signed_in.html" %}
+{% set k = view.knobs %}
+{% macro box(name, label) %}<label><input type="checkbox" name="{{ name }}" value="true"{% if k[name] %} checked{% endif %}> {{ label }}</label>{% endmacro %}
+{% block title %}{{ view.name }} search settings · SerpSense{% endblock %}
+{% block main %}
+<p><a href="/brands/{{ view.brand_id }}">← {{ view.name }}</a></p>
+<h1>Search settings</h1>
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+{% if view.broken %}<p class="notice" role="alert">This brand's saved settings can't be used for a scan any more, so the defaults are shown. Save, or start from a preset, to fix them.</p>{% endif %}
+
+<section class="card estimate">
+  <h2>What it costs</h2>
+  <p><span class="big">{{ view.per_scan }}</span> searches a scan at most,
+     {% if k.interval_minutes %}about <strong>{{ view.per_month }}</strong> a month at this schedule.{% else %}and none until you press Scan now: this brand is scanned manually.{% endif %}</p>
+  <p class="muted">Languages: {{ view.languages|join(", ") }}. The admin limit is {{ view.admin_limit }} searches a scan, whatever is set here.
+     Results SerpApi serves from its one-hour cache aren't billed.</p>
+</section>
+
+<section class="card">
+  <h2>Start from a preset</h2>
+  <form method="post" action="/brands/{{ view.brand_id }}/settings/preset" class="presets">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for p in presets %}<button type="submit" name="preset" value="{{ p.value }}">{{ p.value|capitalize }}</button>{% endfor %}
+  </form>
+  <p class="muted">Lean: English only, no AI Overview follow-up or Maps. Standard: the defaults. Deep: more search templates, complaint news, more review pages and YouTube.</p>
+</section>
+
+<section class="card">
+  <h2>Surfaces and schedule</h2>
+  <form method="post" action="/brands/{{ view.brand_id }}/settings" class="settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset><legend>Google</legend>
+      {{ box("search_page", "Search results page") }}
+      {{ box("ai_overview", "AI Overview follow-up") }}
+      {{ box("autocomplete", "Autocomplete suggestions") }}
+      {{ box("news", "News") }}
+      {{ box("trends", "Trends (with competitors)") }}
+    </fieldset>
+    <fieldset><legend>Reviews</legend>
+      {{ box("play", "Google Play rating") }}
+      <label>Review pages <input type="number" name="play_review_pages" min="0" max="3" value="{{ k.play_review_pages }}"></label>
+      {{ box("maps", "Google Maps places") }}
+    </fieldset>
+    <fieldset><legend>Limits</legend>
+      <label>Searches a scan at most <input type="number" name="max_searches" min="1" max="100" value="{{ k.max_searches }}"></label>
+      <label>Scan every
+        <select name="interval_minutes">
+        <option value=""{% if not k.interval_minutes %} selected{% endif %}>Manual only</option>
+        {% for minutes in intervals %}<option value="{{ minutes }}"{% if minutes == k.interval_minutes %} selected{% endif %}>{{ minutes // 60 }} h</option>{% endfor %}
+        </select></label>
+    </fieldset>
+    <button type="submit" name="action" value="preview" class="secondary">Preview the cost</button>
+    <button type="submit" name="action" value="save">Save</button>
+  </form>
+</section>
+{% endblock %}

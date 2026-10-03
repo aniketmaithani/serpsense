@@ -17,6 +17,7 @@ from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.entrypoints.web.app import create_app
 from serpsense.services.auth import SignIn, SignInPorts
+from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
 from serpsense.services.sessions import SessionGuard
 from tests.factories import make_settings
@@ -47,6 +48,9 @@ def browser(
         overview=SqlOverview(engine.connect),
         scan_now=scan_now,
         inbox=SqlInbox(engine, clock),
+        brand_settings=BrandSettings(
+            lambda: SqlUnitOfWork(engine, ScanJobs()), clock, max_searches_per_scan=20
+        ),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"

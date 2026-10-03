@@ -13,6 +13,7 @@ from sqlalchemy import Engine, insert, select
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.domain.enums import CrisisComponent, Surface, Topic
 from serpsense.ports.enrichment_store import MentionLabel
+from tests.fakes import FixedClock
 from tests.integration.db_helpers import (
     NOW,
     add_brand,
@@ -31,8 +32,8 @@ CALM = {c: 0 for c in CrisisComponent}
 PROMPT = "label_mentions/v1"
 
 
-def signed_in(engine: Engine) -> tuple[TestClient, uuid.UUID]:
-    client, email = browser(engine), f"{uuid.uuid4().hex[:10]}@example.com"
+def signed_in(engine: Engine, clock: FixedClock | None = None) -> tuple[TestClient, uuid.UUID]:
+    client, email = browser(engine, clock), f"{uuid.uuid4().hex[:10]}@example.com"
     form = token(client.get("/login").text)
     client.post("/login", data={"form_token": form, "email": email})
     client.post(

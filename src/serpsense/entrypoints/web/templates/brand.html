@@ -12,7 +12,8 @@
     <form method="post" action="/brands/{{ card.brand_id }}/scan" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit">Scan now</button>
-    </form>{% endif %}</div>
+    </form>{% endif %}
+    <a href="/brands/{{ card.brand_id }}/settings">Search settings</a></div>
 </section>
 {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 
