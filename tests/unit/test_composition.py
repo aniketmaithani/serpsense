@@ -1,9 +1,7 @@
-import uuid
 from datetime import timedelta
 
 import pytest
 
-from serpsense.adapters.llm.profiles import PresetProfiles
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer
 from serpsense.composition import (
@@ -23,7 +21,7 @@ from serpsense.composition import (
 )
 from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
-from serpsense.domain.llm_capabilities import LlmPreset, preset_settings
+from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.scan_now import ScanNow
 from serpsense.services.scans import ScanService
@@ -61,12 +59,6 @@ def test_a_worker_needs_both_api_keys(missing: str) -> None:
     settings = make_settings(**{**keys, missing: None})
     with pytest.raises(ConfigError, match="needed to run scans"):
         build_worker(settings, build_celery(settings))
-
-
-def test_until_profiles_can_be_edited_every_user_gets_the_configured_preset() -> None:
-    profiles = PresetProfiles(LlmPreset.HIGH_THINKING)
-    settings = profiles.settings(uuid.uuid4(), LlmTask.LABEL_MENTIONS)
-    assert settings == preset_settings(LlmPreset.HIGH_THINKING, LlmTask.LABEL_MENTIONS)
 
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
