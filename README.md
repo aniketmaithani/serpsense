@@ -46,6 +46,24 @@ and `docker compose up --build -d`. Budgets keep spend bounded: a monthly search
 estimate, and a monthly LLM budget per user. The settings page shows what a brand's scans will
 cost before you save them.
 
+## Run it without Docker
+
+With Postgres and Redis installed (`brew install postgresql@17 redis`, and optionally
+`brew install mailpit`), one command starts everything natively:
+
+```bash
+cp .env.example .env && uv run serpsense gen-secrets >> .env   # once
+scripts/dev.sh                                                  # app on http://127.0.0.1:8000
+scripts/dev.sh cli seed-demo --owner you@example.com            # in a second terminal
+scripts/dev.sh stop                                             # stop the private Postgres and Redis
+```
+
+It runs its own Postgres (port 5434) and Redis (6381) with their data in `.dev/`, so a Postgres
+or Redis you already run is left alone; applies the migrations; and runs the web app, both
+Celery workers and beat in one terminal (Ctrl-C stops them). Mail goes to Mailpit at
+http://127.0.0.1:8026, or without Mailpit the sign-in codes print in the `[outbox]` log lines;
+`scripts/dev.sh --real-mail` uses the SMTP settings in `.env` instead.
+
 ## How SerpApi is used
 
 | Surface | Engine | Why |
