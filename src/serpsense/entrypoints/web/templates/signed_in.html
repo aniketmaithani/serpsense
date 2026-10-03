@@ -2,6 +2,7 @@
 {% block nav %}
 <nav>
   <a href="/">Brands</a>
+  <a href="/notifications">Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
   <form method="post" action="/logout" class="inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="link">Sign out</button>

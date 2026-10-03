@@ -17,6 +17,7 @@ from serpsense.entrypoints.web.middleware import (
     apply_security_headers,
     route_template,
 )
+from serpsense.entrypoints.web.notifications import router as notifications_router
 from serpsense.entrypoints.web.pages import STATIC
 from serpsense.observability import get_logger
 
@@ -33,6 +34,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(brands_router)
+    app.include_router(notifications_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.exception_handler(Exception)

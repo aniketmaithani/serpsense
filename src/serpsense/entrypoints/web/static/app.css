@@ -43,3 +43,8 @@ li.sentiment--1 { border-left-color: var(--danger); } li.sentiment-1 { border-le
 .reason { font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem; }
 form.inline { display: inline; margin-left: 0.5rem; }
 .notice { background: var(--bg); border-left: 3px solid var(--accent); padding: 0.5rem 0.75rem; }
+.count { display: inline-block; min-width: 1.2rem; padding: 0 0.35rem; border-radius: 1rem; background: var(--accent); color: #fff; font-size: 0.75rem; text-align: center; }
+ul.notifications { list-style: none; padding: 0; }
+ul.notifications li { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+ul.notifications li.unread strong::before { content: "● "; color: var(--accent); }
+ul.notifications .body { white-space: pre-line; margin: 0.25rem 0; }
