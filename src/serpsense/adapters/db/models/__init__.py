@@ -11,6 +11,7 @@ from serpsense.adapters.db.models.brands import (
     BrandLocation,
     BrandWatchTerm,
 )
+from serpsense.adapters.db.models.drafts import Draft, DraftCitation
 from serpsense.adapters.db.models.explanations import AlertExplanation
 from serpsense.adapters.db.models.identity import (
     OtpCode,
@@ -62,6 +63,8 @@ __all__ = [
     "BrandWatchTerm",
     "CrisisComponentValue",
     "CrisisLevelThreshold",
+    "Draft",
+    "DraftCitation",
     "Enrichment",
     "LlmCall",
     "Mention",
