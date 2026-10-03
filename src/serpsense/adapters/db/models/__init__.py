@@ -17,7 +17,7 @@ from serpsense.adapters.db.models.identity import (
     UserSearchBudget,
     UserSession,
 )
-from serpsense.adapters.db.models.llm import Enrichment, LlmCall
+from serpsense.adapters.db.models.llm import Enrichment, LlmCall, Narrative, NarrativeAssignment
 from serpsense.adapters.db.models.mentions import Mention, MentionRevision
 from serpsense.adapters.db.models.observations import (
     AppRatingObservation,
@@ -49,6 +49,8 @@ __all__ = [
     "Mention",
     "MentionObservation",
     "MentionRevision",
+    "Narrative",
+    "NarrativeAssignment",
     "OtpCode",
     "OtpVerifyAttempt",
     "RawResponse",
