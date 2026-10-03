@@ -3,7 +3,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    SmallInteger,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -74,4 +82,33 @@ class Mention(Base):
     brand_app_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     language_code: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class MentionRevision(Base):
+    """A later text of a review: edited reviews keep their history (owner decision, 2026-10-03).
+
+    The mention's own text is revision 1; each text a scan sees that differs from the latest one
+    adds the next, so labels attach to the text they were made for. Only reviews have revisions,
+    rows are never deleted, and only the text may change, for a redaction scrub (triggers,
+    migration 0015).
+    """
+
+    __tablename__ = "mention_revisions"
+    __table_args__ = (
+        UniqueConstraint("mention_id", "scan_id"),  # one new text per mention per scan
+        Index("ix_mention_revisions_scan_id", "scan_id"),  # what a scan saw
+        CheckConstraint("revision >= 2", name="revision_after_first"),
+        CheckConstraint("text ~ '\\S' AND char_length(text) <= 10000", name="text_length"),
+    )
+
+    mention_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("mentions.id", ondelete="RESTRICT"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    text: Mapped[str] = mapped_column(Text)
+    # The scan that first saw this text; same brand as the mention (trigger).
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT")
+    )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
