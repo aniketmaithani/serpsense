@@ -9,10 +9,13 @@ from typing import Any
 
 import pytest
 from alembic import command
+from cryptography.fernet import Fernet
 from sqlalchemy import Engine, make_url, select, text
+from structlog.testing import capture_logs
 
 from serpsense.adapters.crypto.fernet_box import FernetBox
 from serpsense.adapters.db.engine import create_db_engine
+from serpsense.adapters.db.otp_codes import SqlOtpCodes
 from serpsense.adapters.db.outbox import SqlOutbox
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.mail.fake import FakeMailer
@@ -224,3 +227,82 @@ def test_an_alert_email_goes_to_the_brands_owner_once(engine: Engine) -> None:
     mailer = FakeMailer()
     assert dispatcher(engine, mailer).dispatch() == 1
     assert [(e.to, e.subject) for e in mailer.sent] == [("ola-owner@example.com", data["title"])]
+
+
+def code_email(
+    engine: Engine, email: str, *, at: datetime = NOW, box: FernetBox = BOX
+) -> uuid.UUID:
+    """A sign-in code issued at `at` for ten minutes, and its email, sealed."""
+    with engine.begin() as conn:
+        code_id = SqlOtpCodes(conn).issue(
+            email, b"hash", at=at, expires_at=at + 10 * MINUTE, ip=None
+        )
+        assert code_id is not None
+        sealed = box.seal(b"042917")
+        SqlOutbox(conn).add_otp_email(code_id, sealed=sealed, minutes=10, at=at)
+        return code_id
+
+
+def test_a_sign_in_code_goes_out_sealed_and_ahead_of_older_alerts(engine: Engine) -> None:
+    alert = queue(engine, at=NOW - MINUTE)
+    code_id = code_email(engine, "new@example.com")
+    with engine.connect() as conn:
+        stored = conn.execute(select(MESSAGES.c.sensitive_data_encrypted)).scalars().all()
+        assert all(b"042917" not in (row or b"") for row in stored)  # never the plain code
+    mailer = FakeMailer()
+    assert dispatcher(engine, mailer).dispatch(limit=1) == 1
+    (email,) = mailer.sent
+    assert (email.to, email.subject) == ("new@example.com", "Your SerpSense sign-in code")
+    assert "042917" in email.text and "10 minutes" in email.text
+    assert message(engine, alert).status == "pending"  # the code went first
+    with engine.connect() as conn:
+        otp = select(MESSAGES).where(MESSAGES.c.otp_code_id == code_id)
+        assert conn.execute(otp).one().sensitive_data_encrypted is None  # gone once sent
+
+
+def test_a_stale_code_is_dropped_unsent_and_never_logged(engine: Engine) -> None:
+    replaced = code_email(engine, "a@example.com")
+    code_email(engine, "a@example.com", at=NOW + MINUTE)  # a second request replaces the first
+    expired = code_email(engine, "b@example.com", at=NOW - 8 * MINUTE)  # gone at the run's time
+    used = code_email(engine, "c@example.com")
+    with engine.begin() as conn:
+        SqlOtpCodes(conn).consume(used, at=NOW)
+    mailer = FakeMailer()
+    with capture_logs() as logs:
+        assert dispatcher(engine, mailer, NOW + 2 * MINUTE).dispatch() == 1
+    with engine.connect() as conn:
+        rows = conn.execute(select(MESSAGES.c.otp_code_id, MESSAGES.c.status)).all()
+    statuses = {code_id: status for code_id, status in rows}
+    assert [statuses[c] for c in (replaced, expired, used)] == ["dropped"] * 3
+    assert [e.to for e in mailer.sent] == ["a@example.com"]  # only the live code was sent
+    assert "042917" not in repr(logs) and "example.com" not in repr(logs)
+    assert_statuses_follow_their_attempts(engine)
+
+
+def test_a_stale_code_waiting_to_retry_is_dropped_at_once(engine: Engine) -> None:
+    code_id = code_email(engine, "d@example.com")
+    dispatcher(engine, FakeMailer(TIMEOUT)).dispatch()  # its retry is due in a minute
+    with engine.begin() as conn:
+        SqlOtpCodes(conn).consume(code_id, at=NOW)
+    assert dispatcher(engine, FakeMailer(), NOW + MINUTE / 2).dispatch() == 0
+    with engine.connect() as conn:
+        row = conn.execute(select(MESSAGES).where(MESSAGES.c.otp_code_id == code_id)).one()
+    assert (row.status, row.sensitive_data_encrypted) == ("dropped", None)
+
+
+def test_codes_get_a_head_start_not_the_whole_queue(engine: Engine) -> None:
+    long_due = queue(engine, at=NOW - 3 * MINUTE)
+    code_email(engine, "e@example.com")
+    dispatcher(engine, FakeMailer()).dispatch(limit=1)
+    assert message(engine, long_due).status == "sent"  # three minutes late beats a new code
+
+
+def test_a_code_sealed_with_a_retired_key_is_dead(engine: Engine) -> None:
+    retired = FernetBox((Fernet.generate_key().decode(),))
+    code_id = code_email(engine, "c@example.com", box=retired)
+    mailer = FakeMailer()
+    dispatcher(engine, mailer).dispatch()
+    with engine.connect() as conn:
+        assert conn.execute(select(ATTEMPTS.c.error_code)).scalar_one() == "outbox.seal_broken"
+        row = conn.execute(select(MESSAGES).where(MESSAGES.c.otp_code_id == code_id)).one()
+    assert (row.status, row.sensitive_data_encrypted, mailer.sent) == ("dead", None, [])
