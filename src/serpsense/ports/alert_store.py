@@ -1,8 +1,8 @@
 """Port for alerts and in-app notifications (data-model §8, BUILD_PLAN §12).
 
-The store reads what the alert rules need about a finished scan, and writes an alert once per
-(scan, rule) and its notification once, inside the unit of work that finishes the scan. It never
-commits.
+The store reads what the alert rules need about a finished scan, the stories its grouping added
+to among them, and writes an alert once per (scan, rule, narrative) and its notification once,
+inside the unit of work that finishes the scan. It never commits.
 """
 
 import uuid
@@ -30,8 +30,15 @@ class AlertStore(Protocol):
         """None for a scan that wasn't scored."""
         ...
 
-    def fire(self, scan_id: uuid.UUID, rule: AlertRule, *, at: datetime) -> uuid.UUID | None:
-        """The new alert's id; None when the rule already fired for the scan."""
+    def fire(
+        self,
+        scan_id: uuid.UUID,
+        rule: AlertRule,
+        *,
+        at: datetime,
+        narrative_id: uuid.UUID | None = None,
+    ) -> uuid.UUID | None:
+        """The new alert's id; None when the rule already fired for the scan (and narrative)."""
         ...
 
     def notify(self, alert_id: uuid.UUID, *, title: str, body: str, at: datetime) -> bool:
