@@ -97,6 +97,21 @@ def test_scan_now_is_recorded_as_the_users_request(conn: Connection, store: SqlS
     assert tuple(actor) == (TransitionActor.USER, owner, "requested")
 
 
+def test_a_replay_scan_is_created_by_the_system_and_its_time_is_known(
+    conn: Connection, store: SqlScanStore
+) -> None:
+    brand_id = add_owned_brand(conn)
+    replay = scheduled(brand_id, trigger=ScanTrigger.REPLAY, scheduled_for=None)
+    scan_id = store.create(replay)
+    assert history(conn, scan_id) == [(None, "queued", "replayed")]
+    archived = Transition(ScanStatus.QUEUED, ScanStatus.SKIPPED, TransitionReason.BRAND_ARCHIVED)
+    store.move(scan_id, archived, at=NOW)
+    later = scheduled(brand_id, created_at=NOW + timedelta(hours=1), scheduled_for=NOW)
+    store.create(later)  # a scheduled scan is no replayed one
+    assert store.replayed_at(brand_id) == {NOW}
+    assert store.replayed_at(add_owned_brand(conn, slug="other")) == frozenset()
+
+
 def test_a_redelivered_claim_is_a_no_op(conn: Connection, store: SqlScanStore) -> None:
     brand_id = add_owned_brand(conn)
     scan_id = store.create(scheduled(brand_id))
