@@ -6,13 +6,14 @@ compare-and-set that writes its transition row. A store works inside the caller'
 and never commits, so a finish commits or rolls back with the alerts and emails it caused.
 """
 
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
-from serpsense.domain.enums import ScanTrigger
+from serpsense.domain.enums import ScanTrigger, Surface, SurfaceOutcome
 from serpsense.domain.scan_state import Transition
 
 
@@ -35,6 +36,25 @@ class NewScan:
             raise ValueError("estimated searches can't be negative")
 
 
+# The format the table checks (`ck_scan_surface_results_error_code_format`).
+ERROR_CODE = re.compile(r"[a-z][a-z0-9_.]{0,63}")
+
+
+@dataclass(frozen=True)
+class SurfaceResult:
+    """How collecting one surface went in a scan."""
+
+    surface: Surface
+    outcome: SurfaceOutcome
+    error_code: str | None = None  # exactly for failed surfaces, e.g. `serpapi.http_5xx`
+
+    def __post_init__(self) -> None:
+        if (self.error_code is None) == (self.outcome is SurfaceOutcome.FAILED):
+            raise ValueError("an error code exactly for a failed surface")
+        if self.error_code is not None and not ERROR_CODE.fullmatch(self.error_code):
+            raise ValueError("an error code is a lowercase dotted name")
+
+
 class ScanStore(Protocol):
     def create(self, scan: NewScan) -> uuid.UUID | None:
         """A queued scan and its creation transition; None if the slot is taken or the brand
@@ -45,6 +65,11 @@ class ScanStore(Protocol):
         """Compare-and-set from `transition.from_status`; False (and nothing written) when the
         scan has moved on, e.g. a redelivered claim. A creation transition raises
         IllegalTransition: scans come into existence only through `create`."""
+        ...
+
+    def record_surfaces(self, scan_id: uuid.UUID, results: Sequence[SurfaceResult]) -> int:
+        """Each surface's outcome, once per scan: a retried scan keeps what was recorded first.
+        Returns how many were written."""
         ...
 
     def queued_before(self, at: datetime) -> Sequence[uuid.UUID]:

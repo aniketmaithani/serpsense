@@ -6,7 +6,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Self
 
-from serpsense.domain.enums import MentionSource, ScanStatus
+from serpsense.domain.enums import MentionSource, ScanStatus, Surface
 from serpsense.domain.llm_pricing import Hop, TokenUsage
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
@@ -15,7 +15,7 @@ from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
 from serpsense.ports.llm_ledger import LlmCallRecord
 from serpsense.ports.mention_store import Recorded, Sighting
 from serpsense.ports.observation_store import Comparison
-from serpsense.ports.scan_store import NewScan
+from serpsense.ports.scan_store import NewScan, SurfaceResult
 from serpsense.ports.scheduled_brands import ScheduledBrand
 
 
@@ -34,6 +34,7 @@ class InMemoryScans:
         self.scans: dict[uuid.UUID, NewScan] = {}
         self.status: dict[uuid.UUID, ScanStatus] = {}
         self.transitions: list[tuple[uuid.UUID, Transition, datetime]] = []
+        self.surfaces: dict[uuid.UUID, dict[Surface, SurfaceResult]] = {}
 
     def create(self, scan: NewScan) -> uuid.UUID | None:
         same_brand = [i for i, s in self.scans.items() if s.brand_id == scan.brand_id]
@@ -54,6 +55,15 @@ class InMemoryScans:
         self.status[scan_id] = transition.to_status
         self.transitions.append((scan_id, transition, at))
         return True
+
+    def record_surfaces(self, scan_id: uuid.UUID, results: Sequence[SurfaceResult]) -> int:
+        if scan_id not in self.scans:
+            raise KeyError(scan_id)  # the table's foreign key
+        kept, written = self.surfaces.setdefault(scan_id, {}), 0
+        for result in results:
+            if result.surface not in kept:
+                kept[result.surface], written = result, written + 1
+        return written
 
     def queued_before(self, at: datetime) -> Sequence[uuid.UUID]:
         return [

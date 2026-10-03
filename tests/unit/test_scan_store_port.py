@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from serpsense.domain.enums import ScanTrigger
-from serpsense.ports.scan_store import NewScan
+from serpsense.domain.enums import ScanTrigger, Surface, SurfaceOutcome
+from serpsense.ports.scan_store import NewScan, SurfaceResult
 
 pytestmark = pytest.mark.unit
 
@@ -44,3 +44,20 @@ def test_scheduled_and_manual_scans_are_accepted() -> None:
     user = uuid.uuid4()
     manual = scheduled(trigger=ScanTrigger.MANUAL, scheduled_for=None, requested_by=user)
     assert manual.requested_by == user
+
+
+@pytest.mark.parametrize(
+    ("outcome", "code"),
+    [
+        (SurfaceOutcome.FAILED, None),
+        (SurfaceOutcome.SUCCEEDED, "serpapi.timeout"),
+        (SurfaceOutcome.FAILED, "Serpapi.Timeout"),
+        (SurfaceOutcome.FAILED, "x" * 65),
+    ],
+)
+def test_a_surface_result_has_a_lowercase_error_code_exactly_when_it_failed(
+    outcome: SurfaceOutcome, code: str | None
+) -> None:
+    with pytest.raises(ValueError, match="error code"):
+        SurfaceResult(Surface.NEWS, outcome, code)
+    assert SurfaceResult(Surface.NEWS, SurfaceOutcome.FAILED, "scan.deadline_passed").error_code
