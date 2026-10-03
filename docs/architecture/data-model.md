@@ -251,11 +251,11 @@ Google Trends interest is relative within a single query, so each scan runs **on
 - **Mutable only for a redaction scrub of `reason`:** every other column is frozen (`ck_enrichments_identity_immutable`) and rows are never deleted (DELETE and TRUNCATE are rejected like an append-only table).
 - "Pending" = no row for the mention's latest revision and the active prompt version (derived). Only mentions observed in the last 7 days are (re-)enriched, so a prompt-version bump doesn't re-process history.
 
-### `narratives`
-`id`, `brand_id` fk, `label`, `summary`, `prompt_version`, `llm_call_id` fk, `created_at`. **Immutable**; a re-summarised story is a new narrative linked by assignments.
+### 🔒 `narratives`
+`id`, `brand_id` fk → brands (RESTRICT), `label` (non-blank, ≤ 120 chars), `summary` (non-blank, ≤ 2000 chars), `prompt_version` (a `group_narratives` prompt: `ck_narratives_prompt_from_grouping_task`), `llm_call_id` fk → llm_calls (RESTRICT), `created_at`; `ix_narratives_brand_id_created_at`, `ix_narratives_llm_call_id`. **Immutable** (append-only triggers); a re-summarised story is a new narrative linked by assignments. From a successful call, with its prompt version, made for the brand's owner (`trg_narratives_from_call` → `ck_narratives_from_call`, the generic `serpsense_output_from_call`). Narratives hold no personal data (they summarise public mentions, ADR-0013), so they aren't scrubbed.
 
 ### 🔒 `narrative_assignments`
-`id`, `narrative_id` fk, `mention_id` fk, `llm_call_id` fk, `created_at`. **Latest row per mention wins** (A→B→A allowed). `ix_narrative_assignments_mention_id_created_at`.
+`id`, `narrative_id` fk, `mention_id` fk, `prompt_version` (a `group_narratives` prompt), `llm_call_id` fk (all RESTRICT), `created_at`. **Latest row per mention wins** (A→B→A allowed); **`uq_narrative_assignments_mention_id_created_at`**, so "latest" has a single answer, and its index serves the lookup. The narrative and the mention are of the same brand (`trg_narrative_assignments_same_brand` → `ck_narrative_assignments_same_brand`), and the row comes from a successful call, with its prompt version, made for the brand's owner (`ck_narrative_assignments_from_call`).
 
 ### `drafts` / `draft_citations`
 `drafts`: `id`, `narrative_id` fk, `kind` enum (`holding_statement`, `review_reply`, `faq_entry`), `text`, `preset` enum, `prompt_version`, `llm_call_id` fk, `created_by` fk → users, `created_at`.
