@@ -53,6 +53,10 @@ nav a.model-chip { display: block; margin-top: auto; padding: 0.6rem 0.75rem; bo
 main { min-width: 0; padding: 2rem clamp(1rem, 3vw, 2.5rem) 4rem; max-width: 80rem; }
 body:not(.app) main { margin: 3rem auto; max-width: 64rem; }
 body:not(.app) .bar { position: static; height: auto; flex-direction: row; justify-content: space-between; border-right: 0; border-bottom: 1px solid var(--line); }
+/* Footer: under the content column beside the sidebar; after the content on phones. */
+body.app { grid-template-rows: 1fr auto; }
+body.app .bar { grid-row: 1 / span 2; }
+.site-foot { grid-column: 2; padding: 1.25rem clamp(1rem, 3vw, 2.5rem); border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; }
 
 /* Page head and layout. */
 .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
@@ -192,6 +196,7 @@ article.draft .reasoning { white-space: pre-line; color: var(--muted); font-size
   .model-chip { display: none; }
   .kpis { grid-template-columns: 1fr; }
   main { padding: 1.25rem 1rem 3rem; }
+  .site-foot { padding-inline: 1rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .brand-card { transition: none; }
