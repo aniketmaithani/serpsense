@@ -1,23 +1,14 @@
 """The Redis response cache on a real Redis (ADR-0004)."""
 
-from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
 from redis import Redis
-from testcontainers.redis import RedisContainer
 
 from serpsense.adapters.cache.response_cache import PREFIX, RedisResponseCache
 from serpsense.ports.response_cache import ResponseCache
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def redis_url() -> Iterator[str]:
-    with RedisContainer("redis:7-alpine") as container:
-        host, port = container.get_container_host_ip(), container.get_exposed_port(6379)
-        yield f"redis://{host}:{port}/0"
 
 
 def test_a_payload_round_trips_with_its_ttl(redis_url: str) -> None:

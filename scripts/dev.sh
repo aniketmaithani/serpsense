@@ -6,6 +6,8 @@
 #   scripts/dev.sh                 start everything (mail goes to Mailpit, or prints in the log)
 #   scripts/dev.sh --real-mail     send mail with the SMTP settings in .env instead
 #   scripts/dev.sh cli <command>   run a serpsense command against it, e.g. cli seed-demo --owner you@example.com
+#   scripts/dev.sh test [args]     run pytest on a throwaway database in the private Postgres
+#                                  (made and dropped by this command; no Docker needed)
 #   scripts/dev.sh stop            stop any leftover app processes and the private services
 #
 # Needs uv, and Postgres and Redis on PATH (brew install postgresql@17 redis); Mailpit is optional
@@ -30,16 +32,20 @@ stop_all() {
   echo "Stopped the app and the private Postgres, Redis and Mailpit (data stays in .dev/)."
 }
 
-start_services() {
+start_pg() {
   need uv "https://docs.astral.sh/uv/"
   need pg_ctl "brew install postgresql@17"
-  need redis-server "brew install redis"
   mkdir -p "$DEV"
   if [ ! -f "$DEV/pg/PG_VERSION" ]; then initdb -D "$DEV/pg" -U serpsense --auth=trust >/dev/null; fi
   if ! pg_ctl -D "$DEV/pg" status >/dev/null 2>&1; then
     pg_ctl -D "$DEV/pg" -l "$DEV/pg.log" -w start \
       -o "-p $PG_PORT -k $DEV -c listen_addresses=127.0.0.1" >/dev/null
   fi
+}
+
+start_services() {
+  need redis-server "brew install redis"
+  start_pg
   if ! psql -h 127.0.0.1 -p "$PG_PORT" -U serpsense -d postgres -tAc \
       "select 1 from pg_database where datname = 'serpsense'" | grep -q 1; then
     createdb -h 127.0.0.1 -p "$PG_PORT" -U serpsense serpsense
@@ -79,8 +85,25 @@ run() {  # run <name> <command...>: in the background, its lines prefixed with i
   "$@" 2>&1 | awk -v p="[$name] " '{ print p $0; fflush() }' &
 }
 
+run_tests() {  # a fresh database and Redis per run: runs (and the app's own data) never meet
+  need redis-server "brew install redis"
+  if ! pg_isready -q -h 127.0.0.1 -p "$PG_PORT"; then start_pg; fi
+  TEST_DB="serpsense_test_$$"
+  TEST_REDIS_PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  createdb -h 127.0.0.1 -p "$PG_PORT" -U serpsense "$TEST_DB"
+  redis-server --port "$TEST_REDIS_PORT" --bind 127.0.0.1 --daemonize yes --save "" \
+    --logfile /dev/null
+  trap 'redis-cli -p "$TEST_REDIS_PORT" shutdown nosave >/dev/null 2>&1 || true
+        for db in $(psql -h 127.0.0.1 -p "$PG_PORT" -U serpsense -d postgres -tAc \
+            "select datname from pg_database where datname like '"'"'${TEST_DB}%'"'"'"); do
+          dropdb --if-exists -h 127.0.0.1 -p "$PG_PORT" -U serpsense "$db"; done' EXIT
+  TEST_DATABASE_URL="postgresql+psycopg://serpsense@127.0.0.1:$PG_PORT/$TEST_DB" \
+    TEST_REDIS_URL="redis://127.0.0.1:$TEST_REDIS_PORT/0" uv run pytest "$@"
+}
+
 case "${1:-}" in
   stop) stop_all; exit 0 ;;
+  test) shift; run_tests "$@"; exit ;;
   cli) shift; start_services; configure; exec uv run serpsense "$@" ;;
 esac
 

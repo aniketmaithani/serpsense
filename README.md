@@ -55,6 +55,7 @@ With Postgres and Redis installed (`brew install postgresql@17 redis`, and optio
 cp .env.example .env && uv run serpsense gen-secrets >> .env   # once
 scripts/dev.sh                                                  # app on http://127.0.0.1:8000
 scripts/dev.sh cli seed-demo --owner you@example.com            # in a second terminal
+scripts/dev.sh test -m "integration or api"                     # tests on a throwaway database, no Docker
 scripts/dev.sh stop                                             # stop the private Postgres and Redis
 ```
 
