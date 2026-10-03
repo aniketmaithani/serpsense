@@ -37,6 +37,8 @@ from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.system_clock import SystemClock
 from serpsense.config import AppEnv, ConfigError, EmailBackend, Settings, SignupMode
 from serpsense.domain.auth import SignupPolicy
+from serpsense.domain.enums import LlmTask
+from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
@@ -46,6 +48,7 @@ from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
+from serpsense.services.evals import Evaluator, MemoryLedger
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.outbox import OutboxDispatcher
@@ -66,6 +69,7 @@ __all__ = [
     "Worker",
     "build_celery",
     "build_container",
+    "build_evaluator",
     "build_outbox",
     "build_seeder",
     "build_session_guard",
@@ -247,6 +251,19 @@ def build_session_guard(settings: Settings, celery: Celery) -> SessionGuard:
         csrf,
         session_days=settings.session_days,
     )
+
+
+def build_evaluator(settings: Settings) -> tuple[Evaluator, str]:
+    """An evaluator on the real model and the configured preset, and the model it asks
+    (AGENTS §7); its ledger is in memory, so a run stores nothing."""
+    key = settings.anthropic_api_key
+    if key is None:
+        raise ConfigError("ANTHROPIC_API_KEY is needed to run an eval")
+    ledger = MemoryLedger()
+    client = AnthropicClient(key.get_secret_value(), PromptLibrary())
+    gateway = LlmGateway(client, ledger, SystemClock(), monthly_budget_micros=lambda _: 2**62)
+    task_settings = preset_settings(settings.default_llm_preset, LlmTask.LABEL_MENTIONS)
+    return Evaluator(gateway, ledger, task_settings), task_settings.model
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
