@@ -33,3 +33,20 @@ GROUP BY 1;
 SELECT outcome, count(*), sum(cost_micros) FROM llm_calls
 WHERE task = 'explain_crisis' AND created_at > now() - interval '1 day' GROUP BY 1;
 ```
+
+## Response drafts (ADR-0008)
+
+```sql
+-- Draft calls in the last week by outcome and effort, with cost (micros) and mean latency.
+SELECT outcome, request_settings ->> 'effort' AS effort, count(*), sum(cost_micros),
+       avg(latency_ms)::int AS mean_ms
+FROM llm_calls WHERE task = 'draft_response' AND created_at > now() - interval '7 days'
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- Succeeded draft calls that left no draft (refused for their citations): watches draft.uncited.
+SELECT count(*) FROM llm_calls c
+WHERE c.task = 'draft_response' AND c.outcome = 'succeeded'
+  AND c.created_at > now() - interval '7 days'
+  AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.llm_call_id = c.id);
+```
+
