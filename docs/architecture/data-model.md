@@ -185,7 +185,7 @@ running → failed                      (reason timed_out, by the maintenance sw
 |---|---|---|
 | id | uuid | pk |
 | user_id | uuid | fk → users (RESTRICT), `ix_serp_calls_user_id_created_at`; a scan's calls belong to the owner of its brand (`trg_serp_calls_user_owns_scan` → `ck_serp_calls_user_owns_scan`), a Preview call to its caller |
-| scan_id | uuid null | fk → scans (RESTRICT), `ix_serp_calls_scan_id`; null for Preview |
+| scan_id | uuid null | fk → scans (RESTRICT), `ix_serp_calls_scan_id`; null for Preview, which runs only the brand's configured templates, so nothing typed into Preview is stored here |
 | engine | enum `serp_engine` (SerpApi engine ids; mirrors `domain.enums.SerpEngine`) | `ix_serp_calls_engine_created_at` (circuit breaker reads last N per engine) |
 | params_hash | text | sha256 hex of the canonical JSON of `params` with `engine` added as a top-level key (params never carries its own): integers written as strings (`num=10` and `"10"` are the same request), sorted keys, `,`/`:` separators, UTF-8 without ASCII escaping (so a Hindi query hashes the same everywhere), as `domain.search.params_hash` computes it; never the key (`ck_serp_calls_params_hash_sha256`) |
 | 📄 params | jsonb | redacted request params; a JSON object (`ck_serp_calls_params_is_object`) with no `api_key` field at any depth and no `api_key=` in any string (`ck_serp_calls_params_no_api_key`), since a leaked key could never be removed from this append-only table; the client applies the same rule (`domain.search.contains_api_key`, checked against the CHECK by a contract test) before calling SerpApi, so a billed call is never left unrecorded |
