@@ -1,4 +1,5 @@
-"""Running one scan with fakes: the claim, the skips, collection, labelling and the finish."""
+"""Running one scan with fakes: the claim, the skips, collection, labelling, grouping and the
+finish."""
 
 import json
 import uuid
@@ -16,6 +17,7 @@ from serpsense.domain.enums import (
     ScanTrigger,
     SerpErrorCode,
     Surface,
+    Topic,
 )
 from serpsense.domain.estimator import BrandFacts, estimate
 from serpsense.domain.llm_capabilities import HAIKU, OPUS, Effort, TaskSettings
@@ -23,10 +25,12 @@ from serpsense.domain.scan_state import Transition, TransitionReason
 from serpsense.domain.settings.search import resolve
 from serpsense.ports.enrichment_store import PendingText
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, PromptUnavailable
+from serpsense.ports.narrative_store import UngroupedMention
 from serpsense.ports.scan_store import NewScan
 from serpsense.ports.scan_targets import NamedBrand, ScanTarget, StoreApp
 from serpsense.ports.search_provider import SearchFailed, SearchRequest
 from serpsense.services.collection import CollectorRunner
+from serpsense.services.grouping import Grouper
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
@@ -38,6 +42,7 @@ from tests.fakes import (
     InMemoryScans,
     MemoryLedger,
     RecordingEnrichments,
+    RecordingNarratives,
     ScriptedLlm,
     ScriptedSearch,
     StaticSchedules,
@@ -48,6 +53,7 @@ from tests.fakes import (
 pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+MINUTE = timedelta(minutes=1)
 OWNER, BRAND = uuid.uuid4(), uuid.uuid4()
 RIVAL = NamedBrand(uuid.uuid4(), "Uber")
 CABS = StoreApp(uuid.uuid4(), "com.olacabs.customer")
@@ -107,11 +113,20 @@ def scan(searcher: ScriptedSearch, *collectors: StubCollector, **options: Any) -
     llm, ledger = ScriptedLlm(answer), MemoryLedger(spent=options.pop("llm_spent", 0))
     gateway = LlmGateway(llm, ledger, clock, monthly_budget_micros=lambda u: 30_000_000)
     profiles = FixedProfiles(options.pop("settings", SETTINGS))
+    enrich_time = options.pop("enrich_time", 12 * MINUTE)
     usage = Usage(**options)
+    labeller, grouper = Labeller(lambda: uow, gateway, clock), Grouper(lambda: uow, gateway, clock)
     ports = ScanPorts(
-        lambda: uow, runner, Labeller(lambda: uow, gateway, clock), usage, profiles, clock
+        unit_of_work=lambda: uow,
+        collector=runner,
+        labeller=labeller,
+        grouper=grouper,
+        usage=usage,
+        profiles=profiles,
+        clock=clock,
     )
-    service = ScanService(ports, ScanLimits(timedelta(minutes=10), monthly_searches=1500))
+    limits = ScanLimits(time_limit=10 * MINUTE, enrich_time=enrich_time, monthly_searches=1500)
+    service = ScanService(ports, limits)
     return Scan(service, uow, scan_id, llm, ledger, profiles)
 
 
@@ -149,7 +164,10 @@ def test_a_queued_scan_is_claimed_collected_kept_labelled_and_succeeds() -> None
     assert set(run.uow.scans.surfaces[run.scan_id]) == set(Surface)
     assert [m.text for s in run.uow.mentions.sightings for m in s.mentions] == ["news news"]
     assert len(run.uow.enrichments.labels) == 1 and run.uow.enrichments.asked_for == [BRAND]
-    assert run.profiles.asked == [(OWNER, LlmTask.LABEL_MENTIONS)]
+    assert run.profiles.asked == [
+        (OWNER, LlmTask.LABEL_MENTIONS),
+        (OWNER, LlmTask.GROUP_NARRATIVES),
+    ]
     assert [call.user_id for call in run.ledger.calls] == [OWNER]  # the model call too
     assert run.llm.requests[0].variables["aliases"] == "Ola Cabs"
 
@@ -250,6 +268,65 @@ def test_labelling_that_cant_run_leaves_the_scan_partial(misconfigured: str) -> 
         assert run.service.run(run.scan_id) is S.PARTIAL
     assert moves(run)[-1] == (S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
     assert "labelling.misconfigured" in [entry["event"] for entry in logs]
+
+
+def label_then_group(request: LlmRequest) -> str | LlmCallFailed:
+    if request.task is LlmTask.LABEL_MENTIONS:
+        return labels(request)
+    story = {"id": "new1", "label": "Late drivers", "summary": "Riders report late drivers."}
+    placed = {"id": "m1", "narrative": "new1"}
+    return json.dumps({"new_narratives": [story], "placements": [placed]})
+
+
+def waiting() -> RecordingNarratives:
+    late = UngroupedMention(
+        mention_id=uuid.uuid4(),
+        source=MentionSource.NEWS,
+        language_code="en",
+        text="Late",
+        topic=Topic.RELIABILITY,
+        severity=30,
+        labelled_at=NOW,
+    )
+    return RecordingNarratives([late])
+
+
+def test_unfavourable_mentions_are_grouped_after_labelling() -> None:
+    run = scan(ScriptedSearch(), answer=label_then_group)
+    run.uow.narratives = waiting()
+    assert run.service.run(run.scan_id) is S.SUCCEEDED
+    tasks = [request.task for request in run.llm.requests]
+    assert tasks == [LlmTask.LABEL_MENTIONS, LlmTask.GROUP_NARRATIVES]
+    assert [call.scan_id for call in run.ledger.calls] == [run.scan_id, run.scan_id]
+    (story, _, _), (placed, _, _) = run.uow.narratives.started[0], run.uow.narratives.placed[0]
+    assert (story.label, placed.narrative_id) == ("Late drivers", story.narrative_id)
+
+
+def test_grouping_starts_no_batch_past_the_scans_deadline() -> None:
+    run = scan(ScriptedSearch(), answer=label_then_group, enrich_time=0 * MINUTE)
+    run.uow.narratives = waiting()
+    assert run.service.run(run.scan_id) is S.PARTIAL
+    assert [request.task for request in run.llm.requests] == [LlmTask.LABEL_MENTIONS]
+    assert moves(run)[-1] == (S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
+
+
+@pytest.mark.parametrize("problem", ["timeout", "prompt"])
+def test_grouping_that_fails_or_cant_run_leaves_the_scan_partial(problem: str) -> None:
+    def answer(request: LlmRequest) -> str | LlmCallFailed:
+        if request.task is LlmTask.LABEL_MENTIONS:
+            return labels(request)
+        if problem == "prompt":
+            raise PromptUnavailable("group_narratives/v1")
+        return LlmCallFailed("llm.timeout", retryable=True, latency_ms=10)
+
+    run = scan(ScriptedSearch(), answer=answer)
+    run.uow.narratives = waiting()
+    with capture_logs() as logs:
+        assert run.service.run(run.scan_id) is S.PARTIAL
+    assert moves(run)[-1] == (S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
+    assert len(run.uow.enrichments.labels) == 1  # what was labelled is kept
+    misconfigured = "grouping.misconfigured" in [entry["event"] for entry in logs]
+    assert misconfigured is (problem == "prompt")
 
 
 def test_a_stage_that_raises_fails_the_scan_and_the_error_propagates() -> None:
