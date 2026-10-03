@@ -1,15 +1,21 @@
 """A user's brands and what they're monitored with, in Postgres (data-model §2, §3)."""
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Connection, Table, select
+from sqlalchemy import Connection, Table, delete, select
 from sqlalchemy import insert as plain_insert
 from sqlalchemy.dialects.postgresql import insert
 
-from serpsense.adapters.db.models.brands import Brand, BrandAlias, BrandApp, BrandCompetitor
+from serpsense.adapters.db.models.brands import (
+    Brand,
+    BrandAlias,
+    BrandApp,
+    BrandCompetitor,
+    BrandLanguage,
+)
 from serpsense.adapters.db.models.settings import BrandScheduleVersion, BrandSearchSettingsVersion
 from serpsense.domain.enums import AppStore
 from serpsense.domain.schedule import Schedule
@@ -17,6 +23,7 @@ from serpsense.ports.brand_store import NewBrand
 
 BRANDS, ALIASES = cast(Table, Brand.__table__), cast(Table, BrandAlias.__table__)
 APPS, COMPETITORS = cast(Table, BrandApp.__table__), cast(Table, BrandCompetitor.__table__)
+LANGUAGES = cast(Table, BrandLanguage.__table__)
 SCHEDULES = cast(Table, BrandScheduleVersion.__table__)
 SETTINGS = cast(Table, BrandSearchSettingsVersion.__table__)
 SCHEMA_VERSION = 1  # of the search settings document (domain/settings/search.py)
@@ -72,6 +79,16 @@ class SqlBrandStore:
         version = {"interval_minutes": None, "timezone": latest[1]}
         self._version(SCHEDULES, brand_id, at, version | {"quiet_start": None, "quiet_end": None})
         return True
+
+    def set_languages(self, brand_id: uuid.UUID, languages: Sequence[str]) -> bool:
+        mine = LANGUAGES.c.brand_id == brand_id
+        gone = delete(LANGUAGES).where(mine, LANGUAGES.c.language_code.not_in(list(languages)))
+        removed = self._conn.execute(gone.returning(LANGUAGES.c.language_code)).all()
+        added = [
+            self._insert(LANGUAGES, {"brand_id": brand_id, "language_code": code})
+            for code in languages
+        ]
+        return bool(removed) or any(added)
 
     def set_search_settings(
         self, brand_id: uuid.UUID, document: Mapping[str, Any], *, at: datetime

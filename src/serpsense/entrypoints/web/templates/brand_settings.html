@@ -1,6 +1,9 @@
 {% extends "signed_in.html" %}
 {% set k = view.knobs %}
 {% macro box(name, label) %}<label><input type="checkbox" name="{{ name }}" value="true"{% if k[name] %} checked{% endif %}> {{ label }}</label>{% endmacro %}
+{% macro sorts_for(name) %}<select name="{{ name }}">
+        {% for sort in sorts %}<option value="{{ sort.value }}"{% if sort == k[name] %} selected{% endif %}>{{ sort|words }}</option>{% endfor %}
+        </select>{% endmacro %}
 {% block title %}{{ view.name }} search settings · SerpSense{% endblock %}
 {% block main %}
 <p><a href="/brands/{{ view.brand_id }}">← {{ view.name }}</a></p>
@@ -16,6 +19,11 @@
      Results SerpApi serves from its one-hour cache aren't billed.</p>
 </section>
 
+<nav class="tabs" aria-label="Settings sections">
+  {% for s, name in sections %}<a href="/brands/{{ view.brand_id }}/settings?section={{ s.value }}"{% if s == section %} aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}
+</nav>
+
+{% if section == "general" %}
 <section class="card">
   <h2>Start from a preset</h2>
   <form method="post" action="/brands/{{ view.brand_id }}/settings/preset" class="presets">
@@ -24,31 +32,82 @@
   </form>
   <p class="muted">Lean: English only, no AI Overview follow-up or Maps. Standard: the defaults. Deep: more search templates, complaint news, more review pages and YouTube.</p>
 </section>
+{% endif %}
 
 <section class="card">
-  <h2>Surfaces and schedule</h2>
   <form method="post" action="/brands/{{ view.brand_id }}/settings" class="settings">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <fieldset><legend>Google</legend>
-      {{ box("search_page", "Search results page") }}
-      {{ box("ai_overview", "AI Overview follow-up") }}
-      {{ box("autocomplete", "Autocomplete suggestions") }}
-      {{ box("news", "News") }}
-      {{ box("trends", "Trends (with competitors)") }}
-    </fieldset>
-    <fieldset><legend>Reviews</legend>
-      {{ box("play", "Google Play rating") }}
-      <label>Review pages <input type="number" name="play_review_pages" min="0" max="3" value="{{ k.play_review_pages }}"></label>
-      {{ box("maps", "Google Maps places") }}
-    </fieldset>
-    <fieldset><legend>Limits</legend>
+    <input type="hidden" name="section" value="{{ section.value }}">
+    {% for name, value in hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    {% if section == "general" %}
+    <fieldset><legend>General and limits</legend>
       <label>Searches a scan at most <input type="number" name="max_searches" min="1" max="100" value="{{ k.max_searches }}"></label>
       <label>Scan every
         <select name="interval_minutes">
         <option value=""{% if not k.interval_minutes %} selected{% endif %}>Manual only</option>
         {% for minutes in intervals %}<option value="{{ minutes }}"{% if minutes == k.interval_minutes %} selected{% endif %}>{{ minutes // 60 }} h</option>{% endfor %}
         </select></label>
+      <label>Languages <input name="languages" value="{{ k.languages|join(", ") }}" maxlength="80"></label>
+      <p class="muted">Language codes, separated by commas: en, hi, ta. Autocomplete searches once per language.</p>
+      {{ box("serpapi_cache", "Use SerpApi's one-hour cache (cached results aren't billed)") }}
+      <label>Country <input name="country" value="{{ k.country }}" maxlength="2"></label>
+      <label>Google domain <input name="google_domain" value="{{ k.google_domain }}" maxlength="30"></label>
+      <p class="muted">A two-letter country code (in) and the Google it searches (google.co.in).</p>
     </fieldset>
+    {% elif section == "search" %}
+    <fieldset><legend>Google search</legend>
+      {{ box("search_page", "Search results page") }}
+      <label>Result pages <input type="number" name="search_pages" min="1" max="3" value="{{ k.search_pages }}"></label>
+      <label for="search_templates">Searches</label>
+      <textarea id="search_templates" name="search_templates" rows="3">{{ k.search_templates|join("\n") }}</textarea>
+      <p class="muted">One to three, one a line; each line names {brand}, e.g. "{brand} reviews". Each costs a search per page.</p>
+      {{ box("ai_overview", "AI Overview follow-up (a search when the page only links to it)") }}
+    </fieldset>
+    {% elif section == "autocomplete" %}
+    <fieldset><legend>Autocomplete</legend>
+      {{ box("autocomplete", "Autocomplete suggestions") }}
+      <label for="autocomplete_prefixes">What is typed</label>
+      <textarea id="autocomplete_prefixes" name="autocomplete_prefixes" rows="4">{{ k.autocomplete_prefixes|join("\n") }}</textarea>
+      <p class="muted">One to five, one a line; each names {brand}. A trailing space asks for the next word. Each costs a search per language.</p>
+    </fieldset>
+    <fieldset><legend>News</legend>
+      {{ box("news", "News") }}
+      <label for="news_terms">Extra terms</label>
+      <textarea id="news_terms" name="news_terms" rows="3">{{ k.news_terms|join("\n") }}</textarea>
+      <p class="muted">Up to three, one a line, each searched as "{brand} term" (e.g. complaint, outage).</p>
+    </fieldset>
+    {% elif section == "trends" %}
+    <fieldset><legend>Trends</legend>
+      {{ box("trends", "Trends (with competitors)") }}
+      {{ box("related_queries", "Rising related queries") }}
+      <label>Region <input name="trends_region" value="{{ k.trends_region }}" maxlength="6"></label>
+      <p class="muted">A country code, or a region within one: IN, IN-KA.</p>
+      <label>Over
+        <select name="trends_range">
+        {% for value, name in ranges.items() %}<option value="{{ value }}"{% if value == k.trends_range %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select></label>
+    </fieldset>
+    {% elif section == "reviews" %}
+    <fieldset><legend>Google Play</legend>
+      {{ box("play", "Google Play rating and reviews") }}
+      <label>Review pages <input type="number" name="play_review_pages" min="0" max="3" value="{{ k.play_review_pages }}"></label>
+      <label>Reviews by {{ sorts_for("play_review_sort") }}</label>
+      <p class="muted">0 review pages reads the rating only.</p>
+    </fieldset>
+    <fieldset><legend>Google Maps</legend>
+      {{ box("maps", "Google Maps places") }}
+      <label>Review pages <input type="number" name="maps_review_pages" min="1" max="3" value="{{ k.maps_review_pages }}"></label>
+      <label>Reviews by {{ sorts_for("maps_review_sort") }}</label>
+    </fieldset>
+    {% elif section == "youtube" %}
+    <fieldset><legend>YouTube</legend>
+      {{ box("youtube", "YouTube videos") }}
+      <label for="youtube_templates">Searches</label>
+      <textarea id="youtube_templates" name="youtube_templates" rows="2">{{ k.youtube_templates|join("\n") }}</textarea>
+      <p class="muted">One or two, one a line; each names {brand}.</p>
+    </fieldset>
+    {% endif %}
     <button type="submit" name="action" value="preview" class="secondary">Preview the cost</button>
     <button type="submit" name="action" value="save">Save</button>
   </form>
