@@ -20,15 +20,17 @@ from serpsense.composition import (
     build_seeder,
     build_settings,
 )
-from serpsense.composition_replay import build_replayer
+from serpsense.composition_replay import build_recording_export, build_replayer
 from serpsense.config import ConfigError, RunMode, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.ports.accounts import InvalidEmail
+from serpsense.services.demo import DEMO_BRANDS
 from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
 from serpsense.services.grouping_eval import GoldenMention, GroupingBrand, grouping_report
 from serpsense.services.replay import Played
 
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
+RECORDINGS = Path("src/serpsense/adapters/replay/recordings")  # shipped with the package
 
 app = typer.Typer(help="SerpSense command-line tools.", no_args_is_help=True)
 replay = typer.Typer(help="Replay mode: recorded scans, played back with no API keys.")
@@ -167,3 +169,28 @@ def _group_narratives(lines: list[str], brand: str, split: str, cap: int, today:
 EVALS: Mapping[LlmTask, Callable[[list[str], str, str, int, str], Ran]] = MappingProxyType(
     {LlmTask.LABEL_MENTIONS: _label_mentions, LlmTask.GROUP_NARRATIVES: _group_narratives}
 )
+
+
+@replay.command("export")
+def replay_export(
+    brand: Annotated[
+        list[str] | None, typer.Option(help="A brand's slug; repeat it. Default: the demo's.")
+    ] = None,
+    out: Annotated[Path, typer.Option(help="Where the recordings go.")] = RECORDINGS,
+) -> None:
+    """Record brands' stored scans as replay recordings, one file each. Read-only on the
+    database; run it from the repository root, then commit the files in a pull request."""
+    exporter = build_recording_export(build_settings())  # outside the try: never echo settings
+    slugs = brand or [demo.slug for demo in DEMO_BRANDS]
+    out.mkdir(parents=True, exist_ok=True)
+    for slug in slugs:
+        try:
+            exported = exporter.export(slug)
+        except (LookupError, ValueError) as exc:  # no brand, or an unsafe recording refused
+            typer.echo(f"{slug}: {exc}", err=True)
+            raise typer.Exit(2) from exc
+        (out / f"{slug}.json").write_text(exported.text, encoding="utf-8")
+        typer.echo(
+            f"{slug}: {exported.scans} scans ({exported.answers} answers),"
+            f" {exported.labels} labels."
+        )
