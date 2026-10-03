@@ -15,6 +15,7 @@ from serpsense.services.demo import Seeded
 from serpsense.services.evals import EvalResult, Evaluator, GoldenBrand, GoldenItem, Split
 from tests.factories import make_settings
 from tests.unit.test_evals import answering, evaluator, item
+from tests.unit.test_grouping_eval import BRAND, grouping_evaluator, mention, placing
 
 pytestmark = pytest.mark.unit
 
@@ -132,6 +133,25 @@ def test_eval_passes_the_cap_in_micros_and_fails_when_items_go_unanswered(
     result = runner.invoke(app, [*args, "--cap-cents", "7"])
     assert result.exit_code == 1 and "Scored 0 of 1 items" in result.stdout
     assert capturing.caps == [70_000]  # 7 US cents in micros
+
+
+def test_eval_groups_the_golden_mentions_and_writes_its_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    golden, reports = tmp_path / "golden", tmp_path / "reports"
+    golden.mkdir()
+    items = [mention(1, "refunds"), mention(2, "refunds"), mention(3, None)]
+    (golden / "group_narratives.jsonl").write_text("\n".join(i.model_dump_json() for i in items))
+    (golden / "group_narratives.brand.json").write_text(BRAND.model_dump_json())
+    grouping, _ = grouping_evaluator(placing({"text 1": "new1", "text 2": "new1"}))
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_grouping_evaluator", lambda s: (grouping, "claude-opus-5-5"))
+    args = ["eval", "group_narratives", "--golden", str(golden), "--reports", str(reports)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0 and "Scored 3 of 3 items" in result.stdout
+    (written,) = reports.iterdir()
+    assert written.name.endswith("-group_narratives.md")
+    assert "| Recall | 100.0% |" in written.read_text()
 
 
 @pytest.mark.parametrize("args", [["draft_response"], ["label_mentions", "--split", "train"]])
