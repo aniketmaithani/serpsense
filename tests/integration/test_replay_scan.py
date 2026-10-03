@@ -85,8 +85,10 @@ def requests_of(uow: SqlUnitOfWork, scan_id: uuid.UUID) -> list[SearchRequest]:
     return [lead.request for collector in COLLECTORS for lead in collector.leads(aim)]
 
 
-def recording_for(requests: list[SearchRequest]) -> Recording:
-    """Two recorded scans: the second found only the first news story."""
+def recording_for(
+    requests: list[SearchRequest], settings: dict[str, Any] | None = None
+) -> Recording:
+    """Two recorded scans, half a day apart: the second found only the first news story."""
     names = sorted({fixture_for(r) for r in requests})
     news = recorded("news")
     payloads = [recorded(name) for name in names]
@@ -94,7 +96,7 @@ def recording_for(requests: list[SearchRequest]) -> Recording:
     scans = [
         RecordedScan(
             recorded_at=NOW + n * HALF_DAY,
-            settings={},
+            settings=settings or {},
             answers=tuple(
                 RecordedAnswer(
                     engine=r.engine,

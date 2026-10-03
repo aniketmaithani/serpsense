@@ -59,6 +59,12 @@ def test_a_schedule_or_settings_version_is_written_only_when_it_changes(conn: Co
     assert store.set_schedule(ola, quiet, at=NOW + timedelta(2))
     assert not store.set_schedule(ola, quiet, at=NOW + timedelta(3))  # times compare too
     assert count(conn, "brand_schedule_versions") == 2
+    assert store.set_schedule(ola, None, at=NOW + timedelta(4))  # scanned on request only
+    assert not store.set_schedule(ola, None, at=NOW + timedelta(5))
+    latest = select(table("brand_schedule_versions").c.interval_minutes).order_by(
+        table("brand_schedule_versions").c.created_at.desc()
+    )
+    assert conn.execute(latest.limit(1)).scalar_one() is None
     lean = {"languages": ["en"], "maps": {"enabled": False}}
     assert store.set_search_settings(ola, lean, at=NOW)
     assert not store.set_search_settings(ola, dict(lean), at=NOW + timedelta(1))

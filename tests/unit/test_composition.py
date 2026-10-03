@@ -23,6 +23,7 @@ from serpsense.composition import (
     build_sign_in,
     build_worker,
 )
+from serpsense.composition_replay import build_replayer
 from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import preset_settings
@@ -79,6 +80,14 @@ def test_a_replay_worker_needs_no_api_keys_and_answers_from_recordings() -> None
     assert isinstance(search.provider, ReplaySearchProvider)
     assert isinstance(search.cache, NullResponseCache)
     assert isinstance(worker.scans._ports.labeller._gateway._client, ReplayLlm)
+
+
+def test_recordings_are_played_only_in_replay_mode_and_need_no_api_key() -> None:
+    live = make_settings()
+    with pytest.raises(ConfigError, match="SERPSENSE_MODE=replay"):
+        build_replayer(live, build_celery(live))
+    replay = make_settings(serpsense_mode="replay")
+    assert callable(build_replayer(replay, build_celery(replay)))
 
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:

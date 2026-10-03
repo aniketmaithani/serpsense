@@ -1,18 +1,22 @@
 import base64
 import json
 import uuid
+from collections import Counter
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from serpsense import __version__
+from serpsense.composition_replay import Replayed
 from serpsense.entrypoints import cli
 from serpsense.entrypoints.cli import app
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.demo import Seeded
 from serpsense.services.evals import EvalResult, Evaluator, GoldenBrand, GoldenItem, Split
+from serpsense.services.replay import Played
 from tests.factories import make_settings
 from tests.unit.test_evals import answering, evaluator, item
 from tests.unit.test_grouping_eval import BRAND, grouping_evaluator, mention, placing
@@ -73,6 +77,42 @@ def test_seed_demo_refuses_what_isnt_an_email_address(monkeypatch: pytest.Monkey
     assert result.exit_code == 2
     assert "That isn't an email address." in result.stderr
     assert "nobody" not in result.stdout + result.stderr
+
+
+def replaying(asked: list[str], *, refuse: bool = False) -> Callable[..., Callable[[str], Any]]:
+    def replayer(settings: object, celery: object) -> Callable[[str], Replayed]:
+        def replay(email: str) -> Replayed:
+            if refuse:
+                raise InvalidEmail("not an email address")
+            asked.append(email)
+            seeded = Seeded(uuid.uuid4(), uuid.uuid4(), tuple(uuid.uuid4() for _ in range(4)))
+            return Replayed(seeded, Counter({Played.PLAYED: 9, Played.ALREADY: 2}))
+
+        return replay
+
+    return replayer
+
+
+@pytest.mark.parametrize("command", [["seed-demo"], ["replay", "load"]])
+def test_in_replay_mode_seeding_plays_the_recordings(
+    monkeypatch: pytest.MonkeyPatch, command: list[str]
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr(cli, "build_settings", lambda: make_settings(serpsense_mode="replay"))
+    monkeypatch.setattr(cli, "build_replayer", replaying(asked))
+    result = runner.invoke(app, [*command, "--owner", "demo@example.com"])
+    assert result.exit_code == 0 and asked == ["demo@example.com"]
+    assert "Played 9 recorded scans (2 played before, 0 left for later)" in result.stdout
+    assert "demo@example.com" not in result.stdout + result.stderr  # never echoed
+    monkeypatch.setattr(cli, "build_replayer", replaying([], refuse=True))
+    refused = runner.invoke(app, [*command, "--owner", "nobody"])
+    assert refused.exit_code == 2 and "That isn't an email address." in refused.stderr
+
+
+def test_replay_load_refuses_live_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    result = runner.invoke(app, ["replay", "load", "--owner", "demo@example.com"])
+    assert result.exit_code == 2 and "only with SERPSENSE_MODE=replay" in result.stderr
 
 
 def test_score_backlog_says_how_many_scans_it_scored(monkeypatch: pytest.MonkeyPatch) -> None:
