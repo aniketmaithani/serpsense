@@ -8,6 +8,7 @@ import pytest
 from serpsense.domain.enums import MentionSource
 from serpsense.domain.mention import (
     ParsedMention,
+    best_ranked,
     canonical_url,
     clean_language,
     clean_url,
@@ -140,3 +141,20 @@ def test_a_valid_mention_is_accepted() -> None:
 def test_a_mention_the_database_would_reject_is_refused(overrides: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         news(**overrides)
+
+
+def test_each_identity_keeps_its_best_rank_whatever_the_order() -> None:
+    other = url_key("https://example.in/other")
+    seen = [
+        news(position=4),
+        news(identity_key=other, url=None, position=None),
+        news(position=2, text="Ola revises fares again"),
+        news(position=None),
+        ParsedMention(MentionSource.AUTOCOMPLETE, text_key("ola fares"), "ola fares", position=3),
+    ]
+    for order in (seen, seen[::-1]):
+        assert [(m.source, m.position, m.text) for m in best_ranked(order)] == [
+            (MentionSource.AUTOCOMPLETE, 3, "ola fares"),
+            (MentionSource.NEWS, 2, "Ola revises fares again"),
+            (MentionSource.NEWS, None, "Ola revises fares"),
+        ]
