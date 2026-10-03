@@ -19,6 +19,8 @@ IDENTITY = {
     "channel_results",
     "contributor_id",
     "developer_contact",
+    "profile_name",
+    "short_videos",
     "user",
     "username",
 }
@@ -45,5 +47,7 @@ def test_fixture_is_redacted(path: Path) -> None:
     assert not re.search(r"\b[0-9a-f]{64}\b", text)  # nothing shaped like a SerpApi key
     payload = json.loads(text)
     assert not IDENTITY & set(keys(payload))
+    reviews = payload.get("reviews", [])
+    assert not [r for r in reviews if "response" in r]  # replies greet reviewers by name
     metadata = payload.get("search_metadata", {})
     assert not [v for v in metadata.values() if isinstance(v, str) and v.startswith("http")]
