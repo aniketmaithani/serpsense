@@ -197,3 +197,11 @@ article.draft .reasoning { white-space: pre-line; color: var(--muted); font-size
   .brand-card { transition: none; }
   .brand-card:hover { transform: none; }
 }
+
+/* How the crisis is picked up; mention pages; hints under form fields */
+table.signals { margin-bottom: 1rem; }
+table.signals td .hint { font-size: 0.8rem; margin-top: 0.2rem; }
+table.signals tfoot td { font-weight: 600; border-bottom: 0; }
+ul.rules { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.4rem; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+p.hint { font-size: 0.8rem; margin: 0.2rem 0 0.6rem; }

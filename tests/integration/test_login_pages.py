@@ -28,6 +28,7 @@ from serpsense.services.ai_settings import AiSettings
 from serpsense.services.auth import SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.brands import BrandCreator
+from serpsense.services.crisis_tuning import CrisisTuner
 from serpsense.services.drafts import Drafter, DraftPorts
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
@@ -69,6 +70,7 @@ def browser(
         stories=SqlStories(engine.connect),
         accounts=AccountDeletion(ports.unit_of_work, sign_in, clock),
         brands=BrandCreator(lambda: SqlUnitOfWork(engine, ScanJobs()), clock),
+        crisis_tuning=CrisisTuner(lambda: SqlUnitOfWork(engine, ScanJobs()), clock),
         ai_settings=AiSettings(
             SqlLlmProfiles(engine, LlmPreset.BALANCED), clock, fallback=LlmPreset.BALANCED
         ),

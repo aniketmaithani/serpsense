@@ -63,6 +63,26 @@ reaches **high** only with a search-visible signal (a new negative suggestion or
 negative query). That is intended: what someone sees when they Google the brand is what this
 product watches.
 
+## Tuning a brand's crisis
+
+The owner can tune how a brand's crisis is **read**, per brand, on its "Crisis tuning" page
+(`brand_crisis_tuning_versions`, `domain/scoring/tuning.py`). The signals, their weights and the
+crisis score don't change; per-brand weights are still not offered.
+
+| Knob | Default | Range | What it changes |
+|---|---|---|---|
+| Warm-up | 3 | 0–8 | Earlier scored scans before a scan gets a level |
+| Medium from | 40 | 1–99 | Where medium starts |
+| High from | 70 | above medium, ≤ 100 | Where high starts |
+| Cooldown | 12 h | 1–72 h | How long a rule that fired stays quiet for the brand (30 minutes' slack, as before) |
+| Story spreading | 5 mentions on 2 surfaces | 2–50, 1–5 | When a story raises a `narrative_spread` alert |
+
+The latest tuning applies to **all** the brand's scans: levels are derived (`v_scan_scores`), so
+the page and the alert rules compare a scan with the one before under the same cut-offs, and a
+change shows at once. Alerts already raised stay as they were; the next scan's rules use the new
+numbers. The brand page shows the latest scan's signals, their weights and what each added, with
+the levels, warm-up and alert rules in force.
+
 ## Where the inputs come from
 
 `domain/scoring/scan.py` scores one scan. A scan that succeeded or is partial is scored in the

@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
+from serpsense.entrypoints.web.crisis_tuning import signals
 from serpsense.entrypoints.web.landing import landing_page
 from serpsense.entrypoints.web.pages import signed_in_page
 from serpsense.entrypoints.web.session import container, current_user, require_csrf
@@ -37,19 +38,19 @@ def home(request: Request) -> Response:
 
 
 @router.get("/brands/{brand_id}")
-def brand(request: Request, brand_id: str, scan: str = "") -> Response:
+def brand(request: Request, brand_id: str, scan: str = "", page: int = 1) -> Response:
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", SEE_OTHER)
-    wanted = _brand_id(brand_id)
-    found = None if wanted is None else container(request).overview.brand(user.user_id, wanted)
+    wanted, overview = _brand_id(brand_id), container(request).overview
+    found = None if wanted is None else overview.brand(user.user_id, wanted, mention_page=page)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     trend = [{"at": p.at.isoformat(), "health": p.health, "crisis": p.crisis} for p in found.trend]
     notice = SAID.get(scan)
     stories = container(request).stories.of_brand(user.user_id, found.card.brand_id, limit=5)
     context = {"brand": found, "trend": trend, "notice": notice, "stories": stories}
-    return signed_in_page(request, user, "brand.html", **context)
+    return signed_in_page(request, user, "brand.html", signals=signals(found), **context)
 
 
 @router.post("/brands/{brand_id}/scan")

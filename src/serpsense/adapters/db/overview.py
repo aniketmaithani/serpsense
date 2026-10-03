@@ -14,6 +14,7 @@ from sqlalchemy import Connection
 from serpsense.adapters.db.scoping import scoped
 from serpsense.domain.enums import (
     AlertRule,
+    CrisisComponent,
     CrisisLevel,
     MentionSource,
     ScanStatus,
@@ -21,6 +22,7 @@ from serpsense.domain.enums import (
     SurfaceOutcome,
 )
 from serpsense.domain.labelling import PROMPTS
+from serpsense.domain.scoring.tuning import DEFAULT_TUNING, CrisisTuning
 from serpsense.ports.overview import (
     AlertRow,
     BrandCard,
@@ -30,7 +32,7 @@ from serpsense.ports.overview import (
     TrendPoint,
 )
 
-TREND_SCANS, PAGE_MENTIONS, PAGE_ALERTS = 60, 40, 10
+TREND_SCANS, PAGE_MENTIONS, PAGE_ALERTS = 60, 10, 10
 ACTIVE_PROMPTS = sorted(PROMPTS.values())
 CARDS = scoped(
     """
@@ -72,7 +74,7 @@ ORDER BY r.surface
 MENTIONS = scoped(
     """
 SELECT m.source, coalesce(rv.text, m.text) AS text, m.url, m.outlet, o.position, m.published_at,
-       e.sentiment, e.reason
+       e.sentiment, e.reason, count(*) OVER () AS total
 FROM mention_observations o JOIN mentions m ON m.id = o.mention_id
 LEFT JOIN LATERAL (SELECT revision, text FROM mention_revisions WHERE mention_id = m.id
                    ORDER BY revision DESC LIMIT 1) rv ON true
@@ -84,7 +86,7 @@ WHERE o.scan_id = :scan AND e.is_about_brand IS NOT FALSE
   AND m.brand_id IN ({owned} AND id = :brand)
 ORDER BY e.sentiment ASC NULLS LAST, e.severity DESC NULLS LAST, o.position ASC NULLS LAST,
          m.published_at DESC NULLS LAST, m.id
-LIMIT :limit
+LIMIT :limit OFFSET :offset
 """
 )
 ALERTS = scoped(
@@ -95,6 +97,25 @@ LEFT JOIN notifications n ON n.alert_id = a.id AND n.user_id = :user
 LEFT JOIN alert_explanations e ON e.alert_id = a.id
 WHERE s.brand_id IN ({owned} AND id = :brand)
 ORDER BY a.created_at DESC, a.id LIMIT :limit
+"""
+)
+SIGNALS = scoped(
+    """
+SELECT x.component, x.value FROM crisis_components x JOIN scans s ON s.id = x.scan_id
+WHERE x.scan_id = :scan AND s.brand_id IN ({owned} AND id = :brand)
+"""
+)
+SCORED = scoped(
+    """
+SELECT count(*) FROM score_runs r JOIN scans s ON s.id = r.scan_id
+WHERE s.brand_id IN ({owned} AND id = :brand)
+"""
+)
+TUNING = scoped(
+    """
+SELECT warm_up_scans, medium_at, high_at, cooldown_hours, spread_mentions, spread_surfaces
+FROM brand_crisis_tuning_versions WHERE brand_id IN ({owned} AND id = :brand)
+ORDER BY created_at DESC LIMIT 1
 """
 )
 COMPETITORS = scoped(
@@ -112,24 +133,52 @@ class SqlOverview:
         with self._connect() as conn:
             return [_card(row) for row in conn.execute(CARDS, {"user": user_id, "brands": None})]
 
-    def brand(self, user_id: uuid.UUID, brand_id: uuid.UUID) -> BrandPage | None:
+    def brand(
+        self, user_id: uuid.UUID, brand_id: uuid.UUID, *, mention_page: int = 1
+    ) -> BrandPage | None:
         known = {"user": user_id, "brand": brand_id}
         with self._connect() as conn:
             row = conn.execute(CARDS, {"user": user_id, "brands": [brand_id]}).first()
             if row is None:
                 return None
             in_scan = known | {"scan": row.scored_scan_id}
-            mentions = known | {"scan": row.scored_scan_id, "active": ACTIVE_PROMPTS}
+            mentions, page, pages = _mentions(conn, in_scan, max(1, mention_page))
+            tuning = conn.execute(TUNING, known).first()
             return BrandPage(
                 card=_card(row),
                 trend=tuple(map(_point, conn.execute(TREND, known | {"limit": TREND_SCANS}))),
                 surfaces=tuple(map(_surface, conn.execute(SURFACES, in_scan))),
-                mentions=tuple(
-                    map(_mention, conn.execute(MENTIONS, mentions | {"limit": PAGE_MENTIONS}))
-                ),
+                mentions=mentions,
                 alerts=tuple(map(_alert, conn.execute(ALERTS, known | {"limit": PAGE_ALERTS}))),
                 competitors=_competitors(conn, known),
+                components={CrisisComponent(c): v for c, v in conn.execute(SIGNALS, in_scan)},
+                scored_scans=conn.execute(SCORED, known).scalar_one(),
+                tuning=DEFAULT_TUNING if tuning is None else CrisisTuning(**tuning._asdict()),
+                mention_page=page,
+                mention_pages=pages,
             )
+
+
+def _mentions(
+    conn: Connection, in_scan: dict[str, Any], wanted: int
+) -> tuple[tuple[MentionRow, ...], int, int]:
+    """One page of the scan's mentions, the page it is, and how many pages there are; a page
+    past the last reads the last."""
+    values = in_scan | {"active": ACTIVE_PROMPTS, "limit": PAGE_MENTIONS}
+
+    def page(number: int) -> list[Any]:
+        return list(conn.execute(MENTIONS, values | {"offset": (number - 1) * PAGE_MENTIONS}))
+
+    rows = page(wanted)
+    if not rows and wanted > 1:
+        first = page(1)
+        wanted = _pages(first[0].total) if first else 1
+        rows = page(wanted) if wanted > 1 else first
+    return tuple(map(_mention, rows)), wanted, _pages(rows[0].total if rows else 0)
+
+
+def _pages(total: int) -> int:
+    return max(1, -(-total // PAGE_MENTIONS))
 
 
 def _competitors(conn: Connection, known: dict[str, uuid.UUID]) -> tuple[BrandCard, ...]:
