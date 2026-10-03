@@ -134,7 +134,7 @@ def test_eval_passes_the_cap_in_micros_and_fails_when_items_go_unanswered(
     assert capturing.caps == [70_000]  # 7 US cents in micros
 
 
-@pytest.mark.parametrize("args", [["group_narratives"], ["label_mentions", "--split", "train"]])
+@pytest.mark.parametrize("args", [["draft_response"], ["label_mentions", "--split", "train"]])
 def test_eval_refuses_a_task_or_split_with_no_golden_set(args: list[str]) -> None:
     result = runner.invoke(app, ["eval", *args])
     assert result.exit_code == 2 and "No eval for" in result.stderr

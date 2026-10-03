@@ -57,6 +57,7 @@ from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.evals import Evaluator, MemoryLedger
 from serpsense.services.grouping import Grouper
+from serpsense.services.grouping_eval import GroupingEvaluator
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.outbox import OutboxDispatcher
@@ -80,6 +81,7 @@ __all__ = [
     "build_celery",
     "build_container",
     "build_evaluator",
+    "build_grouping_evaluator",
     "build_outbox",
     "build_scan_now",
     "build_seeder",
@@ -309,14 +311,26 @@ def build_session_guard(settings: Settings, celery: Celery) -> SessionGuard:
 def build_evaluator(settings: Settings) -> tuple[Evaluator, str]:
     """An evaluator on the real model and the configured preset, and the model it asks
     (AGENTS §7); its ledger is in memory, so a run stores nothing."""
+    gateway, ledger = _eval_gateway(settings)
+    task_settings = preset_settings(settings.default_llm_preset, LlmTask.LABEL_MENTIONS)
+    return Evaluator(gateway, ledger, task_settings), task_settings.model
+
+
+def build_grouping_evaluator(settings: Settings) -> tuple[GroupingEvaluator, str]:
+    """The same for narrative grouping, on the preset's grouping settings."""
+    gateway, ledger = _eval_gateway(settings)
+    task_settings = preset_settings(settings.default_llm_preset, LlmTask.GROUP_NARRATIVES)
+    return GroupingEvaluator(gateway, ledger, task_settings), task_settings.model
+
+
+def _eval_gateway(settings: Settings) -> tuple[LlmGateway, MemoryLedger]:
     key = settings.anthropic_api_key
     if key is None:
         raise ConfigError("ANTHROPIC_API_KEY is needed to run an eval")
     ledger = MemoryLedger()
     client = AnthropicClient(key.get_secret_value(), PromptLibrary())
     gateway = LlmGateway(client, ledger, SystemClock(), monthly_budget_micros=lambda _: 2**62)
-    task_settings = preset_settings(settings.default_llm_preset, LlmTask.LABEL_MENTIONS)
-    return Evaluator(gateway, ledger, task_settings), task_settings.model
+    return gateway, ledger
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
