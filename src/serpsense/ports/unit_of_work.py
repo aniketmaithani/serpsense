@@ -15,6 +15,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from serpsense.ports.accounts import Accounts
+from serpsense.ports.alert_store import AlertStore
 from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
@@ -54,6 +55,9 @@ class UnitOfWork(Protocol):
 
     @property
     def scores(self) -> ScoreStore: ...
+
+    @property
+    def alerts(self) -> AlertStore: ...
 
     @property
     def jobs(self) -> JobQueue:
