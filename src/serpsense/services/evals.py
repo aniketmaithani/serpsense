@@ -128,7 +128,7 @@ class Evaluator:
         for start in range(0, len(items), BATCH):
             batch = items[start : start + BATCH]
             result.calls = self._ledger.calls[first:]
-            if result.stopped is None and _would_pass(result.calls, cap_micros):
+            if result.stopped is None and would_pass(result.calls, cap_micros):
                 result.stopped = Stop.CAP
             answers: dict[str, Label] = {}
             if result.stopped is None:
@@ -161,7 +161,7 @@ class Evaluator:
         return {label.id: label for label in answer.output.labels}
 
 
-def _would_pass(calls: Sequence[LlmCallRecord], cap_micros: int) -> bool:
+def would_pass(calls: Sequence[LlmCallRecord], cap_micros: int) -> bool:
     """Another call like the dearest so far would take the spend past the cap."""
     costs = [call.cost_micros for call in calls]
     return bool(costs) and sum(costs) + max(costs) > cap_micros
