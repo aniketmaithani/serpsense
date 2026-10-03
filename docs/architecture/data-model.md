@@ -200,6 +200,8 @@ running → skipped    budget_exhausted | quota_insufficient (checked after clai
 
 **Circuit breaker** is derived, with no state of its own: an engine is open when its last 5 attempts that reached SerpApi within 15 minutes all failed **transiently**. An attempt is a successful call not served from `local_cache`, or a failed one; a failure is transient only for a network error or timeout (`serpapi.network`, `serpapi.timeout`), HTTP 429 (`serpapi.http_429`) or 5xx (`serpapi.http_5xx`); the codes are `domain.enums.SerpErrorCode`, whose `is_transient` encodes this rule. A permanent 4xx or a local rejection is still a failed call but never trips the breaker, so one brand's bad parameters can't close an engine for every user. Skipped calls and local-cache hits are ignored, so an open breaker never keeps itself open; it closes once those failures leave the window (ADR-0007, amended).
 
+**Budgets** (search service) count billable (`live`) calls over UTC calendar periods: a global daily cap (`SERPAPI_DAILY_GLOBAL_CAP`), the user's monthly budget (latest `user_search_budgets` row, else `DEFAULT_MONTHLY_SEARCH_BUDGET`) and a per-scan cap (`MAX_SEARCHES_PER_SCAN`). A blocked call is a `skipped_budget` row. They are soft: calls are recorded when they return, so concurrent calls can pass a limit by the number in flight; the scan's quota check and SerpApi's own quota are the outer limits.
+
 **Recording:** the client writes each `serp_calls` row in its own transaction as soon as the call returns, before any `raw_responses` row, so a rejected payload never loses the record of a billed call.
 
 ### `raw_responses`
