@@ -13,6 +13,7 @@ from serpsense.composition import (
     build_celery,
     build_container,
     build_evaluator,
+    build_grouping_evaluator,
     build_outbox,
     build_seeder,
     build_session_guard,
@@ -99,3 +100,9 @@ def test_build_evaluator_needs_the_anthropic_key_and_says_which_model() -> None:
         build_evaluator(make_settings())
     _, model = build_evaluator(make_settings(anthropic_api_key="sk-ant-test-only"))
     assert model == "claude-opus-5-5"
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):
+        build_grouping_evaluator(make_settings())
+    settings = make_settings(anthropic_api_key="sk-ant-test-only")
+    grouping, model = build_grouping_evaluator(settings)
+    preset = preset_settings(settings.default_llm_preset, LlmTask.GROUP_NARRATIVES)
+    assert (grouping.settings, model) == (preset, preset.model)
