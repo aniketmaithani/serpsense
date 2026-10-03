@@ -32,7 +32,7 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     # Pseudonymised to deleted+<id>@serpsense.invalid on account deletion (ADR-0013).
     email: Mapped[str] = mapped_column(CITEXT, unique=True)
-    # Users are created on first successful OTP verification, so this is also verification time.
+    # Created at the first successful OTP verification, or when an operator seeds a demo owner.
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
 
