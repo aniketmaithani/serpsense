@@ -1,0 +1,34 @@
+{% extends "signed_in.html" %}
+{% block title %}{{ view.name }} crisis tuning · SerpSense{% endblock %}
+{% macro knob(name, label, hint, unit="") %}
+<label for="{{ name }}">{{ label }}</label>
+<div class="kpi-row"><input type="number" id="{{ name }}" name="{{ name }}" min="{{ ranges[name][0] }}" max="{{ ranges[name][1] }}" value="{{ knobs[name] }}" required>{% if unit %}<span class="muted">{{ unit }}</span>{% endif %}</div>
+<p class="muted hint">{{ hint }} Default {{ defaults[name] }}; {{ ranges[name][0] }}–{{ ranges[name][1] }}.</p>
+{% endmacro %}
+{% block main %}
+<p><a href="/brands/{{ view.brand_id }}">← {{ view.name }}</a></p>
+<header class="page-head">
+  <div>
+    <h1>Crisis tuning</h1>
+    <p class="muted">The signals and the crisis score stay the same; these knobs set how the score is read and how often alerts fire. Alerts always come from these rules, never from the model.</p>
+  </div>
+</header>
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+<section class="card">
+  <form method="post" action="/brands/{{ view.brand_id }}/crisis" class="settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset><legend>Picking up a crisis</legend>
+      {{ knob("warm_up_scans", "Warm-up", "Scored scans a brand needs before its crisis gets a level. On its first scans everything is new, so fewer means earlier but noisier levels.", "earlier scans") }}
+      {{ knob("medium_at", "Medium from", "The crisis score where the level turns medium.", "/ 100") }}
+      {{ knob("high_at", "High from", "Where it turns high; above medium.", "/ 100") }}
+    </fieldset>
+    <fieldset><legend>Alerts</legend>
+      {{ knob("cooldown_hours", "Cooldown", "After a rule fires for this brand it stays quiet this long; a level rising past the one last alerted still alerts.", "hours") }}
+      {{ knob("spread_mentions", "Story spreading: mentions", "A story Claude grouped raises an alert once it holds this many mentions…") }}
+      {{ knob("spread_surfaces", "Story spreading: surfaces", "…on at least this many surfaces.") }}
+    </fieldset>
+    <button type="submit" name="action" value="save">Save</button>
+    <button type="submit" name="action" value="reset" class="secondary">Reset to defaults</button>
+  </form>
+</section>
+{% endblock %}

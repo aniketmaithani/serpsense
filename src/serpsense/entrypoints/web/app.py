@@ -15,6 +15,7 @@ from serpsense.entrypoints.web.ai_settings import router as ai_router
 from serpsense.entrypoints.web.auth import router as auth_router
 from serpsense.entrypoints.web.brand_settings import router as settings_router
 from serpsense.entrypoints.web.brands import router as brands_router
+from serpsense.entrypoints.web.crisis_tuning import router as crisis_tuning_router
 from serpsense.entrypoints.web.health import router as health_router
 from serpsense.entrypoints.web.middleware import (
     RequestContextMiddleware,
@@ -41,6 +42,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(add_brand_router)  # before /brands/{id}, which would take 'new'
     app.include_router(brands_router)
+    app.include_router(crisis_tuning_router)
     app.include_router(notifications_router)
     app.include_router(settings_router)
     app.include_router(stories_router)

@@ -16,6 +16,7 @@
       <button type="submit">Scan now</button>
     </form>{% endif %}
     <a class="button-secondary" href="/brands/{{ card.brand_id }}/settings">Search settings</a>
+    <a class="button-secondary" href="/brands/{{ card.brand_id }}/crisis">Crisis tuning</a>
   </div>
 </header>
 {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
@@ -24,7 +25,7 @@
   <div class="kpi"><span class="kpi-label">Health</span><span class="kpi-value">{{ score(card.health) }}</span>
     {% if card.health is not none %}<meter min="0" max="100" low="40" high="70" optimum="100" value="{{ card.health }}"></meter>{% endif %}</div>
   <div class="kpi"><span class="kpi-label">Crisis</span><span class="kpi-value crisis">{{ score(card.crisis) }}</span>
-    <div class="kpi-row">{% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% else %}<span class="muted">warming up: a level comes after a few scored scans</span>{% endif %}</div></div>
+    <div class="kpi-row">{% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% else %}<span class="muted">warming up: {{ [brand.scored_scans - 1, 0]|max }} of {{ brand.tuning.warm_up_scans }} earlier scans scored · <a href="#crisis-logic">how</a></span>{% endif %}</div></div>
   <div class="kpi"><span class="kpi-label">Last scan</span><span>{{ card.last_scan_at|when }}</span>
     {% if card.last_status %}<span class="pill">{{ card.last_status|words }}</span>{% endif %}</div>
 </section>
@@ -34,6 +35,26 @@
     {% if trend %}
     <section class="card"><div class="card-head"><h2>Health and crisis over time</h2></div><div class="chart"><canvas id="trend" data-trend='{{ trend|tojson }}'></canvas></div></section>
     {% endif %}
+
+    <section class="card" id="crisis-logic">
+      <div class="card-head"><h2>How the crisis is picked up</h2><a class="button-secondary" href="/brands/{{ card.brand_id }}/crisis">Tune</a></div>
+      <p class="muted">A crisis is a change, so each signal compares this scan with the brand's usual (the median of its last eight scans) or counts only what is new. Steady complaints don't count. The score is the weighted sum of the signals; no model decides it.</p>
+      <table class="signals">
+        <thead><tr><th>Signal</th><th class="num">Weight</th><th class="num">Latest</th><th class="num">Adds</th></tr></thead>
+        <tbody>
+        {% for s in signals %}
+          <tr><td>{{ s.name }}<div class="muted hint">{{ s.measures }}</div></td><td class="num">{{ s.weight }}%</td><td class="num">{{ s.value }}</td><td class="num">{{ s.points }}</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><td>Crisis score</td><td></td><td></td><td class="num">{{ score(card.crisis) }}</td></tr></tfoot>
+      </table>
+      {% set t = brand.tuning %}
+      <ul class="rules">
+        <li><strong>Levels:</strong> low below {{ t.medium_at }}, medium from {{ t.medium_at }} to {{ t.high_at - 1 }}, high from {{ t.high_at }}.</li>
+        <li><strong>Warm-up:</strong> a scan gets a level once {{ t.warm_up_scans }} earlier scan{{ "s" if t.warm_up_scans != 1 }} {{ "have" if t.warm_up_scans != 1 else "has" }} been scored; this brand has {{ brand.scored_scans }} scored so far.</li>
+        <li><strong>Alerts:</strong> when the level rises, when a negative suggestion first appears in autocomplete, or when a story reaches {{ t.spread_mentions }} mentions on {{ t.spread_surfaces }} surfaces. Each rule then rests {{ t.cooldown_hours }} h. Claude only writes the explanation.</li>
+      </ul>
+    </section>
 
     <section class="card ai-card">
       <div class="card-head"><h2>Stories Claude found</h2><span class="ai-badge">AI-generated</span></div>
@@ -49,7 +70,7 @@
       {% endif %}
     </section>
 
-    <section class="card">
+    <section class="card" id="mentions">
       <div class="card-head"><h2>What people see</h2><span class="ai-badge">labels by Claude</span></div>
       <ul class="mentions">
       {% for m in brand.mentions %}
@@ -62,6 +83,13 @@
         <li class="muted">Nothing about the brand in the latest scan.</li>
       {% endfor %}
       </ul>
+      {% if brand.mention_pages > 1 %}
+      <nav class="pager" aria-label="Mentions pages">
+        {% if brand.mention_page > 1 %}<a href="?page={{ brand.mention_page - 1 }}#mentions" rel="prev">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ brand.mention_page }} of {{ brand.mention_pages }}</span>
+        {% if brand.mention_page < brand.mention_pages %}<a href="?page={{ brand.mention_page + 1 }}#mentions" rel="next">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+      {% endif %}
     </section>
   </div>
 
