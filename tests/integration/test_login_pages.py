@@ -150,3 +150,24 @@ def test_production_cookies_are_secure_and_host_only(committing_engine: Engine) 
     )  # fmt: skip
     cookie = browser(committing_engine, settings=production).get("/login").headers["set-cookie"]
     assert cookie.startswith("__Host-serpsense_form=") and "secure" in cookie.lower()
+
+
+def test_production_cookies_are_deleted_as_secure_as_they_were_set(
+    committing_engine: Engine,
+) -> None:
+    production = make_settings(
+        app_env="production", base_url="https://serpsense.example", signup_mode="invite",
+        smtp_starttls="true",
+    )  # fmt: skip
+    client = browser(committing_engine, settings=production)  # its sign-in lets anyone in
+    email = f"{uuid.uuid4().hex[:10]}@example.com"
+    form = token(client.get("/login").text)
+    client.post("/login", data={"form_token": form, "email": email})
+    code = code_for(committing_engine, email)
+    signed_in = client.post("/verify", data={"form_token": form, "email": email, "code": code})
+    dropped = [c for c in signed_in.headers.get_list("set-cookie") if "serpsense_form" in c]
+    assert len(dropped) == 1 and dropped[0].startswith('__Host-serpsense_form=""')
+    assert "secure" in dropped[0].lower()
+    csrf = token(client.get("/").text)
+    out = client.post("/logout", data={"csrf_token": csrf}).headers["set-cookie"]
+    assert out.startswith('__Host-serpsense_session=""') and "secure" in out.lower()
