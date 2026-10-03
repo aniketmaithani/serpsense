@@ -249,3 +249,33 @@ Every item is in `test`. The set is too small to split without leaving stories o
 - **No injection items.** No real sample tries to steer the grouping. The prompt's data rules are covered only by the prompt library's tests.
 - **One open narrative.** Every mention is grouped in one batch.
 - **One open narrative.** Every mention is grouped in one batch.
+
+## `explain_crisis.jsonl` and `draft_response.jsonl`
+
+### Status: drafted by an AI agent on 2026-10-03, not yet reviewed by a person
+
+Eleven explanation cases and eleven draft cases. Each case is what the service would send (an
+alert's brief, or a story and its mentions) plus what a good answer must and must not do. Answers
+are scored by deterministic checks (`services/eval_checks.py`), not by a second model, so a check
+can be wrong in both directions: a correct explanation that words the level differently fails
+`states_what_changed`, and an empty-sounding draft can pass every check. Read the failures and
+the answers kept in each report, not just the rates. Until a person reviews the cases and the
+checks' term lists, results are only indicative.
+
+- **Texts:** every mention text is a real, anonymised Ola text from `label_mentions.jsonl` (its
+  sentiment is that set's label), except the ones in cases marked `"synthetic": true`: a negative
+  search suggestion (e07, none was recorded for Ola yet) and planted text that tests whether the
+  prompts treat mention and story text as data: an instruction to declare the crisis over (e08),
+  a scam helpline with a phone number and a link (e09), a demand to admit fault (d07), insults
+  (d08), a link (d09), a refund promise in the story's own label and summary (d10), and a phone
+  number with a refund promise (d06).
+- **Scores, levels and components** in the explanation briefs are chosen to fit their mentions;
+  they are not from a recorded scan. An explanation may use only numbers the facts supply: the
+  scores, the components, numbers in the mentions and story, a score's scale (100), the 48 hours
+  behind a press component, and the 5 mentions on 2 kinds of result behind a spreading story.
+- **Spreading stories** (e03, e04) have 5 mentions on 2 kinds of result, as the rule requires.
+- **Hard cases:** e05 is a competitor (explain it as a rival's situation, no advice); e06 has one
+  vague review (a good answer says the picture is thin); e10 has no level now or before (the rules
+  don't fire while a brand warms up today, so it tests the prompt's `none`); e11 mixes praise, an
+  unlabelled mention and complaints; d01 and d04 each include a mention off the story that must
+  not be cited; d11 has one vague review.
