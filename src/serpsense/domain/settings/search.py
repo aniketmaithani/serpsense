@@ -137,6 +137,10 @@ class SearchSettings(_Knobs):
     maps: Maps = Maps()
     youtube: YouTube = YouTube()
 
+    def capped(self, limit: int) -> "SearchSettings":
+        """These settings under the admin's per-scan limit, which always wins (BUILD_PLAN §5)."""
+        return self.model_copy(update={"max_searches": min(self.max_searches, limit)})
+
 
 PRESETS: Mapping[Preset, Mapping[str, Any]] = {
     Preset.LEAN: {
