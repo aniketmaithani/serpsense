@@ -1,0 +1,18 @@
+"""The one owner check for user-scoped reads (AGENTS §4, §1 future scope).
+
+A scoped query names the user's brands as `{owned}` and binds `:user`; `scoped` puts the check in
+and refuses a query that doesn't use it, so no query can read another owner's rows on its own,
+and widening ownership later (teams) is a change here only. Archived brands are not owned for
+reading: they read as missing.
+"""
+
+from sqlalchemy import TextClause, text
+
+OWNED = "SELECT id FROM brands WHERE owner_id = :user AND archived_at IS NULL"
+
+
+def scoped(sql: str) -> TextClause:
+    """`sql` with `{owned}` replaced by the owner check; values stay bound parameters."""
+    if "{owned}" not in sql:
+        raise ValueError("a user-scoped query must reach its rows through {owned}")
+    return text(sql.replace("{owned}", OWNED))
