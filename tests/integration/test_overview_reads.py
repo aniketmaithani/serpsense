@@ -14,9 +14,12 @@ from sqlalchemy import Connection, insert
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.domain.enums import (
+    AlertRule,
     CrisisComponent,
+    MentionSource,
     ScanStatus,
     Surface,
+    SurfaceOutcome,
     Topic,
 )
 from serpsense.ports.enrichment_store import MentionLabel
@@ -58,15 +61,16 @@ def label(
     about: bool = True,
     revision: int = 1,
     severity: int = 40,
+    prompt: str = "label_mentions/v1",
 ) -> None:
     reason = "Late drivers." if sentiment < 0 else "Fine."
     complaint = sentiment < 0
     new = MentionLabel(
         mention_id, revision, sentiment, severity, Topic.RELIABILITY, complaint, about, reason
     )
-    call = add_llm_call(conn, owner)
-    store = SqlEnrichmentStore(conn)
-    store.record([new], prompt_version="label_mentions/v1", llm_call_id=call, at=NOW)
+    at = NOW if prompt == "label_mentions/v1" else NOW + HOUR
+    call = add_llm_call(conn, owner, prompt_version=prompt, created_at=at)
+    SqlEnrichmentStore(conn).record([new], prompt_version=prompt, llm_call_id=call, at=at)
 
 
 @dataclass(frozen=True)
@@ -107,6 +111,7 @@ def world(conn: Connection) -> World:
         sighting = {"mention_id": ids[n], "scan_id": latest}
         conn.execute(insert(table("mention_observations")).values(sighting))
     label(conn, owner, ids["bad"], -1)
+    label(conn, owner, ids["bad"], 1, prompt="label_mentions/v2")  # newer, not the active prompt
     label(conn, owner, ids["good"], 1)
     label(conn, owner, ids["greeting"], 1, about=False)  # not the brand: not shown
     play = {
@@ -141,3 +146,32 @@ def test_an_owner_sees_their_brands_own_first(conn: Connection, world: World) ->
     assert (cards[0].health, cards[0].crisis, cards[0].last_status) == (60, 0, ScanStatus.QUEUED)
     assert (cards[1].health, cards[1].last_scan_at) == (None, None)
     assert [c.name for c in reads.brands(world.stranger)] == ["Other"]
+
+
+def test_a_brand_page_describes_its_latest_scored_scan(conn: Connection, world: World) -> None:
+    reads, owner = overview(conn), world.owner
+    page = reads.brand(owner, world.ola)
+    assert page is not None
+    assert [p.health for p in page.trend] == [40, 60]  # oldest first
+    assert [(s.surface, s.outcome, s.score) for s in page.surfaces] == [
+        (Surface.NEWS, SurfaceOutcome.SUCCEEDED, 60),
+        (Surface.PLAY, SurfaceOutcome.FAILED, None),
+    ]
+    assert [(m.text, m.sentiment) for m in page.mentions] == [
+        ("Edited: awful", -1),  # the edited text and its label, the most severe first
+        ("Bad", -1),
+        ("Good", 1),
+        ("Pending", None),
+    ]
+    assert page.mentions[1].reason == "Late drivers."  # the active prompt's label wins
+    assert page.mentions[1].source is MentionSource.NEWS
+    assert [(a.rule, a.title) for a in page.alerts] == [
+        (AlertRule.LEVEL_INCREASE, "Ola: crisis level rose")
+    ]
+    assert [c.name for c in page.competitors] == ["Bolt"]
+    empty = reads.brand(owner, world.quiet)
+    assert empty is not None and (empty.trend, empty.surfaces, empty.mentions) == ((), (), ())
+
+    assert reads.brand(world.stranger, world.ola) is None  # someone else's: as if missing
+    assert reads.brand(owner, world.theirs) is None
+    assert reads.brand(owner, uuid.uuid4()) is None
