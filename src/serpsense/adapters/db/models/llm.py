@@ -89,8 +89,10 @@ class LlmCall(Base):
 
 class Enrichment(Base):
     """The model's labels for one text of a mention: revision 1 is `mentions.text`, later ones
-    are `mention_revisions` rows, so an edited review is labelled again. The revision must exist
-    (trigger, migration 0017)."""
+    are `mention_revisions` rows, so an edited review is labelled again. Triggers (migrations
+    0017-0018): the revision exists; the call succeeded, with the same prompt version, for the
+    owner of the mention's brand; only `reason` may change (a redaction scrub) and rows are never
+    deleted."""
 
     __tablename__ = "enrichments"
     __table_args__ = (
