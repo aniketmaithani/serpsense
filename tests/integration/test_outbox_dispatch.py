@@ -11,6 +11,7 @@ import pytest
 from alembic import command
 from sqlalchemy import Engine, make_url, select, text
 
+from serpsense.adapters.crypto.fernet_box import FernetBox
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.outbox import SqlOutbox
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
@@ -19,6 +20,7 @@ from serpsense.domain import outbox as rules
 from serpsense.domain.enums import OutboxOutcome, OutboxStatus
 from serpsense.ports.mailer import Email, MailFailed
 from serpsense.services.outbox import FOOTER, OutboxDispatcher
+from tests.factories import TEST_FERNET_KEY
 from tests.fakes import FixedClock, TickingClock
 from tests.integration.conftest import alembic_config
 from tests.integration.db_helpers import NOW, add, add_brand, add_scan, add_user, table
@@ -26,12 +28,17 @@ from tests.integration.db_helpers import NOW, add, add_brand, add_scan, add_user
 pytestmark = pytest.mark.integration
 
 MESSAGES, ATTEMPTS = table("outbox_messages"), table("outbox_attempts")
+MINUTE = timedelta(minutes=1)
 TIMEOUT = MailFailed("smtp.timeout", retryable=True)
+BOX = FernetBox((TEST_FERNET_KEY,))
 
 
 class NoJobs:
     def run_scan(self, scan_id: uuid.UUID) -> None:
         raise AssertionError("the dispatcher queues no scans")
+
+    def dispatch_outbox(self) -> None:
+        raise AssertionError("the dispatcher doesn't nudge itself")
 
 
 def _url(postgres_url: str, database: str) -> str:
@@ -84,7 +91,7 @@ def queue(engine: Engine, *, at: datetime = NOW, **values: Any) -> uuid.UUID:
 
 
 def dispatcher(engine: Engine, mailer: FakeMailer, at: datetime = NOW) -> OutboxDispatcher:
-    return OutboxDispatcher(lambda: SqlUnitOfWork(engine, NoJobs()), mailer, FixedClock(at))
+    return OutboxDispatcher(lambda: SqlUnitOfWork(engine, NoJobs()), mailer, BOX, FixedClock(at))
 
 
 def message(engine: Engine, message_id: uuid.UUID) -> Any:
@@ -116,7 +123,7 @@ def test_due_emails_are_sent_once_and_the_rest_wait(engine: Engine) -> None:
 
 
 def test_a_retryable_error_backs_off_until_the_email_is_dead(engine: Engine) -> None:
-    message_id = queue(engine, sensitive_data_encrypted=b"ciphertext")
+    message_id = queue(engine, sensitive_data_encrypted=BOX.seal(b"secret"))
     mailer, at = FakeMailer(*[TIMEOUT] * rules.MAX_RETRYABLE), NOW
     for retries in range(1, rules.MAX_RETRYABLE):
         assert dispatcher(engine, mailer, at).dispatch() == 0
@@ -133,7 +140,7 @@ def test_a_retryable_error_backs_off_until_the_email_is_dead(engine: Engine) -> 
 
 
 def test_a_permanent_error_or_an_unknown_template_is_dead_at_once(engine: Engine) -> None:
-    rejected = queue(engine, sensitive_data_encrypted=b"ciphertext")
+    rejected = queue(engine, sensitive_data_encrypted=BOX.seal(b"secret"))
     unknown = queue(engine, at=NOW + timedelta(seconds=1), template="newsletter")
     mailer = FakeMailer(MailFailed("smtp.rejected", retryable=False))
     dispatcher(engine, mailer, NOW + timedelta(minutes=1)).dispatch()
@@ -184,7 +191,7 @@ def test_a_run_stops_claiming_after_a_minute(engine: Engine) -> None:
     minute_later = NOW + timedelta(minutes=2)
     ticks = [minute_later + timedelta(seconds=25 * n) for n in range(10)]
     run = OutboxDispatcher(
-        lambda: SqlUnitOfWork(engine, NoJobs()), FakeMailer(), TickingClock(*ticks)
+        lambda: SqlUnitOfWork(engine, NoJobs()), FakeMailer(), BOX, TickingClock(*ticks)
     )
     assert run.dispatch() == 1  # the clock passed a minute before the second claim
     with engine.connect() as conn:
