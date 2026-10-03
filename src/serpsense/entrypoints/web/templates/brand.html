@@ -21,6 +21,18 @@
 <section class="card"><h2>Over time</h2><canvas id="trend" data-trend='{{ trend|tojson }}' height="90"></canvas></section>
 {% endif %}
 
+{% if stories %}
+<section class="card">
+  <h2>Stories <span class="badge">AI-generated</span></h2>
+  <ul class="stories">
+  {% for s in stories %}
+    <li><a href="/brands/{{ card.brand_id }}/narratives/{{ s.narrative_id }}">{{ s.label }}</a>
+      <span class="muted">· {{ s.mentions }} mention{{ "s" if s.mentions != 1 }} on {{ s.sources|map("words")|join(", ") }}</span></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="card">
   <h2>Surfaces in the latest scan</h2>
   {% if brand.surfaces %}

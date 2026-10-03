@@ -44,7 +44,9 @@ def brand(request: Request, brand_id: str, scan: str = "") -> Response:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     trend = [{"at": p.at.isoformat(), "health": p.health, "crisis": p.crisis} for p in found.trend]
     notice = SAID.get(scan)
-    return signed_in_page(request, user, "brand.html", brand=found, trend=trend, notice=notice)
+    stories = container(request).stories.of_brand(user.user_id, found.card.brand_id, limit=5)
+    context = {"brand": found, "trend": trend, "notice": notice, "stories": stories}
+    return signed_in_page(request, user, "brand.html", **context)
 
 
 @router.post("/brands/{brand_id}/scan")

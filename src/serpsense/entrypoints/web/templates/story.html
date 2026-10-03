@@ -1,0 +1,26 @@
+{% extends "signed_in.html" %}
+{% set row = story.row %}
+{% block title %}{{ row.label }} · {{ story.brand_name }} · SerpSense{% endblock %}
+{% block main %}
+<p><a href="/brands/{{ story.brand_id }}">← {{ story.brand_name }}</a></p>
+<h1>{{ row.label }} <span class="badge">AI-generated</span></h1>
+<section class="card">
+  <p>{{ row.summary }}</p>
+  <p class="muted">{{ row.mentions }} mention{{ "s" if row.mentions != 1 }} on {{ row.sources|map("words")|join(", ") }} ·
+     grouped {{ row.last_grouped_at|when }} · {{ row.prompt_version }}</p>
+</section>
+<section class="card">
+  <h2>What people said</h2>
+  <p class="muted">Labels and reasons are AI-generated.</p>
+  <ul class="mentions">
+  {% for m in story.mentions %}
+    <li class="sentiment-{{ m.sentiment if m.sentiment is not none else 'pending' }}">
+      <span class="source">{{ m.source|words }}</span>
+      {% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(300) }}</a>{% else %}{{ m.text|truncate(300) }}{% endif %}
+      {% if m.outlet %}<span class="muted">· {{ m.outlet }}</span>{% endif %}
+      {% if m.reason %}<div class="reason">AI-generated: {{ m.reason }}</div>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endblock %}
