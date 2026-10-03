@@ -56,6 +56,7 @@ from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.evals import Evaluator, MemoryLedger
+from serpsense.services.grouping import Grouper
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.outbox import OutboxDispatcher
@@ -89,8 +90,10 @@ __all__ = [
 ]
 
 # Collection must end in time for labelling and the finish within the task's hard limit, and the
-# sweep must not time out a scan its worker is still allowed to run.
+# sweep must not time out a scan its worker is still allowed to run. Grouping starts no batch
+# after ENRICH_TIME, leaving a batch's model call (a minute) and the finish inside the limit.
 COLLECTION_TIME = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) * 2 / 3
+ENRICH_TIME = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) - timedelta(minutes=3)
 STUCK_AFTER = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) + timedelta(minutes=5)
 
 
@@ -196,14 +199,19 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
     )
     ports = ScanPorts(
-        unit_of_work,
-        CollectorRunner(COLLECTORS, search, clock),
-        Labeller(unit_of_work, gateway, clock),
-        SqlSearchLedger(engine.begin),
-        PresetProfiles(settings.default_llm_preset),
-        clock,
+        unit_of_work=unit_of_work,
+        collector=CollectorRunner(COLLECTORS, search, clock),
+        labeller=Labeller(unit_of_work, gateway, clock),
+        grouper=Grouper(unit_of_work, gateway, clock),
+        usage=SqlSearchLedger(engine.begin),
+        profiles=PresetProfiles(settings.default_llm_preset),
+        clock=clock,
     )
-    limits = ScanLimits(COLLECTION_TIME, settings.default_monthly_search_budget)
+    limits = ScanLimits(
+        time_limit=COLLECTION_TIME,
+        enrich_time=ENRICH_TIME,
+        monthly_searches=settings.default_monthly_search_budget,
+    )
     return Worker(ScanService(ports, limits), *_maintenance(settings, unit_of_work, clock))
 
 

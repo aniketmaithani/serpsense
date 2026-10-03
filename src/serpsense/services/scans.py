@@ -4,28 +4,31 @@ A worker is handed a scan id, and Postgres is the source of truth: the scan is c
 compare-and-set, so a redelivered message finds nothing to do. Then the brand behind it is read,
 and the scan is skipped if the brand was archived or its owner's account deleted, or if the
 owner's searches this month can't cover the most it may make. Otherwise its surfaces are
-collected and kept, its recent mentions labelled (the brand is checked again first: no model is
-called for a brand that is gone), and it finishes by how its surfaces went, in a last unit of
+collected and kept, its recent mentions labelled and its unfavourable ones grouped into
+narratives (the brand is checked again first: no model is called for a brand that is gone), and
+it finishes by how its surfaces went, in a last unit of
 work that checks the brand once more, then scores a scan that succeeded or is partial and raises
 its alerts (docs/scoring.md, BUILD_PLAN §12). Each stage has a unit of work of its own, and no
 SerpApi or model call happens inside one.
 
-The model never fails a scan (ADR-0008): labelling that can't run (settings the model rejects, a
-missing prompt) is logged and the scan finishes partial. Any other stage that raises, scoring
-and alerting included, fails the scan (`stage_failed`) and the error propagates; a finish that
-raises rolls back its ending, scores and alerts together. The scan task has no soft
+The model never fails a scan (ADR-0008): labelling or grouping that can't run (settings the
+model rejects, a missing prompt) is logged and the scan finishes partial. Any other stage that
+raises, scoring and alerting included, fails the scan (`stage_failed`) and the error propagates;
+a finish that raises rolls back its ending, scores and alerts together. The scan task has no soft
 time limit and never retries: each external call already did, and collection keeps to its own
 deadline (#47).
 """
 
 import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from types import MappingProxyType
 
 from serpsense.domain import usage
 from serpsense.domain.enums import AlertRule, LlmTask, ScanStatus
 from serpsense.domain.estimator import BrandFacts, estimate
-from serpsense.domain.llm_capabilities import UnsupportedSetting
+from serpsense.domain.llm_capabilities import TaskSettings, UnsupportedSetting
 from serpsense.domain.scan_state import Transition, TransitionReason, finished
 from serpsense.domain.scoring.scan import ScanScores
 from serpsense.domain.settings.search import SearchSettings
@@ -39,29 +42,38 @@ from serpsense.ports.search_ledger import SearchUsage
 from serpsense.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from serpsense.services import alerts, scoring_run
 from serpsense.services.collection import Collected, CollectorRunner
+from serpsense.services.grouping import Grouped, Grouper
 from serpsense.services.harvest import harvest, keep
-from serpsense.services.labelling import BrandContext, Labeller
+from serpsense.services.labelling import BrandContext, Labelled, Labeller
 
 log = get_logger(__name__)
 
 S, R = ScanStatus, TransitionReason
 CLAIM = Transition(S.QUEUED, S.RUNNING, R.CLAIMED)
 STAGE_FAILED = Transition(S.RUNNING, S.FAILED, R.STAGE_FAILED)
+MISCONFIGURED: Mapping[LlmTask, str] = MappingProxyType(
+    {
+        LlmTask.LABEL_MENTIONS: "labelling.misconfigured",
+        LlmTask.GROUP_NARRATIVES: "grouping.misconfigured",
+    }
+)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ScanPorts:
     unit_of_work: UnitOfWorkFactory
     collector: CollectorRunner
     labeller: Labeller
+    grouper: Grouper
     usage: SearchUsage
     profiles: LlmProfiles
     clock: Clock
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ScanLimits:
     time_limit: timedelta  # how long collection may take from the claim
+    enrich_time: timedelta  # how long after the claim grouping may start a batch
     monthly_searches: int  # a user's monthly budget when none was set
 
 
@@ -105,9 +117,9 @@ class ScanService:
         gone = _gone(now)
         if gone is not None:
             return gone
-        labelled = self._label(now, aim)
+        enriched = self._enrich(now, aim, claimed + self._limits.enrich_time)
         outcomes = (outcome.outcome for outcome in collected.outcomes.values())
-        return finished(outcomes, answered=_answered(collected), enrichment_failed=not labelled)
+        return finished(outcomes, answered=_answered(collected), enrichment_failed=not enriched)
 
     def _affordable(self, user_id: uuid.UUID, searches: int, at: datetime) -> bool:
         budget = self._ports.usage.monthly_budget(user_id, at=at)
@@ -116,17 +128,36 @@ class ScanService:
             budget, default=self._limits.monthly_searches, used=used
         )
 
-    def _label(self, target: ScanTarget, aim: Target) -> bool:
-        """Whether every batch was labelled; labelling that can't run is logged, not raised."""
+    def _enrich(self, target: ScanTarget, aim: Target, deadline: datetime) -> bool:
+        """Whether every batch was labelled and then grouped; a step that can't run is logged,
+        not raised, and grouping still places what was labelled. Grouping starts no batch past
+        the deadline, so the scan can finish within its task's time limit."""
         brand = BrandContext(target.brand.brand_id, target.owner_id, aim.brand.name, target.aliases)
+        scan_id = target.scan_id
+        labelled = self._step(
+            target,
+            LlmTask.LABEL_MENTIONS,
+            lambda settings: self._ports.labeller.label(brand, settings, scan_id),
+        )
+        grouped = self._step(
+            target,
+            LlmTask.GROUP_NARRATIVES,
+            lambda settings: self._ports.grouper.group(brand, settings, scan_id, deadline=deadline),
+        )
+        return labelled and grouped
+
+    def _step(
+        self, target: ScanTarget, task: LlmTask, run: Callable[[TaskSettings], Labelled | Grouped]
+    ) -> bool:
+        """Whether every batch of the step went through; settings the model rejects or a missing
+        prompt are logged as `labelling.misconfigured` or `grouping.misconfigured`."""
         try:
-            settings = self._ports.profiles.settings(target.owner_id, LlmTask.LABEL_MENTIONS)
-            labelled = self._ports.labeller.label(brand, settings, target.scan_id)
+            done = run(self._ports.profiles.settings(target.owner_id, task))
         except (UnsupportedSetting, PromptUnavailable) as exc:
-            scan_id, error = str(target.scan_id), type(exc).__name__
-            log.error("labelling.misconfigured", scan_id=scan_id, error=error)
+            event = MISCONFIGURED[task]
+            log.error(event, scan_id=str(target.scan_id), error=type(exc).__name__)
             return False
-        return labelled.failed_batches == 0 and not labelled.budget_exhausted
+        return done.complete
 
     def _finish(self, scan_id: uuid.UUID, ending: Transition) -> ScanStatus | None:
         """Move the scan to its ending, or to skipped if its brand went meanwhile; a scan that

@@ -71,6 +71,10 @@ class Labelled:
     failed_batches: int
     budget_exhausted: bool = False
 
+    @property
+    def complete(self) -> bool:
+        return self.failed_batches == 0 and not self.budget_exhausted
+
 
 class Labeller:
     def __init__(self, unit_of_work: UnitOfWorkFactory, gateway: LlmGateway, clock: Clock) -> None:
