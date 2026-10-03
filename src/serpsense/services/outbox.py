@@ -6,7 +6,9 @@ so a worker that dies mid-send just releases the lock. This is the one place an 
 the mail server) happens inside a unit of work, as ADR-0010 decides; delivery is at least once.
 A message that can't be rendered (an unknown template, missing fields, a seal no key opens) fails
 for good rather than blocking the emails behind it. A sign-in code's email is dropped unsent once
-the code expired, was used or was replaced; its sealed code is opened only to render it. A run
+the code expired, was used or was replaced; its sealed code is opened only to render it. An
+alert's email adds the model's explanation of the alert when it was written in time, labelled
+AI-generated. A run
 stops after a minute, well inside its task's limit and the session's idle timeout, and Beat
 starts the next one.
 """
@@ -26,11 +28,16 @@ log = get_logger(__name__)
 
 BATCH = 25  # messages per run; Beat runs the dispatcher every 15 seconds
 RUN_TIME = timedelta(minutes=1)  # no new claim after this; the task's hard limit is 2 minutes
+EXPLANATION = "explanation"  # not stored with the message: read from the alert at send time
 FOOTER = "\n\n--\nSerpSense watches how your brand looks on Google. This email is automated."
 
 
 def _alert(data: Mapping[str, str], secret: str | None) -> tuple[str, str]:
-    return data["title"], data["body"]
+    """The alert's facts, then the model's explanation when it is ready, labelled as such."""
+    explanation = data.get(EXPLANATION)
+    if not explanation:
+        return data["title"], data["body"]
+    return data["title"], f"{data['body']}\n\nIn plain words (AI-generated):\n{explanation}"
 
 
 def _otp(data: Mapping[str, str], secret: str | None) -> tuple[str, str]:
@@ -77,9 +84,10 @@ def render(due: DueEmail, box: SecretBox) -> Email:
     template = TEMPLATES.get(due.template)
     if template is None:
         raise RenderFailed("outbox.unknown_template")
+    fields = {**due.data, EXPLANATION: due.explanation} if due.explanation else due.data
     try:
         secret = box.open(due.sealed).decode() if due.sealed is not None else None
-        subject, body = template(due.data, secret)
+        subject, body = template(fields, secret)
     except SealBroken as exc:  # sealed with a key that is gone
         raise RenderFailed("outbox.seal_broken") from exc
     except (KeyError, UnicodeDecodeError) as exc:  # missing fields, or a seal of garbage

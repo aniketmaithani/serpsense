@@ -357,6 +357,8 @@ Migration 0022 (alerts and in-app notifications) and 0023 (the email outbox).
 | next_attempt_at | timestamptz | `ix_outbox_messages_pending` partial on status = 'pending' |
 | created_at | timestamptz | |
 
+**An alert's email waits for its explanation:** it is written due two minutes after the alert (`domain.outbox.EXPLANATION_WAIT`), and claimed early, before any attempt, once the alert has an `alert_explanations` row (the explainer nudges the dispatcher when it writes one). The explanation is read at send time, not copied into the message, and appended below the alert's facts, labelled AI-generated; without one in time the email goes without it. A retry's backoff is never cut short by an explanation.
+
 `ck_outbox_messages_kind_refs`: an `otp_email` names its code and an `alert_email` its alert, and neither names the other. `ck_outbox_messages_sensitive_only_pending`: the encrypted payload exists only while the message is `pending`. `ck_outbox_messages_recipient_plain`: the recipient is one bare address (no display name or list for SMTP to fan out to). `ck_outbox_messages_alert_email_has_user`: an alert email names its user. `ix_outbox_messages_user_id` serves the account-deletion scrub.
 
 ### 🔒 `outbox_attempts`

@@ -26,7 +26,14 @@ from serpsense.services.outbox import FOOTER, OutboxDispatcher
 from tests.factories import TEST_FERNET_KEY
 from tests.fakes import FixedClock, TickingClock
 from tests.integration.conftest import alembic_config
-from tests.integration.db_helpers import NOW, add, add_brand, add_scan, add_user, table
+from tests.integration.db_helpers import (
+    NOW,
+    add,
+    add_brand,
+    add_scan,
+    add_user,
+    table,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -225,8 +232,10 @@ def test_an_alert_email_goes_to_the_brands_owner_once(engine: Engine) -> None:
         assert outbox.add_alert_email(alert, data=data, at=NOW) is False  # once per alert
         assert outbox.add_alert_email(orphan, data=data, at=NOW) is False  # no account, no email
     mailer = FakeMailer()
-    assert dispatcher(engine, mailer).dispatch() == 1
+    assert dispatcher(engine, mailer).dispatch() == 0  # it waits for an explanation, a little
+    assert dispatcher(engine, mailer, NOW + rules.EXPLANATION_WAIT).dispatch() == 1
     assert [(e.to, e.subject) for e in mailer.sent] == [("ola-owner@example.com", data["title"])]
+    assert "AI-generated" not in mailer.sent[0].text  # none was written in time
 
 
 def code_email(
