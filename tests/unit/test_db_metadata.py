@@ -42,6 +42,8 @@ def test_metadata_has_expected_tables() -> None:
         "trends_observations",
         "llm_calls",
         "enrichments",
+        "narratives",
+        "narrative_assignments",
     }
 
 
