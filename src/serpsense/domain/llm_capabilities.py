@@ -70,6 +70,17 @@ HAIKU_BUDGETS: Mapping[Effort, int | None] = {
 }
 
 
+# BUILD_PLAN §7.1: every task defaults to Opus 5.5, with room for its longest answer.
+MAX_TOKENS: Mapping[LlmTask, int] = {
+    _T.LABEL_MENTIONS: 8000,  # 25 labels with reasons, and low-effort thinking
+    _T.CLASSIFY_AUTOCOMPLETE: 4000,
+    _T.ASSESS_AI_OVERVIEW: 4000,
+    _T.GROUP_NARRATIVES: 8000,
+    _T.EXPLAIN_CRISIS: 4000,
+    _T.DRAFT_RESPONSE: 16000,
+}
+
+
 class UnsupportedSetting(ValueError):
     """A combination the chosen model rejects."""
 
@@ -127,3 +138,8 @@ def _haiku(settings: TaskSettings) -> RequestShape:
         raise UnsupportedSetting("Haiku takes a temperature of 0-1, with thinking off only")
     thinking: Literal["off"] | int = budget if budget is not None else "off"
     return RequestShape(HAIKU, settings.max_tokens, None, thinking, settings.temperature)
+
+
+def preset_settings(preset: LlmPreset, task: LlmTask) -> TaskSettings:
+    """A task's settings under a preset, before a user changes any of them."""
+    return TaskSettings(OPUS, PRESETS[preset][task], MAX_TOKENS[task])
