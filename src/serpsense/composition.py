@@ -1,5 +1,6 @@
 """Composition root: the only place that wires adapters into services (AGENTS.md §2)."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -34,6 +35,7 @@ from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.collection import CollectorRunner
+from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
@@ -51,6 +53,7 @@ __all__ = [
     "Worker",
     "build_celery",
     "build_container",
+    "build_seeder",
     "build_settings",
     "build_worker",
 ]
@@ -157,3 +160,17 @@ def _maintenance(
         unit_of_work, clock, max_searches_per_scan=settings.max_searches_per_scan
     )
     return dispatcher, Sweeper(unit_of_work, clock, stuck_after=STUCK_AFTER)
+
+
+def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
+    """Seeds the demo under the owner with an email; the engine lasts as long as the command."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+
+    def unit_of_work() -> SqlUnitOfWork:
+        return SqlUnitOfWork(engine, queue)
+
+    def seed(owner_email: str) -> Seeded:
+        return seed_demo(unit_of_work, SystemClock(), owner_email=owner_email)
+
+    return seed
