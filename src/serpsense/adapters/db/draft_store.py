@@ -3,6 +3,7 @@ their citations in the caller's transaction."""
 
 import uuid
 from collections import defaultdict
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Connection, text
@@ -62,6 +63,14 @@ INSERT INTO drafts (id, narrative_id, kind, preset, text, reasoning_summary, pro
 VALUES (:id, :story, :kind, :preset, :text, :summary, :prompt, :call, :at)
 """
 )
+# Effort is read from the call's settings snapshot: a count, never a filter on what is shown.
+THINKING_CALLS = text(
+    """
+SELECT count(*) FROM llm_calls
+WHERE user_id = :user AND task = 'draft_response' AND created_at >= :since
+  AND request_settings ->> 'effort' IN ('xhigh', 'max')
+"""
+)
 ADD_CITATION = text(
     "INSERT INTO draft_citations (draft_id, mention_id) VALUES (:draft, :mention) "
     "ON CONFLICT DO NOTHING"
@@ -108,6 +117,10 @@ class SqlDraftStore:
         for mention_id in draft.cited:
             self._conn.execute(ADD_CITATION, {"draft": draft_id, "mention": mention_id})
         return draft_id
+
+    def thinking_drafts_since(self, user_id: uuid.UUID, since: datetime) -> int:
+        values = {"user": user_id, "since": since}
+        return int(self._conn.execute(THINKING_CALLS, values).scalar_one())
 
     def drafts(
         self, user_id: uuid.UUID, brand_id: uuid.UUID, narrative_id: uuid.UUID, *, limit: int
