@@ -1,15 +1,17 @@
 """Append-only observations: what each scan saw (docs/architecture/data-model.md §5).
 
-An observation always links a scan and a mention/app of the same brand (database trigger).
+A mention or app observation always links a scan and a mention/app of the same brand, and a
+Trends point's subject is the scan's brand or one of its competitors (database triggers).
 """
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, SmallInteger
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, SmallInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from serpsense.adapters.db.base import Base
+from serpsense.adapters.db.base import TIMESTAMPTZ, Base
 
 
 def _fk(target: str) -> Mapped[uuid.UUID]:
@@ -50,3 +52,22 @@ class AppRatingObservation(Base):
     # 410 means 4.10 stars (integers, no floats).
     rating_hundredths: Mapped[int] = mapped_column(SmallInteger)
     review_count: Mapped[int] = mapped_column(Integer)
+
+
+class TrendsObservation(Base):
+    """One point of a Google Trends joint-query line (scan's brand + up to 4 competitors).
+
+    Rows belong to the scan; `subject_brand_id` says which line it is and must be the scan's
+    brand or one of its competitors at insert time (database trigger).
+    """
+
+    __tablename__ = "trends_observations"
+    __table_args__ = (CheckConstraint("interest BETWEEN 0 AND 100", name="interest_range"),)
+
+    scan_id: Mapped[uuid.UUID] = _fk("scans.id")
+    subject_brand_id: Mapped[uuid.UUID] = _fk("brands.id")
+    # The point's start (SerpApi's per-point timestamp): hourly or finer for short date ranges.
+    observed_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, primary_key=True)
+    interest: Mapped[int] = mapped_column(SmallInteger)
+    # SerpApi flags the last, still-incomplete point; a drop there is not yet a decline.
+    is_partial: Mapped[bool] = mapped_column(Boolean)
