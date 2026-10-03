@@ -23,14 +23,16 @@ class DueEmail:
     data: Mapping[str, str]  # the non-sensitive template fields
     sealed: bytes | None = None  # a sealed secret (a sign-in code), opened only to send it
     stale: bool = False  # its sign-in code expired, was used or was replaced: drop, don't send
+    explanation: str | None = None  # an alert's explanation by the model, once written
 
 
 class Outbox(Protocol):
     def add_alert_email(
         self, alert_id: uuid.UUID, *, data: Mapping[str, str], at: datetime
     ) -> bool:
-        """Queue the alert's email to its brand's owner, due at once; False when it was queued
-        already, or the owner's account is gone."""
+        """Queue the alert's email to its brand's owner, due once it has waited a little for the
+        alert's explanation (sooner if that is written first); False when it was queued already,
+        or the owner's account is gone."""
         ...
 
     def add_otp_email(
@@ -50,7 +52,8 @@ class Outbox(Protocol):
         """The pending message due longest, locked until the unit of work ends; messages that
         another dispatcher holds are skipped. A sign-in code's email gets a two-minute head start
         (so codes go first without starving alerts), and one whose code went stale is claimed at
-        once to be dropped. None when nothing is due."""
+        once to be dropped; an alert's email not yet tried is claimed as soon as the alert has
+        its explanation, which it carries. None when nothing is due."""
         ...
 
     def pending_for(self, user_id: uuid.UUID, email: str) -> list[uuid.UUID]:
