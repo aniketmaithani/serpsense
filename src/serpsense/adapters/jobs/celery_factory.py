@@ -22,6 +22,10 @@ VISIBILITY_TIMEOUT_SECONDS = 2 * SCAN_TIME_LIMIT_SECONDS
 
 HEARTBEAT_TASK = "serpsense.maintenance.heartbeat"
 HEARTBEAT_INTERVAL = timedelta(seconds=60)
+RUN_SCAN_TASK = "serpsense.scans.run"
+DISPATCH_TASK = "serpsense.maintenance.dispatch_due_scans"
+SWEEP_TASK = "serpsense.maintenance.sweep_stuck_work"
+DISPATCH_INTERVAL = SWEEP_INTERVAL = timedelta(minutes=5)  # BUILD_PLAN §10
 BEAT_SCHEDULE_FILE = "/tmp/celerybeat-schedule"  # noqa: S108 - container-local scratch file
 
 # Tasks are routed by name prefix, so a task can't silently land on the wrong queue.
