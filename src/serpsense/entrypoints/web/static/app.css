@@ -55,3 +55,8 @@ form.presets button { margin-right: 0.5rem; }
 button.secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
 .danger-zone { border-color: var(--danger); }
 button.danger { background: var(--danger); }
+form.draft-ask { margin: 0.4rem 0; }
+form.draft-ask .kind { display: inline-block; min-width: 9rem; }
+article.draft { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 0.75rem; }
+article.draft textarea { width: 100%; font: inherit; }
+article.draft .reasoning { white-space: pre-line; }

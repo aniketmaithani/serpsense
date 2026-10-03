@@ -9,6 +9,42 @@
   <p class="muted">{{ row.mentions }} mention{{ "s" if row.mentions != 1 }} on {{ row.sources|map("words")|join(", ") }} ·
      grouped {{ row.last_grouped_at|when }} · {{ row.prompt_version }}</p>
 </section>
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+<section class="card drafts">
+  <h2>Draft a response <span class="badge">AI-generated</span></h2>
+  <p class="muted">A draft for a person to read, edit and copy; nothing is ever sent or posted for you. High thinking and Max take longer and keep a summary of the model's reasoning.</p>
+  {% if drafting %}
+  {% for kind in kinds %}
+  <form method="post" action="/brands/{{ story.brand_id }}/narratives/{{ row.narrative_id }}/drafts" class="draft-ask">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="kind" value="{{ kind.value }}">
+    <span class="kind">{{ kind.value|words }}</span>
+    <button type="submit" name="preset" value="standard">Draft</button>
+    {% if "high_thinking" in presets %}<button type="submit" name="preset" value="high_thinking" class="secondary">High thinking</button>{% endif %}
+    {% if "max" in presets %}<button type="submit" name="preset" value="max" class="secondary">Max</button>{% endif %}
+  </form>
+  {% endfor %}
+  {% if presets|length < 3 %}<p class="muted">High thinking and Max need Opus 5.5 or Sonnet 5.5 for drafts; your AI settings use a model that can't think that hard.</p>{% endif %}
+  {% else %}
+  <p class="muted">Drafting needs live mode with the model set up; this server isn't (replay mode, or no key).</p>
+  {% endif %}
+  {% for d in drafts %}
+  <article class="draft">
+    <p class="muted">{{ d.kind.value|words }} · {{ d.preset.value|words }} · {{ d.created_at|when }} · AI-generated draft · {{ d.prompt_version }}</p>
+    {% if d.text|has_contact %}<p class="notice" role="alert">This draft contains a link or contact details. Check them before copying: the model was told not to add any.</p>{% endif %}
+    <textarea readonly rows="6" aria-label="Draft text">{{ d.text }}</textarea>
+    {% if d.reasoning_summary %}<details><summary>How the model reasoned (AI-generated)</summary><p class="reasoning">{{ d.reasoning_summary }}</p></details>{% endif %}
+    <p class="muted">Responds to:</p>
+    <ul class="cited">
+    {% for m in d.cited %}
+      <li><span class="source">{{ m.source|words }}</span>
+        {% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(160) }}</a>{% else %}{{ m.text|truncate(160) }}{% endif %}</li>
+    {% endfor %}
+    </ul>
+  </article>
+  {% endfor %}
+</section>
+
 <section class="card">
   <h2>What people said</h2>
   <p class="muted">Labels and reasons are AI-generated.</p>
