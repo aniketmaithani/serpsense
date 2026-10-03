@@ -288,21 +288,20 @@ No prompt or completion content stored.
 
 ## 7. Scores (results stored; totals derived)
 
-### Reference data (seeded by migration, per scoring version)
+Migration 0020 (reference data). Every table here is 🔒 **append-only**: a version's reference
+rows never change.
+
+### 🔒 Reference data (seeded by migration, per scoring version)
 | Table | Columns |
 |---|---|
-| `scoring_versions` | `version text` pk, `created_at` |
-| `scoring_weights` | `version` fk, `kind` enum (`health`, `crisis`), `component text`, `weight_bp smallint`; pk (version, kind, component) |
-| `crisis_level_thresholds` | `version` fk, `level` enum (`low`, `medium`, `high`), `min_score smallint`; pk (version, level) |
+| `scoring_versions` | `version text` pk (`^s[0-9]{1,3}$`), `warm_up_scans smallint` (≥ 0: earlier scored scans a brand needs before its crisis has a level), `created_at` |
+| `scoring_weights` | `version` fk, `kind` enum `score_kind` (`health`, `crisis`; mirrors `domain.enums.ScoreKind`), `component text`, `weight_bp smallint` (1–10000); pk (version, kind, component); `ck_scoring_weights_component_of_kind`: a health weight names a `surface`, a crisis weight a `crisis_component` |
+| `crisis_level_thresholds` | `version` fk, `level` enum `crisis_level` (`low`, `medium`, `high`), `min_score smallint` (0–100); pk (version, level); `uq_crisis_level_thresholds_version_min_score` |
 
-### Results
-| Table | Columns | Key |
-|---|---|---|
-| `score_runs` | `scan_id` pk/fk, `version` fk, `computed_at` | — |
-| `surface_scores` | `scan_id`, `surface` enum, `score smallint` | pk (scan_id, surface) |
-| `crisis_components` | `scan_id`, `component` enum (`velocity`, `spread`, `autocomplete`, `trends`, `press`), `value smallint` | pk (scan_id, component) |
+`s1` is seeded with the numbers in `domain/scoring/` (docs/scoring.md); an integration test keeps the two equal.
+Weights are 1–10000 (leave a surface out by giving it no row: a zero weight would divide by zero); crisis weights sum to 10000 and level floors are unique per version and include 0 (`uq_crisis_level_thresholds_version_min_score`; the cross-row rules are tested over every version). A new version is its own seed migration; since the tables are append-only, its downgrade disables the trigger in its own transaction to delete its rows (as `trg_scans_identity_immutable` does), and the RESTRICT foreign keys keep a version in use from being deleted. Adding a surface or crisis component recreates `ck_scoring_weights_component_of_kind` in the same migration.
 
-Health, crisis score and crisis level are derived in `v_scan_scores` (weights + thresholds joined by version) and mirrored by pure functions in `domain/scoring/` (unit-tested to match the view).
+A scan's scores (results, and `v_scan_scores` deriving health, crisis and level) come with migration 0021.
 
 ---
 

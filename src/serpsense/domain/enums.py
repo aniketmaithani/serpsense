@@ -162,6 +162,13 @@ class Topic(StrEnum):
     OTHER = "other"
 
 
+class ScoreKind(StrEnum):
+    """Which score a weight belongs to (`score_kind` Postgres enum)."""
+
+    HEALTH = "health"
+    CRISIS = "crisis"
+
+
 class CrisisComponent(StrEnum):
     """What a crisis score is made of (`crisis_component` Postgres enum; docs/scoring.md)."""
 
