@@ -9,7 +9,7 @@ caller's unit of work and never commits.
 
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -60,6 +60,11 @@ class BrandStore(Protocol):
     def stop_schedule(self, brand_id: uuid.UUID, *, at: datetime) -> bool:
         """A schedule version with no interval (manual scans only) keeping the timezone; False
         when the brand has no schedule or already has no interval."""
+        ...
+
+    def set_languages(self, brand_id: uuid.UUID, languages: Sequence[str]) -> bool:
+        """The brand's own languages (lowercase BCP-47 tags, the caller validated) become exactly
+        these; True when any were added or removed."""
         ...
 
     def set_search_settings(

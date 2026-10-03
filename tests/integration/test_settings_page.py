@@ -18,14 +18,20 @@ pytestmark = [pytest.mark.integration, pytest.mark.api, pytest.mark.security]
 
 DOCS, SCHEDULES = table("brand_search_settings_versions"), table("brand_schedule_versions")
 PER_SCAN = re.compile(r'<span class="big">(\d+)</span> searches a scan')
+SHOWN: dict[str, Any] = {  # the page's own values for a brand on the defaults, manual only
+    "max_searches": "25", "interval_minutes": "", "languages": "en, hi", "country": "in",
+    "google_domain": "google.co.in", "search_pages": "1", "search_templates": "{brand}",
+    "autocomplete_prefixes": "{brand} \r\n{brand} is \r\nis {brand} ", "news_terms": "",
+    "trends_region": "IN", "trends_range": "today 3-m", "play_review_pages": "1",
+    "play_review_sort": "newest", "maps_review_pages": "1", "maps_review_sort": "newest",
+    "youtube_templates": "{brand}", "serpapi_cache": "true", "search_page": "true",
+    "ai_overview": "true", "autocomplete": "true", "news": "true", "trends": "true",
+    "related_queries": "true", "play": "true", "maps": "true",
+}  # fmt: skip
 FORM: dict[str, Any] = {
+    **{key: value for key, value in SHOWN.items() if key not in ("ai_overview", "trends", "maps")},
     "max_searches": "10",
     "interval_minutes": "720",
-    "play_review_pages": "1",
-    "search_page": "true",
-    "autocomplete": "true",
-    "news": "true",
-    "play": "true",
 }
 
 
@@ -125,11 +131,7 @@ def test_a_manual_brand_stays_manual_until_its_owner_picks_an_interval(
     url = f"/brands/{ola}/settings"
     page = client.get(url).text
     assert '<option value="" selected>Manual only</option>' in page and "Scan now" in page
-    shown = {  # the page's own values: the defaults, manual only
-        "csrf_token": token(page), "max_searches": "25", "interval_minutes": "",
-        "play_review_pages": "1", "search_page": "true", "ai_overview": "true",
-        "autocomplete": "true", "news": "true", "trends": "true", "play": "true", "maps": "true",
-    }  # fmt: skip
+    shown = {**SHOWN, "csrf_token": token(page)}  # the page's own values
     assert client.post(url, data=shown).headers["location"] == f"{url}?saved=unchanged"
     assert versions(committing_engine, ola) == ([], [])  # no layer pinned, no schedule started
     quiet = {key: value for key, value in shown.items() if key != "news"}  # unticked: absent
