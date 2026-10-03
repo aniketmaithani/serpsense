@@ -1,14 +1,17 @@
 """Collect a scan's surfaces: every collector's leads through the search service (BUILD_PLAN §10).
 
 Leads run on a bounded thread pool (ADR-0002: synchronous code, parallel SerpApi calls); the
-follow-ups an answer names run after it on the same thread, in the order they are named. No
-search starts past the deadline, so a scan can't outlive its time limit without relying on
-Celery's soft limit (#47).
+follow-ups an answer names run after it on the same thread, in the order they are named. The
+scan's `max_searches` is shared out before anything starts: each lead reserves the searches the
+estimator counts for it (its pages, and on a first page one for each other surface it may show)
+in the collectors' order, so what is cut is always the least important; a follow-up nothing
+counted draws on what no lead reserved. No search starts past the deadline, so a scan can't
+outlive its time limit without relying on Celery's soft limit (#47).
 
 A search that fails, or finds its engine's circuit open, drops only its own lead (the circuit is
 per engine); a spent budget or a passed deadline ends the lead's whole chain. Any other error (the
-ledger, a collector bug) propagates, and leads still queued are cancelled. Payloads go from the
-search service to their collector unread. Call it outside any unit of work: the search
+ledger, a collector bug) stops every chain before its next search and propagates. Payloads go
+from the search service to their collector unread. Call it outside any unit of work: the search
 service's ledger writes each call in a transaction of its own, from the pool's threads.
 """
 
@@ -19,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
+from threading import Event, Lock
 from types import MappingProxyType
 from typing import Protocol
 
@@ -34,6 +38,7 @@ from serpsense.services.search import SearchResult, SearchSkipped
 log = get_logger(__name__)
 
 DEADLINE_PASSED = "scan.deadline_passed"  # a surface's error code when the scan ran out of time
+ABORTED = "collection.aborted"  # another lead's chain raised; the scan fails with that error
 WORKERS = 4  # parallel SerpApi calls per scan (BUILD_PLAN §6.1)
 
 
@@ -65,12 +70,28 @@ class _Chain:
     stops: tuple[_Stop, ...]
 
 
+class _Spare:
+    """Searches no lead reserved, for follow-ups nothing counted."""
+
+    def __init__(self, searches: int) -> None:
+        self._left, self._lock = searches, Lock()
+
+    def take(self) -> bool:
+        with self._lock:
+            if self._left == 0:
+                return False
+            self._left -= 1
+            return True
+
+
 @dataclass(frozen=True)
 class _Scan:
     user_id: uuid.UUID
     scan_id: uuid.UUID
     deadline: datetime
     owners: Mapping[Surface, int]  # the collector, by place, that enables each surface
+    spare: _Spare
+    aborted: Event
 
 
 class CollectorRunner:
@@ -96,8 +117,9 @@ class CollectorRunner:
         plan = [(n, lead) for n, c in enumerate(self._collectors) for lead in c.leads(target)]
         for n, lead in plan:
             _check(owners, n, lead)
-        scan = _Scan(user_id, scan_id, deadline, owners)
-        chains = self._run(plan, scan)
+        shares, spare = _share(target.settings.max_searches, [lead for _, lead in plan])
+        scan = _Scan(user_id, scan_id, deadline, owners, _Spare(spare), Event())
+        chains = self._run(plan, shares, scan)
         by_collector: list[list[_Chain]] = [[] for _ in self._collectors]
         for (n, _), chain in zip(plan, chains, strict=True):
             by_collector[n].append(chain)
@@ -115,27 +137,38 @@ class CollectorRunner:
         readings = tuple(r for chain in chains for r in chain.readings)
         return Collected(MappingProxyType(outcomes), readings)
 
-    def _run(self, plan: list[tuple[int, Lead]], scan: _Scan) -> list[_Chain]:
+    def _run(self, plan: list[tuple[int, Lead]], shares: list[int], scan: _Scan) -> list[_Chain]:
         pool = ThreadPoolExecutor(max_workers=self._workers, thread_name_prefix="collect")
         try:
             futures = [
-                pool.submit(contextvars.copy_context().run, self._follow, n, lead, scan)
-                for n, lead in plan
+                pool.submit(contextvars.copy_context().run, self._chain, n, lead, share, scan)
+                for (n, lead), share in zip(plan, shares, strict=True)
             ]
             return [future.result() for future in futures]
-        finally:  # after an error, leads still queued are cancelled
+        except BaseException:
+            scan.aborted.set()  # an error here (a time limit, an interrupt) stops the chains too
+            raise
+        finally:
             pool.shutdown(wait=True, cancel_futures=True)
 
-    def _follow(self, n: int, lead: Lead, scan: _Scan) -> _Chain:
+    def _chain(self, n: int, lead: Lead, share: int, scan: _Scan) -> _Chain:
+        try:
+            return self._follow(n, lead, share, scan)
+        except BaseException:
+            scan.aborted.set()  # every other chain stops before its next search
+            raise
+
+    def _follow(self, n: int, lead: Lead, share: int, scan: _Scan) -> _Chain:
         readings: list[tuple[Lead, Reading]] = []
         stops: list[_Stop] = []
         waiting = deque([lead])
         while waiting:
             current = waiting.popleft()
-            ending = self._ending(scan)
+            ending = self._ending(share, scan)
             if ending is not None:
                 stops.append(_Stop(ending, _served([current, *waiting])))
                 break
+            share = max(share - 1, 0)
             failure = self._ask(n, current, scan, readings)
             if failure is None:
                 for follow_up in readings[-1][1].follow_ups:
@@ -148,9 +181,13 @@ class CollectorRunner:
                 stops.append(_Stop(failure, _served([current])))
         return _Chain(tuple(readings), tuple(stops))
 
-    def _ending(self, scan: _Scan) -> Outcome | None:
+    def _ending(self, share: int, scan: _Scan) -> Outcome | None:
+        if scan.aborted.is_set():
+            return Outcome(SurfaceOutcome.FAILED, ABORTED)
         if self._clock.now() >= scan.deadline:
             return Outcome(SurfaceOutcome.FAILED, DEADLINE_PASSED)
+        if share == 0 and not scan.spare.take():
+            return Outcome(SurfaceOutcome.BUDGET_EXHAUSTED)
         return None
 
     def _ask(
@@ -181,6 +218,23 @@ def _owners(collectors: Sequence[Collector], target: Target) -> dict[Surface, in
 def _check(owners: Mapping[Surface, int], n: int, lead: Lead) -> None:
     if any(owners.get(surface) != n for surface in (lead.surface, *lead.also)):
         raise ValueError(f"a lead for {lead.surface} serves a surface its collector doesn't enable")
+
+
+def _reserved(lead: Lead) -> int:
+    """What the estimator counts for a lead: its pages, and on a first page one search for each
+    other surface it may show. What a lead doesn't use isn't handed on: the cut stays the same
+    whichever leads finish first."""
+    return lead.pages - lead.page + 1 + (len(lead.also) if lead.page == 1 else 0)
+
+
+def _share(searches: int, leads: Sequence[Lead]) -> tuple[list[int], int]:
+    """Each lead's share of the scan's searches, in order, and what is left over."""
+    shares = []
+    for lead in leads:
+        share = min(_reserved(lead), searches)
+        shares.append(share)
+        searches -= share
+    return shares, searches
 
 
 def _served(leads: Sequence[Lead]) -> frozenset[Surface]:
