@@ -22,3 +22,22 @@ input { width: 100%; box-sizing: border-box; padding: 0.6rem; border: 1px solid 
 button { margin-top: 1rem; padding: 0.6rem 1rem; border: 0; border-radius: 0.375rem; background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer; }
 button.link { margin: 0; padding: 0; background: none; color: var(--accent); }
 form.inline { display: inline; }
+nav { display: flex; gap: 1rem; align-items: center; }
+h1 { margin-top: 0; }
+table { width: 100%; border-collapse: collapse; background: #fff; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line); }
+td.num { font-variant-numeric: tabular-nums; }
+.card + .card, .scores + .card { margin-top: 1rem; }
+.badge { margin-left: 0.5rem; padding: 0.1rem 0.5rem; border-radius: 1rem; background: var(--bg); color: var(--muted); font-size: 0.8rem; }
+.level { margin-left: 0.5rem; padding: 0.1rem 0.5rem; border-radius: 1rem; font-size: 0.8rem; color: #fff; }
+.level-low { background: #2e7d32; } .level-medium { background: #b26a00; } .level-high { background: var(--danger); }
+.scores { display: flex; gap: 1rem; margin-bottom: 1rem; }
+.score { flex: 1; background: #fff; border: 1px solid var(--line); border-radius: 0.5rem; padding: 1rem; }
+.score .label { display: block; color: var(--muted); font-size: 0.85rem; }
+.score .big { font-size: 2rem; font-weight: 700; margin-right: 0.5rem; }
+tr.missed td { color: var(--muted); }
+ul.mentions { list-style: none; padding: 0; }
+ul.mentions li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); border-left: 3px solid var(--line); padding-left: 0.6rem; }
+li.sentiment--1 { border-left-color: var(--danger); } li.sentiment-1 { border-left-color: #2e7d32; }
+.source { font-size: 0.8rem; color: var(--muted); margin-right: 0.5rem; }
+.reason { font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem; }

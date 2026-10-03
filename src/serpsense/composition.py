@@ -15,6 +15,7 @@ from serpsense.adapters.crypto.keys import KeyPurpose, derive_key
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
+from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_factory import (
@@ -43,6 +44,7 @@ from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
 from serpsense.ports.mailer import Mailer
+from serpsense.ports.overview import Overview
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.collection import CollectorRunner
@@ -90,6 +92,7 @@ class Container:
     health_checks: tuple[HealthCheck, ...]
     sign_in: SignIn
     sessions: SessionGuard
+    overview: Overview
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -114,6 +117,7 @@ def build_container(settings: Settings | None = None) -> Container:
         ),
         sign_in=build_sign_in(resolved, build_celery(resolved)),
         sessions=build_session_guard(resolved, build_celery(resolved)),
+        overview=SqlOverview(engine.connect),
     )
 
 
