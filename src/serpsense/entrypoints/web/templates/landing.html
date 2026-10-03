@@ -146,7 +146,7 @@ sed 's/^SERPSENSE_MODE=live/SERPSENSE_MODE=replay/' .env.example > .env
 docker compose run --rm --no-deps tools serpsense gen-secrets >> .env
 docker compose up --build -d
 docker compose run --rm tools serpsense seed-demo --owner you@example.com</code></pre>
-          <p class="muted quickstart-note">Then sign in at <code>localhost:8000</code> as that address; the code arrives in Mailpit at <code>localhost:8025</code>. No API keys needed.</p>
+          <p class="muted quickstart-note">Then sign in at <code>localhost:8000</code> as that address; the code arrives in Mailpit at <code>localhost:8025</code>.</p>
         </article>
       </div>
     </div>
