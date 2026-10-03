@@ -197,3 +197,23 @@ def test_only_a_pending_email_takes_an_attempt(engine: Engine) -> None:
     dispatcher(engine, FakeMailer()).dispatch()
     with engine.begin() as conn, pytest.raises(LookupError, match="pending"):
         SqlOutbox(conn).record(message_id, OutboxOutcome.DROPPED, at=NOW)
+
+
+def test_an_alert_email_goes_to_the_brands_owner_once(engine: Engine) -> None:
+    with engine.begin() as conn:
+        owner = add_user(conn, "ola-owner@example.com")
+        scan_id = add_scan(conn, add_brand(conn, owner), status="succeeded")
+        alert = add(conn, table("alerts"), scan_id=scan_id, rule="level_increase", created_at=NOW)
+        gone = add(conn, table("users"), email="gone@x.invalid", created_at=NOW, deleted_at=NOW)
+        gone_scan = add_scan(conn, add_brand(conn, gone, slug="gone"), status="succeeded")
+        orphan = add(
+            conn, table("alerts"), scan_id=gone_scan, rule="level_increase", created_at=NOW
+        )
+        outbox = SqlOutbox(conn)
+        data = {"title": "Ola: crisis level rose to high", "body": "Crisis 74."}
+        assert outbox.add_alert_email(alert, data=data, at=NOW) is True
+        assert outbox.add_alert_email(alert, data=data, at=NOW) is False  # once per alert
+        assert outbox.add_alert_email(orphan, data=data, at=NOW) is False  # no account, no email
+    mailer = FakeMailer()
+    assert dispatcher(engine, mailer).dispatch() == 1
+    assert [(e.to, e.subject) for e in mailer.sent] == [("ola-owner@example.com", data["title"])]
