@@ -40,6 +40,15 @@ it bypasses `SIGNUP_MODE=invite`; a seeded address should also be on the invite 
 are checked the same way everywhere (`ports.accounts.email_address`): at most 254 characters, no
 control characters, and never the reserved `.invalid` domain of deleted accounts' pseudonyms.
 
+**Amendment (2026-10-03, the sign-in service review):** besides the per-email and per-IP request
+limits, verification is limited to 50 an hour per IP, IPv6 sources count per /64, and at most 200
+codes an hour are issued for every address together (counted in Postgres, so it holds while the
+Redis limiter is down and fails open). Rate-limit keys are an HMAC under a key derived like the
+others. A session ends 30 days after it began, however often its expiry slides. A guess at a code
+that is already expired or locked out isn't compared, recorded or audited. Accepted risk: a
+refused or rate-limited request returns sooner than one that issues a code, so timing could tell
+who is invited; the invite list is short and operator-run, and every answer's content is the same.
+
 ## Alternatives considered
 - **Passwords (Argon2)** — more surface (reset flow, breach handling) for no user benefit.
 - **Magic links** — similar security; codes work across devices and survive link pre-fetching by email scanners.
