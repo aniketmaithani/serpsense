@@ -20,6 +20,7 @@ class NotificationRow:
     at: datetime
     read: bool
     brand_id: uuid.UUID | None  # the alert's brand, to link to
+    explanation: str | None = None  # the model's account of the alert, once written
 
 
 class Inbox(Protocol):
