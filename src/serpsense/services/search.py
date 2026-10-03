@@ -1,8 +1,8 @@
 """The search service: every SerpApi request goes through it (ADR-0007, data-model §5).
 
-Local cache → the call, retrying transient failures with backoff and jitter. Every attempt is a
-`serp_calls` row written in its own transaction; a successful call's redacted payload is kept
-and cached.
+Local cache → circuit breaker → budgets → the call, retrying transient failures with backoff and
+jitter. Every attempt and every skipped call is a `serp_calls` row written in its own
+transaction; a successful call's redacted payload is kept and cached.
 """
 
 import random
@@ -10,10 +10,12 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
+from serpsense.domain import circuit_breaker, usage
 from serpsense.domain.enums import SerpCallOutcome, SerpEngine, SerpErrorCode, ServedFrom
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
@@ -41,6 +43,14 @@ DEFAULT_CACHE_TTL: Mapping[SerpEngine, timedelta] = MappingProxyType(
 
 @dataclass(frozen=True)
 class SearchLimits:
+    """Budgets count billable (live) calls over UTC calendar periods (domain.usage). They are soft:
+    a call is recorded when it returns, so concurrent calls can pass a limit by the number in
+    flight. The outer limits are the scan's quota check (SerpApi's Account API) before it starts
+    and SerpApi's own quota."""
+
+    monthly_default: int  # for a user with no `user_search_budgets` row
+    global_daily: int
+    per_scan: int
     attempts: int = 3
     backoff_seconds: float = 1.0  # doubled per retry, capped, plus up to as much jitter
     backoff_cap_seconds: float = 8.0
@@ -68,6 +78,22 @@ class SearchResult:
     served_from: ServedFrom
 
 
+class SkipReason(StrEnum):
+    CIRCUIT_OPEN = "circuit_open"
+    GLOBAL_DAILY_CAP = "global_daily_cap"
+    MONTHLY_BUDGET = "monthly_budget"
+    SCAN_BUDGET = "scan_budget"
+
+
+class SearchSkipped(Exception):
+    """The call was not made (its skipped row is recorded)."""
+
+    def __init__(self, outcome: SerpCallOutcome, reason: SkipReason) -> None:
+        super().__init__(reason)
+        self.outcome = outcome
+        self.reason = reason
+
+
 class SearchService:
     def __init__(
         self,
@@ -83,9 +109,10 @@ class SearchService:
     def search(
         self, request: SearchRequest, *, user_id: uuid.UUID, scan_id: uuid.UUID | None = None
     ) -> SearchResult:
-        """Raises SearchFailed when the call fails. If keeping the payload fails after a
-        successful call, that error propagates: the call is already recorded, so nothing billed
-        goes unrecorded, and a payload the ledger rejects is never used."""
+        """Raises SearchSkipped when the call isn't made, SearchFailed when it fails. If keeping
+        the payload fails after a successful call, that error propagates: the call is already
+        recorded, so nothing billed goes unrecorded, and a payload the ledger rejects is never
+        used."""
         ports = self._ports
         call = _Call(ports, request, user_id, scan_id)
         if not request.no_cache:
@@ -93,6 +120,16 @@ class SearchService:
             if cached is not None:
                 call_id = call.record(SerpCallOutcome.SUCCEEDED, served_from=ServedFrom.LOCAL_CACHE)
                 return SearchResult(call_id, cached, ServedFrom.LOCAL_CACHE)
+        now = ports.clock.now()
+        window = now - circuit_breaker.WINDOW
+        attempts = ports.ledger.recent_attempts(
+            request.engine, since=window, limit=circuit_breaker.ATTEMPTS
+        )
+        if circuit_breaker.is_open(attempts):
+            raise call.skip(SerpCallOutcome.CIRCUIT_OPEN, SkipReason.CIRCUIT_OPEN)
+        reason = self._over_budget(user_id, scan_id, now)
+        if reason is not None:
+            raise call.skip(SerpCallOutcome.SKIPPED_BUDGET, reason)
         return self._attempt(call)
 
     def _attempt(self, call: "_Call") -> SearchResult:
@@ -128,6 +165,23 @@ class SearchService:
         base = min(self._limits.backoff_cap_seconds, doubled)
         return base + self._jitter() * self._limits.backoff_seconds
 
+    def _over_budget(
+        self, user_id: uuid.UUID, scan_id: uuid.UUID | None, now: datetime
+    ) -> SkipReason | None:
+        ledger = self._ports.ledger
+        if ledger.live_calls(since=usage.day_start(now)) >= self._limits.global_daily:
+            return SkipReason.GLOBAL_DAILY_CAP
+        budget = ledger.monthly_budget(user_id, at=now)
+        monthly = self._limits.monthly_default if budget is None else budget
+        if ledger.live_calls(since=usage.month_start(now), user_id=user_id) >= monthly:
+            return SkipReason.MONTHLY_BUDGET
+        scan_start = datetime.min.replace(tzinfo=UTC)
+        if scan_id is not None and (
+            ledger.live_calls(since=scan_start, scan_id=scan_id) >= self._limits.per_scan
+        ):
+            return SkipReason.SCAN_BUDGET
+        return None
+
 
 @dataclass(frozen=True)
 class _Call:
@@ -159,3 +213,8 @@ class _Call:
             created_at=self.ports.clock.now(),
         )
         return self.ports.ledger.record_call(record)
+
+    def skip(self, outcome: SerpCallOutcome, reason: SkipReason) -> SearchSkipped:
+        self.record(outcome)
+        log.info("serp_call.skipped", engine=self.request.engine, reason=reason)
+        return SearchSkipped(outcome, reason)
