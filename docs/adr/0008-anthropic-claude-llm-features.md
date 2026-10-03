@@ -10,7 +10,7 @@ SerpSense must turn hundreds of heterogeneous mentions (reviews, headlines, auto
 ## Decision
 
 ### Provider and models
-- **Anthropic Claude API** via the official `anthropic` Python SDK, imported only in `adapters/llm/anthropic_client.py` behind the `LLMClient` port. A deterministic fake (`adapters/llm/fake.py`) is used in tests and replay mode.
+- **Anthropic Claude API** via the official `anthropic` Python SDK, imported only in `adapters/llm/anthropic_client.py` behind the `LLMClient` port. Tests use scripted fakes (`tests/fakes.py`). *Amended (#117):* replay mode is served by `adapters/llm/replay.py` (`ReplayLlm`), which answers only from recorded model output, of the same brand, text and prompt version, records each answer as served by the model `replay` at no cost, and never invents an answer: a text with nothing recorded is left unlabelled.
 - Default model for every task: **`claude-opus-5-5`**, with per-task effort. Users may choose **`claude-sonnet-5-5`** or **`claude-haiku-4-5`** per task. `ALLOWED_MODELS` caps choices.
 - Per-model capability rules (enforced in `domain/llm_capabilities.py`, UI and gateway):
 
