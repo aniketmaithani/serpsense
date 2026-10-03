@@ -320,7 +320,7 @@ Weights and thresholds are **reference rows per scoring version** (`scoring_weig
   - the crisis level goes up, or
   - a new negative autocomplete suggestion appears, or
   - a narrative reaches 5 or more mentions on 2 or more surfaces.
-- **Idempotent:** unique per (scan, rule, narrative). **Cooldown:** 12h per (brand, narrative, rule), checked by query; race-free because a brand has at most one active scan.
+- **Idempotent:** unique per (scan, rule, narrative). **Cooldown:** 12h per (brand, narrative, rule), counted between the scans' creation times with 30 minutes' slack so a 12-hourly schedule isn't held back; a level rising past the one last alerted still alerts. The first level after the warm-up is where a brand starts, not a rise. Checked by query; race-free because a brand has at most one active scan (`domain/alert_rules.py`).
 - **Applies to every brand, including competitors** (your decision): a competitor crisis also sends email + in-app, with the subject line marked "Competitor: …".
 - **Channels:** **email** (outbox `alert_email`) and **in-app** notification. New channels = new outbox kind + adapter via a new ADR (ADR-0011).
 - **Content:** level, the narrative and its mention count, surfaces, what's new since the last scan, the competitor check, and the LLM explanation (labelled AI-generated).
