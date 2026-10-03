@@ -49,7 +49,7 @@ TREND = re.compile(r"data-trend='([^']*)'")
 
 
 def test_the_owner_sees_their_brands_and_a_brand_page(committing_engine: Engine) -> None:
-    assert browser(committing_engine).get("/").headers["location"] == "/login"
+    assert "Not affiliated with SerpApi" in browser(committing_engine).get("/").text  # signed out
     client, owner = signed_in(committing_engine)
     slug = uuid.uuid4().hex[:8]
     with committing_engine.begin() as conn:
