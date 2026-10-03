@@ -6,11 +6,12 @@ machine reason that fits it; anything not declared here raises IllegalTransition
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
-from serpsense.domain.enums import ScanStatus, TransitionActor
+from serpsense.domain.collection import STOPS
+from serpsense.domain.enums import ScanStatus, SurfaceOutcome, TransitionActor
 
 
 class TransitionReason(StrEnum):
@@ -77,3 +78,25 @@ class Transition:
 
 def is_final(status: ScanStatus) -> bool:
     return status in FINAL
+
+
+def finished(
+    surfaces: Iterable[SurfaceOutcome], *, answered: bool, enrichment_failed: bool
+) -> Transition:
+    """How a running scan ends: when surfaces stopped short and nothing came back at all, skipped
+    if only budgets stopped them (as a budget caught before collecting would) and failed
+    otherwise; partial if some stopped short or labelling failed (scores still come from what
+    was collected); else succeeded. A surface with nothing to show was reached and doesn't count
+    against the scan; `answered` is whether any search came back."""
+    outcomes = list(surfaces)
+    stops = [outcome for outcome in outcomes if outcome in STOPS]
+    reached = any(o in {SurfaceOutcome.SUCCEEDED, SurfaceOutcome.NOT_SHOWN} for o in outcomes)
+    if stops and not (reached or answered):
+        if set(stops) == {SurfaceOutcome.BUDGET_EXHAUSTED}:
+            return Transition(S.RUNNING, S.SKIPPED, R.BUDGET_EXHAUSTED)
+        return Transition(S.RUNNING, S.FAILED, R.ALL_SURFACES_FAILED)
+    if stops:
+        return Transition(S.RUNNING, S.PARTIAL, R.SURFACES_FAILED)
+    if enrichment_failed:
+        return Transition(S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
+    return Transition(S.RUNNING, S.SUCCEEDED, R.COMPLETED)
