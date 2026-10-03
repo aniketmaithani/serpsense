@@ -6,7 +6,7 @@ stops the run before a call that would likely pass it (judged by the dearest cal
 run never overspends by more than one call; like the product, two failed batches in a row or a
 failure no retry can fix stop it too. Answers are scored as the product would store them (a text
 the model calls unrelated gets fixed values), with agreement per field and per class, cost per
-item and latency.
+item and latency; `report` renders it for evals/reports/<date>-<task>.md.
 """
 
 import uuid
@@ -19,7 +19,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from serpsense.domain.enums import LlmTask, Topic
+from serpsense.domain.enums import LlmCallOutcome, LlmTask, Topic
 from serpsense.domain.labelling import PROMPTS
 from serpsense.domain.llm_capabilities import TaskSettings
 from serpsense.ports.llm_client import LlmCallFailed
@@ -28,6 +28,7 @@ from serpsense.services.labelling import BATCH, STOP_AFTER, Label, Labels
 from serpsense.services.llm_gateway import Call, LlmGateway, LlmOutputRejected
 
 EVAL_USER = uuid.UUID(int=0)  # evals bill no one; the ledger is in memory
+SENTIMENTS = (-1, 0, 1)
 SEVERITY_SLACK = 15  # severities this close agree
 
 
@@ -219,3 +220,59 @@ def _check(
 def _tally(result: EvalResult, name: str, *, ok: bool) -> None:
     result.counted[name] += 1
     result.agree[name] += ok
+
+
+def report(result: EvalResult, *, on: str, model: str, split: str) -> str:
+    """The markdown report for evals/reports/<date>-<task>.md."""
+    fields = ["answered", "is_about_brand", "sentiment", *(f"sentiment[{s}]" for s in SENTIMENTS)]
+    fields += ["topic", "is_complaint", f"severity±{SEVERITY_SLACK}"]
+    rows = "\n".join(
+        f"| {name} | {result.agree[name]}/{result.counted[name]} | {_pct(result.rate(name))} |"
+        for name in fields
+        if result.counted[name]
+    )
+    per_item = result.cost_micros / max(result.answered, 1) / 1_000_000
+    latency = sum(c.latency_ms for c in result.calls) / max(len(result.calls), 1)
+    failed = sum(c.outcome is not LlmCallOutcome.SUCCEEDED for c in result.calls)
+    lines = [
+        f"| {d.item_id} | {d.field} | {_shown(d.golden)} | {_shown(d.model)} |"
+        for d in result.disagreements
+    ]
+    stopped = (
+        f"\n\n**{STOPPED[result.stopped]}**: not every item was sent." if result.stopped else ""
+    )
+    return f"""# Eval: {result.task.value} ({result.prompt_version})
+
+- Run on {on}, model `{model}`, golden split `{split}`.
+- Items: {result.items}, answered: {result.answered}.
+- Calls: {len(result.calls)} ({failed} without a usable answer); mean latency {latency:,.0f} ms.
+- Cost: ${result.cost_micros / 1_000_000:.4f} in all, ${per_item:.5f} per answered item.{stopped}
+
+## Agreement with the golden labels
+
+| Field | Agreed | Rate |
+|---|---|---|
+{rows}
+
+Sentiment, topic, complaint and severity are scored only on items about the brand;
+`sentiment[c]` is the agreement on items whose golden sentiment is `c` (the per-class quality
+AGENTS §7 tracks); severity agrees within {SEVERITY_SLACK} points. A label the model gives a text it
+calls unrelated is scored as the product stores it.
+
+## Disagreements
+
+| Item | Field | Golden | Model |
+|---|---|---|---|
+{chr(10).join(lines) if lines else "| - | - | - | - |"}
+"""
+
+
+STOPPED = {Stop.CAP: "Stopped at the spend cap", Stop.FAILURES: "Stopped after failed calls"}
+
+
+def _pct(rate: float | None) -> str:
+    return "-" if rate is None else f"{rate:.1%}"
+
+
+def _shown(value: object) -> object:
+    return value.value if isinstance(value, StrEnum) else value
