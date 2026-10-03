@@ -51,7 +51,8 @@ TEMPLATES.filters["when"] = _when
 def page(
     request: Request, template: str, *, status_code: int = 200, **context: Any
 ) -> HTMLResponse:
-    """A rendered page; never cached, since every page is personal or a sign-in form."""
+    """A rendered page, never cached: pages are personal, carry a form token, or (`/`) differ
+    between a signed-in visitor and anyone else at the same address."""
     html = TEMPLATES.get_template(template).render(request=request, **context)
     return HTMLResponse(html, status_code=status_code, headers={"Cache-Control": "no-store"})
 

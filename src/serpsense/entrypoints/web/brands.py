@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
+from serpsense.entrypoints.web.landing import landing_page
 from serpsense.entrypoints.web.pages import signed_in_page
 from serpsense.entrypoints.web.session import container, current_user, require_csrf
 from serpsense.services.scan_now import Requested
@@ -26,9 +27,10 @@ SAID: Mapping[str, str] = {  # what the page says after a "Scan now", by its out
 
 @router.get("/")
 def home(request: Request) -> Response:
+    """The signed-in owner's brands; anyone else gets the public landing page."""
     user = current_user(request)
     if user is None:
-        return RedirectResponse("/login", SEE_OTHER)
+        return landing_page(request)
     cards = container(request).overview.brands(user.user_id)
     return signed_in_page(request, user, "home.html", cards=cards)
 
