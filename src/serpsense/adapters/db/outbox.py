@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from serpsense.adapters.db.models.outbox import OutboxAttempt, OutboxMessage
 from serpsense.domain import outbox as rules
-from serpsense.domain.enums import OutboxKind, OutboxOutcome, OutboxStatus
+from serpsense.domain.enums import CodeEmail, OutboxKind, OutboxOutcome, OutboxStatus
 from serpsense.ports.outbox import DueEmail
 
 MESSAGES = cast(Table, OutboxMessage.__table__)
@@ -39,7 +39,7 @@ INSERT INTO outbox_messages (id, kind, user_id, otp_code_id, recipient_email, te
                              next_attempt_at, created_at)
 SELECT :id, 'otp_email',
        (SELECT u.id FROM users u WHERE u.email = c.email AND u.deleted_at IS NULL),
-       c.id, c.email, 'otp', CAST(:data AS jsonb), :sealed, :key, 'pending', :at, :at
+       c.id, c.email, :template, CAST(:data AS jsonb), :sealed, :key, 'pending', :at, :at
 FROM otp_codes c
 WHERE c.id = :code
 ON CONFLICT (dedupe_key) DO NOTHING
@@ -92,10 +92,17 @@ class SqlOutbox:
         return added.first() is not None
 
     def add_otp_email(
-        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+        self,
+        otp_code_id: uuid.UUID,
+        *,
+        sealed: bytes,
+        minutes: int,
+        at: datetime,
+        purpose: CodeEmail = CodeEmail.SIGN_IN,
     ) -> bool:
         key = rules.otp_email_key(otp_code_id)
         values = {"id": uuid.uuid4(), "code": otp_code_id, "sealed": sealed, "key": key, "at": at}
+        values["template"] = purpose
         added = self._conn.execute(OTP_EMAIL, values | {"data": json.dumps({"minutes": minutes})})
         return added.first() is not None
 

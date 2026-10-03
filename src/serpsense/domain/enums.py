@@ -207,6 +207,13 @@ class OutboxKind(StrEnum):
     ALERT_EMAIL = "alert_email"
 
 
+class CodeEmail(StrEnum):
+    """Which email a code goes out in (`outbox_messages.template`): what the code is for."""
+
+    SIGN_IN = "otp"
+    DELETE_ACCOUNT = "delete_code"
+
+
 class OutboxStatus(StrEnum):
     """Where an outbox email stands (`outbox_status`); derived from its attempts (data-model §8)."""
 
