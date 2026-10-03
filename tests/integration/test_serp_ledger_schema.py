@@ -125,9 +125,11 @@ def test_raw_payload_checks(conn: Connection, payload: Any, check: str) -> None:
 
 @pytest.mark.parametrize("target", ["scans", "users"])
 def test_referenced_scan_and_user_cannot_be_deleted(conn: Connection, target: str) -> None:
-    caller = add_user(conn, "caller@example.com")  # owns nothing else, so only the call refers
-    scan_id = add_scan(conn, add_brand(conn, add_user(conn)))
-    add_call(conn, caller, scan_id=scan_id)
+    owner = add_user(conn)
+    scan_id = add_scan(conn, add_brand(conn, owner))
+    add_call(conn, owner, scan_id=scan_id)
+    caller = add_user(conn, "caller@example.com")  # owns nothing, so only its Preview call refers
+    add_call(conn, caller)
     victim, column = (scan_id, "scan_id") if target == "scans" else (caller, "user_id")
     with pytest.raises(IntegrityError) as exc:
         conn.execute(delete(table(target)).where(table(target).c.id == victim))

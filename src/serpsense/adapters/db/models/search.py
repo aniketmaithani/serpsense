@@ -32,6 +32,12 @@ class SerpCall(Base):
         CheckConstraint("error_code ~ '^[a-z][a-z0-9_.]{0,63}$'", name="error_code_format"),
         CheckConstraint("http_status BETWEEN 100 AND 599", name="http_status_range"),
         CheckConstraint("latency_ms >= 0", name="latency_non_negative"),
+        # Skipped calls never reached SerpApi (migration 0013).
+        CheckConstraint(
+            "outcome NOT IN ('skipped_budget', 'circuit_open') "
+            "OR (http_status IS NULL AND latency_ms = 0)",
+            name="skipped_not_sent",
+        ),
         CheckConstraint("params_hash ~ '^[0-9a-f]{64}$'", name="params_hash_sha256"),
         CheckConstraint("jsonb_typeof(params) = 'object'", name="params_is_object"),
         # A leaked key could never be removed from this append-only ledger (ADR-0007).
@@ -61,11 +67,13 @@ class SerpCall(Base):
 class RawResponse(Base):
     """The redacted SerpApi payload of a call, kept for replay and re-parsing.
 
-    Mutable on purpose (not append-only) so a retention job can prune old payloads.
+    Mutable on purpose (not append-only) so a retention job can prune old payloads. Kept only
+    for successful calls (trigger trg_raw_responses_call_succeeded, migration 0013).
     """
 
     __tablename__ = "raw_responses"
     __table_args__ = (
+        Index("ix_raw_responses_created_at", "created_at"),  # the retention job prunes by age
         CheckConstraint("jsonb_typeof(payload) = 'object'", name="payload_is_object"),
         CheckConstraint(no_api_key_check("payload"), name="payload_no_api_key"),
     )
