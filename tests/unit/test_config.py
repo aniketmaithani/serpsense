@@ -1,4 +1,5 @@
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from serpsense.config import (
@@ -110,3 +111,9 @@ def test_csv_settings_are_split_trimmed_and_lowercased() -> None:
 def test_migration_settings_need_only_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://m:m@localhost:5432/m")
     assert MigrationSettings().database_url.get_secret_value().endswith("/m")
+
+
+def test_the_outbox_keys_are_listed_newest_first() -> None:
+    new = Fernet.generate_key().decode()
+    settings = make_settings(outbox_encryption_keys=f"{new}, {TEST_FERNET_KEY}")
+    assert settings.outbox_key_list == (new, TEST_FERNET_KEY)
