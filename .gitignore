@@ -50,3 +50,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# scripts/dev.sh: local Postgres, Redis and Mailpit data
+.dev/
