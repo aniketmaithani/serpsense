@@ -18,6 +18,7 @@ from serpsense.adapters.db.models.identity import (
     UserSession,
 )
 from serpsense.adapters.db.models.mentions import Mention
+from serpsense.adapters.db.models.observations import AppRatingObservation, MentionObservation
 from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.adapters.db.models.search import RawResponse, SerpCall
 from serpsense.adapters.db.models.settings import (
@@ -28,6 +29,7 @@ from serpsense.adapters.db.models.settings import (
 )
 
 __all__ = [
+    "AppRatingObservation",
     "Brand",
     "BrandAlias",
     "BrandApp",
@@ -38,6 +40,7 @@ __all__ = [
     "BrandSearchSettingsVersion",
     "BrandWatchTerm",
     "Mention",
+    "MentionObservation",
     "OtpCode",
     "OtpVerifyAttempt",
     "RawResponse",
