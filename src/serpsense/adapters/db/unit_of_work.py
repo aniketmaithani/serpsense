@@ -12,6 +12,7 @@ from serpsense.adapters.db.audit import SqlAuditLog
 from serpsense.adapters.db.brand_store import SqlBrandStore
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
+from serpsense.adapters.db.narrative_store import SqlNarrativeStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
 from serpsense.adapters.db.otp_codes import SqlOtpCodes
 from serpsense.adapters.db.outbox import SqlOutbox
@@ -28,6 +29,7 @@ from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
 from serpsense.ports.mention_store import MentionStore
+from serpsense.ports.narrative_store import NarrativeStore
 from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.otp_codes import OtpCodes
 from serpsense.ports.outbox import Outbox
@@ -71,6 +73,7 @@ class SqlUnitOfWork:
     observations: ObservationStore
     schedules: ScheduledBrands
     enrichments: EnrichmentStore
+    narratives: NarrativeStore
     targets: ScanTargets
     brands: BrandStore
     accounts: Accounts
@@ -99,6 +102,7 @@ class SqlUnitOfWork:
         self.observations = SqlObservationStore(self._conn)
         self.schedules = SqlScheduledBrands(self._conn)
         self.enrichments = SqlEnrichmentStore(self._conn)
+        self.narratives = SqlNarrativeStore(self._conn)
         self.targets = SqlScanTargets(self._conn)
         self.brands = SqlBrandStore(self._conn)
         self.accounts = SqlAccounts(self._conn)

@@ -21,6 +21,7 @@ from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
+from serpsense.ports.narrative_store import NarrativeStore
 from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.otp_codes import OtpCodes
 from serpsense.ports.outbox import Outbox
@@ -47,6 +48,9 @@ class UnitOfWork(Protocol):
 
     @property
     def enrichments(self) -> EnrichmentStore: ...
+
+    @property
+    def narratives(self) -> NarrativeStore: ...
 
     @property
     def targets(self) -> ScanTargets: ...
