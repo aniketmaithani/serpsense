@@ -20,6 +20,7 @@ from serpsense.composition import (
     build_evaluator,
     build_grouping_evaluator,
     build_outbox,
+    build_output_evaluator,
     build_seeder,
     build_session_guard,
     build_sign_in,
@@ -33,6 +34,7 @@ from serpsense.ports.llm_client import LlmCallFailed, LlmRequest
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.drafts import Drafter
 from serpsense.services.explanations import Explainer
+from serpsense.services.output_evals import OutputEvaluator
 from serpsense.services.scan_now import ScanNow
 from serpsense.services.scans import ScanService
 from serpsense.services.sweep import Sweeper
@@ -158,3 +160,10 @@ def test_build_account_deletion_confirms_with_the_sign_in_codes() -> None:
     settings = make_settings()
     sign_in = build_sign_in(settings, build_celery(settings))
     assert build_account_deletion(settings, build_celery(settings), sign_in)._sign_in is sign_in
+
+
+def test_build_output_evaluator_needs_the_anthropic_key_and_says_which_model() -> None:
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):
+        build_output_evaluator(make_settings())
+    evaluator, model = build_output_evaluator(make_settings(anthropic_api_key="sk-ant-test-only"))
+    assert isinstance(evaluator, OutputEvaluator) and model == "claude-opus-5-5"

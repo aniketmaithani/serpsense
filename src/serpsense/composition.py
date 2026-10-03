@@ -76,6 +76,7 @@ from serpsense.services.grouping_eval import GroupingEvaluator
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.outbox import OutboxDispatcher
+from serpsense.services.output_evals import OutputEvaluator
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
 from serpsense.services.scoring_run import score_backlog
@@ -102,6 +103,7 @@ __all__ = [
     "build_evaluator",
     "build_grouping_evaluator",
     "build_outbox",
+    "build_output_evaluator",
     "build_scan_now",
     "build_scans",
     "build_seeder",
@@ -439,6 +441,20 @@ def _eval_gateway(settings: Settings) -> tuple[LlmGateway, MemoryLedger]:
     client = AnthropicClient(key.get_secret_value(), PromptLibrary())
     gateway = LlmGateway(client, ledger, SystemClock(), monthly_budget_micros=lambda _: 2**62)
     return gateway, ledger
+
+
+def build_output_evaluator(settings: Settings) -> tuple[OutputEvaluator, str]:
+    """An evaluator for the explanation and drafting prompts on the real model and the
+    configured preset, and the model it asks; its ledger is in memory, so a run stores nothing."""
+    key = settings.anthropic_api_key
+    if key is None:
+        raise ConfigError("ANTHROPIC_API_KEY is needed to run an eval")
+    ledger = MemoryLedger()
+    client = AnthropicClient(key.get_secret_value(), PromptLibrary())
+    gateway = LlmGateway(client, ledger, SystemClock(), monthly_budget_micros=lambda _: 2**62)
+    tasks = (LlmTask.EXPLAIN_CRISIS, LlmTask.DRAFT_RESPONSE)
+    chosen = {task: preset_settings(settings.default_llm_preset, task) for task in tasks}
+    return OutputEvaluator(gateway, ledger, chosen), chosen[LlmTask.EXPLAIN_CRISIS].model
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
