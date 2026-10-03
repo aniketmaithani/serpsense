@@ -1,14 +1,15 @@
 """In-memory fakes behind the ports, for service tests (AGENTS §9: no network, no database)."""
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from types import TracebackType
 from typing import Self
 
-from serpsense.domain.enums import ScanStatus
+from serpsense.domain.enums import MentionSource, ScanStatus
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
+from serpsense.ports.enrichment_store import MentionLabel, PendingText
 from serpsense.ports.mention_store import Recorded, Sighting
 from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan
@@ -103,6 +104,38 @@ class RecordingObservations:
         return True
 
 
+class RecordingEnrichments:
+    """Hands out preset pending texts and keeps the labels it is given."""
+
+    def __init__(self, pending: Sequence[PendingText] = ()) -> None:
+        self.waiting = list(pending)
+        self.labels: list[tuple[MentionLabel, str, uuid.UUID]] = []
+
+    def pending(
+        self,
+        brand_id: uuid.UUID,
+        *,
+        prompt_version: str,
+        sources: Collection[MentionSource],
+        seen_since: datetime,
+        limit: int,
+    ) -> Sequence[PendingText]:
+        done = {(lbl.mention_id, lbl.revision) for lbl, v, _ in self.labels if v == prompt_version}
+        fits = [p for p in self.waiting if p.source in sources]
+        return [p for p in fits if (p.mention_id, p.revision) not in done][:limit]
+
+    def record(
+        self,
+        labels: Sequence[MentionLabel],
+        *,
+        prompt_version: str,
+        llm_call_id: uuid.UUID,
+        at: datetime,
+    ) -> int:
+        self.labels.extend((label, prompt_version, llm_call_id) for label in labels)
+        return len(labels)
+
+
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
@@ -117,6 +150,7 @@ class FakeUnitOfWork:
     def __init__(self, scans: InMemoryScans, schedules: StaticSchedules) -> None:
         self.scans, self.schedules = scans, schedules
         self.mentions, self.observations = RecordingMentions(), RecordingObservations()
+        self.enrichments = RecordingEnrichments()
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
 
