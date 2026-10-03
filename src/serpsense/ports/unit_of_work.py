@@ -14,6 +14,7 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Protocol, Self
 
+from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.observation_store import ObservationStore
@@ -34,6 +35,9 @@ class UnitOfWork(Protocol):
 
     @property
     def schedules(self) -> ScheduledBrands: ...
+
+    @property
+    def enrichments(self) -> EnrichmentStore: ...
 
     @property
     def jobs(self) -> JobQueue:
