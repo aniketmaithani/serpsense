@@ -10,6 +10,7 @@ from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
 from serpsense.adapters.db.scan_store import SqlScanStore
+from serpsense.adapters.db.scan_targets import SqlScanTargets
 from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.observability import get_logger
 from serpsense.ports.enrichment_store import EnrichmentStore
@@ -64,6 +65,7 @@ class SqlUnitOfWork:
         self.observations = SqlObservationStore(self._conn)
         self.schedules = SqlScheduledBrands(self._conn)
         self.enrichments = SqlEnrichmentStore(self._conn)
+        self.targets = SqlScanTargets(self._conn)
         self.jobs = self._pending
         return self
 

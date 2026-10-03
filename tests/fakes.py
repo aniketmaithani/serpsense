@@ -16,6 +16,7 @@ from serpsense.ports.llm_ledger import LlmCallRecord
 from serpsense.ports.mention_store import Recorded, Sighting
 from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan, SurfaceResult
+from serpsense.ports.scan_targets import ScanTarget
 from serpsense.ports.scheduled_brands import ScheduledBrand
 
 
@@ -80,6 +81,16 @@ class InMemoryScans:
             and when < at
             and self.status[i] is ScanStatus.RUNNING
         ]
+
+
+class StaticTargets:
+    """Scan targets by scan id; change `targets` to archive a brand mid-scan."""
+
+    def __init__(self, *targets: ScanTarget) -> None:
+        self.targets = {target.scan_id: target for target in targets}
+
+    def for_scan(self, scan_id: uuid.UUID) -> ScanTarget | None:
+        return self.targets.get(scan_id)
 
 
 class StaticSchedules:
@@ -166,6 +177,7 @@ class FakeUnitOfWork:
         self.scans, self.schedules = scans, schedules
         self.mentions, self.observations = RecordingMentions(), RecordingObservations()
         self.enrichments = RecordingEnrichments()
+        self.targets = StaticTargets()
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
 
