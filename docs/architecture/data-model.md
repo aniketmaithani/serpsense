@@ -155,7 +155,7 @@ All have a brand FK (RESTRICT). `brand_locations` and `brand_apps` also have a `
 - `ck_scans_scheduled_for_schedule`: `trigger = 'schedule'` ⇔ `scheduled_for is not null`.
 - **`uq_scans_brand_id_active`**: partial unique index on (brand_id) where `status in ('queued','running')` — one active scan per brand, even across concurrent transactions; "Scan now" during an active scan is rejected and shows the active scan.
 - Inserts use `INSERT … ON CONFLICT DO NOTHING` **without a conflict target**, so both uniqueness rules apply (a named target would still raise on the other one).
-- **Only `status` can change after insert** (`trg_scans_identity_immutable`, reported as `ck_scans_identity_immutable`): observations and the Trends comparison rely on a scan's brand, slot and settings never changing.
+- **Only `status` can change after insert** (`trg_scans_identity_immutable`, reported as `ck_scans_identity_immutable`): observations and the Trends comparison rely on a scan's brand, slot and settings never changing. `brand_id`, `scheduled_for` and `settings_snapshot` never change, not even in a migration: billing ownership, same-brand observations and the Trends comparison were checked against them at insert time. Only a backfill of a column added later may disable the trigger, inside its own transaction (`ALTER TABLE scans DISABLE TRIGGER trg_scans_identity_immutable`, then `ENABLE`), and it says why in its docstring.
 - Replay scans have no requester (they are created by the seed/replay CLI), so `requested_by` is set only for manual scans.
 
 **Transitions** (`domain/scan_state.py`; anything else raises `IllegalTransition`):
@@ -184,22 +184,24 @@ running → failed                      (reason timed_out, by the maintenance sw
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| user_id | uuid | fk → users (RESTRICT), `ix_serp_calls_user_id_created_at` |
+| user_id | uuid | fk → users (RESTRICT), `ix_serp_calls_user_id_created_at`; a scan's calls belong to the owner of its brand (`trg_serp_calls_user_owns_scan` → `ck_serp_calls_user_owns_scan`), a Preview call to its caller |
 | scan_id | uuid null | fk → scans (RESTRICT), `ix_serp_calls_scan_id`; null for Preview |
 | engine | enum `serp_engine` (SerpApi engine ids; mirrors `domain.enums.SerpEngine`) | `ix_serp_calls_engine_created_at` (circuit breaker reads last N per engine) |
-| params_hash | text | sha256 hex of canonical params, no key (`ck_serp_calls_params_hash_sha256`) |
+| params_hash | text | sha256 hex of the canonical JSON of `params` with `engine` added as a top-level key (params never carries its own): sorted keys, `,`/`:` separators, UTF-8 without ASCII escaping (so a Hindi query hashes the same everywhere); never the key (`ck_serp_calls_params_hash_sha256`) |
 | 📄 params | jsonb | redacted request params; a JSON object (`ck_serp_calls_params_is_object`) with no `api_key` field at any depth and no `api_key=` in any string (`ck_serp_calls_params_no_api_key`), since a leaked key could never be removed from this append-only table; the client applies the same rule before calling SerpApi, so a billed call is never left unrecorded |
 | served_from | enum `served_from` (`local_cache`, `serpapi_cache`, `live`) null | set **exactly for successful calls** (`ck_serp_calls_served_from_iff_succeeded`), so billable ⇔ `live` (derived) never counts failures, retries or skipped calls |
 | outcome | enum `serp_call_outcome` (`succeeded`, `failed`, `skipped_budget`, `circuit_open`) | |
-| http_status | smallint null | 100–599 (`ck_serp_calls_http_status_range`) |
+| http_status | smallint null | 100–599 (`ck_serp_calls_http_status_range`); null for skipped calls (`ck_serp_calls_skipped_not_sent`) |
 | error_code | text null | exactly for failed calls (`ck_serp_calls_error_code_iff_failed`); machine code (`ck_serp_calls_error_code_format`) |
-| latency_ms | integer | ≥ 0 |
+| latency_ms | integer | ≥ 0; 0 for skipped calls, which never reached SerpApi |
 | created_at | timestamptz | |
 
-**Circuit breaker** is derived: an engine is open when its last 5 calls (within 15 min) all failed. The service writes `user_id` as the owner of the scanned brand (or the Preview caller).
+**Circuit breaker** is derived, with no state of its own: an engine is open when its last 5 attempts that reached SerpApi within 15 minutes all failed **transiently**. An attempt is a successful call not served from `local_cache`, or a failed one; a failure is transient only for a network error or timeout (`serpapi.network`, `serpapi.timeout`), HTTP 429 (`serpapi.http_429`) or 5xx (`serpapi.http_5xx`). A permanent 4xx or a local rejection is still a failed call but never trips the breaker, so one brand's bad parameters can't close an engine for every user. Skipped calls and local-cache hits are ignored, so an open breaker never keeps itself open; it closes once those failures leave the window (ADR-0007, amended).
+
+**Recording:** the client writes each `serp_calls` row in its own transaction as soon as the call returns, before any `raw_responses` row, so a rejected payload never loses the record of a billed call.
 
 ### `raw_responses`
-`id`, `serp_call_id` fk (RESTRICT, `uq_raw_responses_serp_call_id`), 📄 `payload jsonb` (redacted; a JSON object under the same no-key rule: `ck_raw_responses_payload_no_api_key`), `created_at`. Mutable on purpose — not append-only — so a retention job can prune old payloads; the service stores them only for successful calls.
+`id`, `serp_call_id` fk (RESTRICT, `uq_raw_responses_serp_call_id`), 📄 `payload jsonb` (redacted; a JSON object under the same no-key rule: `ck_raw_responses_payload_no_api_key`), `created_at`. Mutable on purpose — not append-only — so a retention job can prune old payloads; they exist only for successful calls (`trg_raw_responses_call_succeeded` → `ck_raw_responses_call_succeeded`, on insert and on a change of `serp_call_id`). `ix_raw_responses_created_at` serves the retention job.
 
 ### `mentions`
 | Column | Type | Notes |

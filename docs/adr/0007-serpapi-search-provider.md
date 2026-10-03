@@ -16,6 +16,7 @@ The product's core insight is that a brand's reputation is what search surfaces 
 - **Redaction:** remove `search_metadata` URLs, any field whose value contains `api_key=`, and any string matching the configured key; **also strip reviewer/author identity** (names, profile links, avatars, user ids in review and video payloads) before storing `raw_responses` or writing fixtures. Security tests assert the key and reviewer identities never reach the DB, logs or committed fixtures.
 - Outbound host allow-list: `serpapi.com` only.
 - Integration contracts are documented from real, recorded, redacted responses (`tests/fixtures/serpapi/`), never guessed.
+- **Amendment (2026-10-03):** the circuit breaker counts only attempts that reached SerpApi, and only transient failures (network errors, timeouts, HTTP 429 and 5xx) open it. A permanent 4xx or a local rejection is recorded as a failed call but never trips the breaker, so one brand's bad parameters can't close an engine for every user. Skipped calls and local-cache hits are ignored (data-model §5).
 
 ## Alternatives considered
 - **Scraping Google directly** — against Google's terms, brittle, and defeats the hackathon's purpose.
