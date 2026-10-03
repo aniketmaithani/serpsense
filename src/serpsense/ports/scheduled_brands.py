@@ -1,8 +1,8 @@
-"""Port for what the dispatcher reads: brands on a schedule and what their scans need (§10).
+"""Port for what scans are built from: brands on a schedule, and one brand for "Scan now" (§10).
 
 A brand is on a schedule when it isn't archived, its owner isn't deleted and its latest schedule
 version has an interval. Everything is read as of a time, so a version or scan dated later is
-ignored. Settings documents are read whole and validated by the dispatcher, so one brand's bad
+ignored. Settings documents are read whole and validated by the caller, so one brand's bad
 document can't stop the others.
 """
 
@@ -31,5 +31,23 @@ class ScheduledBrand:
     last_scan_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ScanInputs:
+    """What a "Scan now" is built from: the same documents and facts a scheduled scan reads."""
+
+    user_defaults: Mapping[str, Any]
+    brand_settings: Mapping[str, Any]
+    languages: tuple[str, ...]
+    facts: BrandFacts
+    last_scan_at: datetime | None = None  # as for ScheduledBrand: the latest covering scan
+
+
 class ScheduledBrands(Protocol):
     def scheduled_brands(self, as_of: datetime) -> Sequence[ScheduledBrand]: ...
+
+    def scan_inputs(
+        self, owner_id: uuid.UUID, brand_id: uuid.UUID, as_of: datetime
+    ) -> ScanInputs | None:
+        """One brand's inputs; None unless it is the owner's, not archived, and the owner's
+        account isn't deleted (another user's brand reads as missing)."""
+        ...
