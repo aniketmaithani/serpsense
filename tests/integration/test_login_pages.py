@@ -17,6 +17,7 @@ from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.entrypoints.web.app import create_app
+from serpsense.services.accounts import AccountDeletion
 from serpsense.services.auth import SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
@@ -53,6 +54,7 @@ def browser(
             lambda: SqlUnitOfWork(engine, ScanJobs()), clock, max_searches_per_scan=20
         ),
         stories=SqlStories(engine.connect),
+        accounts=AccountDeletion(ports.unit_of_work, sign_in, clock),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"

@@ -35,6 +35,8 @@ Field = Annotated[str, Form()]
 def login_form(request: Request) -> Response:
     if current_user(request) is not None:
         return RedirectResponse("/", SEE_OTHER)
+    if request.query_params.get("deleted") == "1":
+        return _form(request, "login.html", notice="Your account was deleted.")
     return _form(request, "login.html")
 
 
