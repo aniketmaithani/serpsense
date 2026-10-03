@@ -24,6 +24,12 @@
               <path id="k-search" d="M280 390H720A30 30 0 0 1 750 420A30 30 0 0 1 720 450H280A30 30 0 0 1 250 420A30 30 0 0 1 280 390Z"/>
               <path id="k-ring" d="M100 300A400 235 0 1 1 900 300A400 235 0 1 1 100 300Z"/>
               <path id="k-funnel" d="M330 160H670L560 300V450H440V300Z"/>
+              <path id="k-gauge" d="M300 380A200 200 0 0 1 700 380"/>
+              <path id="k-envelope" d="M470 190L640 262L810 190L810 410L470 410L470 190Z"/>
+              <path id="k-doc" d="M300 90H660L700 130V510H300Z"/>
+              <path id="k-track" d="M200 330H800A6 6 0 0 1 800 342H200A6 6 0 0 1 200 330Z"/>
+              <path id="k-strip" d="M120 220H880A20 20 0 0 1 900 240V360A20 20 0 0 1 880 380H120A20 20 0 0 1 100 360V240A20 20 0 0 1 120 220Z"/>
+              <path id="k-cta" d="M400 255H600A45 45 0 0 1 645 300A45 45 0 0 1 600 345H400A45 45 0 0 1 355 300A45 45 0 0 1 400 255Z"/>
               <path id="k-frame" d="M284 175H716A14 14 0 0 1 730 189V411A14 14 0 0 1 716 425H284A14 14 0 0 1 270 411V189A14 14 0 0 1 284 175Z"/>
             </g>
             <g class="wires">
@@ -44,6 +50,18 @@
           {% for label, count, spread in stories %}
           <p class="cluster k{{ loop.index }}"><b>{{ label }}</b>{{ count }} mentions · {{ spread }}</p>
           {% endfor %}
+          <div class="gauge">
+            <div class="readout">
+              <p><span class="label">Health</span><span class="num health">41</span></p>
+              <p><span class="label">Crisis</span><span class="num crisis">74</span><span class="lvls"><span class="lvl l1">low</span><span class="lvl l2">medium</span><span class="lvl l3">high</span></span></p>
+            </div>
+            <ul class="bars">{% for surface, weight in weights %}<li><span>{{ surface }}</span><b class="w{{ weight }}"></b></li>{% endfor %}</ul>
+          </div>
+          <div class="ac"><p>voltbox is</p><ol><li>voltbox is good</li><li class="ac-new">voltbox is overheating</li><li class="ac-last">voltbox is worth it</li></ol></div>
+          <div class="alertcard"><p class="hot">Crisis level: high</p><p><b>Battery swelling</b> · 9 mentions on 3 surfaces</p><p>6 new since the last scan</p><p class="muted">SoundNest: not affected, so this is brand-specific</p></div>
+          <div class="docu"><span class="badge">AI-generated</span><p class="draft-text">We're aware of reports of VoltBox earbuds overheating while charging. Please stop using the charging case and reply to us for a free replacement while we investigate.</p><p class="cites"><span>1</span><span>2</span><span>3</span></p><p class="buttons"><span>Draft</span><span>High thinking</span><span>Max</span></p></div>
+          <div class="scrub"><ul class="mini">{% for surface in surfaces[:6] %}<li>{{ surface }}<i></i></li>{% endfor %}</ul><p class="ticks">{% for n in range(1, 13) %}<i>{{ n }}</i>{% endfor %}</p><span class="knob"></span></div>
+          <ul class="strip">{% for fact in facts %}<li>{{ fact }}</li>{% endfor %}</ul>
         </div>
       </div>
       <div class="chapters">
@@ -132,6 +150,9 @@ docker compose run --rm tools serpsense seed-demo --owner you@example.com</code>
       </div>
     </div>
   </section>
+  <nav class="rail" aria-label="Chapters">
+    {% for id, name in rail %}<a href="#{{ id }}" data-chapter="{{ id }}"><i></i><span>{{ name }}</span></a>{% endfor %}
+  </nav>
 </main>
 <footer class="l-foot">Built with SerpApi for the SerpApi India Hackathon 2026. Not affiliated with SerpApi, LLC.</footer>
 <script type="module" src="/static/landing/landing.js"></script>

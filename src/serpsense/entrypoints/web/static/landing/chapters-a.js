@@ -16,7 +16,7 @@ export const CHAPTER = 1000; // timeline units per chapter
 const GRID = [8, 3];
 
 const box = document.querySelector('.box');
-const at = (chapter, offset) => chapter * CHAPTER + offset;
+export const at = (chapter, offset) => chapter * CHAPTER + offset;
 
 // The pixel offset that moves an element's centre onto (x, y) of the box's frame.
 function toPoint(el, x, y) {
@@ -45,10 +45,10 @@ export function intro() {
   animate('.sub', { innerHTML: scrambleText({ duration: 900, delay: 700 }) });
 }
 
-function surfaces(tl, cards) {
+function surfaces(tl, cards, precision) {
   tl.add('.cue', { opacity: [1, 0], duration: 200 }, at(0, 0))
     .add('.query', { opacity: [1, 0], scale: [1, 0.9], duration: 250 }, at(1, 0))
-    .add('#signal', { d: morphTo('#k-ring'), duration: 600 }, at(1, 100))
+    .add('#signal', { d: morphTo('#k-ring', precision), duration: 600 }, at(1, 100))
     .add(cards, {
       opacity: [0, 1],
       scale: [0.4, 1],
@@ -59,15 +59,15 @@ function surfaces(tl, cards) {
     }, at(1, 220)); // once the search has faded
 }
 
-function collect(tl) {
+function collect(tl, precision) {
   tl.add('.core', { opacity: [0, 1], scale: [0.6, 1], duration: 300 }, at(2, 50))
-    .add('#signal', { d: morphTo('#k-funnel'), duration: 500 }, at(2, 100))
+    .add('#signal', { d: morphTo('#k-funnel', precision), duration: 500 }, at(2, 100))
     .add(createDrawable('.wires path'), { draw: ['0 0', '0 1'], delay: stagger(40), duration: 350 }, at(2, 200))
     .add('.card .engine', { opacity: [0, 1], translateY: ['0.5em', '0em'], delay: stagger(40), duration: 300 }, at(2, 300))
     .add('.card .count', { opacity: [0, 1], scale: [0.4, 1], delay: stagger(40), duration: 250 }, at(2, 450));
 }
 
-function normalise(tl, cards, cells, spread) {
+function normalise(tl, cards, cells, { spread, precision }) {
   const b = box.getBoundingClientRect();
   const random = createSeededRandom(11);
   const fromCore = cells.map((el) => toPoint(el, 500, 300));
@@ -85,7 +85,7 @@ function normalise(tl, cards, cells, spread) {
       duration: 350,
       ease: 'outQuad',
     }, at(3, 150))
-    .add('#signal', { d: morphTo('#k-frame'), duration: 500 }, at(3, 300))
+    .add('#signal', { d: morphTo('#k-frame', precision), duration: 500 }, at(3, 300))
     .add('.core', { opacity: [1, 0], scale: [1, 0.6], duration: 250 }, at(3, 350))
     .add(cells, {
       translateX: (_, i) => [fromCore[i][0] + cloud[i][0], 0],
@@ -122,12 +122,12 @@ function narratives(tl, cells) {
     .add('.cluster', { opacity: [0, 1], translateY: [12, 0], delay: stagger(120), duration: 300 }, at(5, 550));
 }
 
-export function firstChapters(tl, { spread }) {
+export function firstChapters(tl, { precision, spread }) {
   const cards = [...document.querySelectorAll('.card')];
   const cells = [...document.querySelectorAll('.cells i')];
-  surfaces(tl, cards);
-  collect(tl);
-  normalise(tl, cards, cells, spread);
+  surfaces(tl, cards, precision);
+  collect(tl, precision);
+  normalise(tl, cards, cells, { spread, precision });
   enrich(tl);
   narratives(tl, cells);
 }
