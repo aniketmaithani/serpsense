@@ -33,13 +33,19 @@ class ScheduledBrand:
 
 @dataclass(frozen=True)
 class ScanInputs:
-    """What a "Scan now" is built from: the same documents and facts a scheduled scan reads."""
+    """What a "Scan now" is built from, the same documents and facts a scheduled scan reads,
+    and what the settings page shows beside them."""
 
     user_defaults: Mapping[str, Any]
     brand_settings: Mapping[str, Any]
     languages: tuple[str, ...]
     facts: BrandFacts
     last_scan_at: datetime | None = None  # as for ScheduledBrand: the latest covering scan
+    name: str = ""
+    interval_minutes: int | None = None  # the latest schedule's; None when manual only
+    timezone: str = "Asia/Kolkata"
+    quiet_start: time | None = None
+    quiet_end: time | None = None
 
 
 class ScheduledBrands(Protocol):

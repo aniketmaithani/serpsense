@@ -83,10 +83,15 @@ class SqlScheduledBrands:
             _latest(USER_DOCS, "user_id", as_of),
         )
         languages, apps, places = _languages(), _apps(), _places()
-        scans = _covering_scans(as_of)
+        scans, schedule = _covering_scans(as_of), _latest(SCHEDULES, "brand_id", as_of)
         query = (
             select(
                 scans.c.last_scan_at,
+                BRANDS.c.name,
+                schedule.c.interval_minutes,
+                schedule.c.timezone,
+                schedule.c.quiet_start,
+                schedule.c.quiet_end,
                 user_doc.c.document.label("user_defaults"),
                 brand_doc.c.document.label("brand_settings"),
                 languages.c.codes,
@@ -102,6 +107,7 @@ class SqlScheduledBrands:
             .outerjoin(apps, apps.c.brand_id == BRANDS.c.id)
             .outerjoin(places, places.c.brand_id == BRANDS.c.id)
             .outerjoin(scans, scans.c.brand_id == BRANDS.c.id)
+            .outerjoin(schedule, schedule.c.brand_id == BRANDS.c.id)
             .where(
                 BRANDS.c.id == brand_id,
                 BRANDS.c.id.in_(owned_ids(owner_id)),  # the one owner check (AGENTS §4)
@@ -111,7 +117,9 @@ class SqlScheduledBrands:
         row = self._conn.execute(query).mappings().first()
         if row is None:
             return None
-        return replace(_inputs(row), last_scan_at=row["last_scan_at"])
+        keys = ("last_scan_at", "name", "interval_minutes", "quiet_start", "quiet_end")
+        timezone = row["timezone"] or "Asia/Kolkata"  # no schedule yet: the default
+        return replace(_inputs(row), timezone=timezone, **{key: row[key] for key in keys})
 
 
 def _latest(table: Table, key: str, as_of: datetime) -> Subquery:
