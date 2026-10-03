@@ -6,13 +6,14 @@ and the scan is skipped if the brand was archived or its owner's account deleted
 owner's searches this month can't cover the most it may make. Otherwise its surfaces are
 collected and kept, its recent mentions labelled (the brand is checked again first: no model is
 called for a brand that is gone), and it finishes by how its surfaces went, in a last unit of
-work that checks the brand once more and scores a scan that succeeded or is partial
-(docs/scoring.md). Each stage has a unit of work of its own, and no SerpApi or model call
-happens inside one.
+work that checks the brand once more, then scores a scan that succeeded or is partial and raises
+its alerts (docs/scoring.md, BUILD_PLAN §12). Each stage has a unit of work of its own, and no
+SerpApi or model call happens inside one.
 
 The model never fails a scan (ADR-0008): labelling that can't run (settings the model rejects, a
 missing prompt) is logged and the scan finishes partial. Any other stage that raises, scoring
-included, fails the scan (`stage_failed`) and the error propagates. The scan task has no soft
+and alerting included, fails the scan (`stage_failed`) and the error propagates; a finish that
+raises rolls back its ending, scores and alerts together. The scan task has no soft
 time limit and never retries: each external call already did, and collection keeps to its own
 deadline (#47).
 """
@@ -22,10 +23,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from serpsense.domain import usage
-from serpsense.domain.enums import LlmTask, ScanStatus
+from serpsense.domain.enums import AlertRule, LlmTask, ScanStatus
 from serpsense.domain.estimator import BrandFacts, estimate
 from serpsense.domain.llm_capabilities import UnsupportedSetting
 from serpsense.domain.scan_state import Transition, TransitionReason, finished
+from serpsense.domain.scoring.scan import ScanScores
 from serpsense.domain.settings.search import SearchSettings
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
@@ -34,8 +36,8 @@ from serpsense.ports.llm_client import PromptUnavailable
 from serpsense.ports.llm_profiles import LlmProfiles
 from serpsense.ports.scan_targets import ScanTarget
 from serpsense.ports.search_ledger import SearchUsage
-from serpsense.ports.unit_of_work import UnitOfWorkFactory
-from serpsense.services import scoring_run
+from serpsense.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from serpsense.services import alerts, scoring_run
 from serpsense.services.collection import Collected, CollectorRunner
 from serpsense.services.harvest import harvest, keep
 from serpsense.services.labelling import BrandContext, Labeller
@@ -126,8 +128,9 @@ class ScanService:
         return labelled.failed_batches == 0 and not labelled.budget_exhausted
 
     def _finish(self, scan_id: uuid.UUID, ending: Transition) -> ScanStatus | None:
-        """Move the scan to its ending, or to skipped if its brand went meanwhile, and score it
-        in the same unit of work. The alerts a scan raises will be written there too."""
+        """Move the scan to its ending, or to skipped if its brand went meanwhile; a scan that
+        succeeded or is partial is scored and raises its alerts in the same unit of work."""
+        raised: list[AlertRule] | None = None
         with self._ports.unit_of_work() as uow:
             target = uow.targets.for_scan(scan_id)
             ending = (_gone(target) if target else None) or ending
@@ -135,12 +138,10 @@ class ScanService:
             scores = scoring_run.scores_for(uow, scan_id) if scoring else None
             at = self._ports.clock.now()
             moved = uow.scans.move(scan_id, ending, at=at)
-            # A scan the sweep ended meanwhile isn't scored.
-            scored = (
-                moved and scores is not None and scoring_run.record(uow, scan_id, scores, at=at)
-            )
-        if scored and scores is not None:
-            log.info("scan.scored", scan_id=str(scan_id), surfaces=len(scores.surfaces))
+            if moved and scores is not None:  # a scan the sweep ended meanwhile isn't scored
+                raised = _record_and_alert(uow, scan_id, scores, at)
+        if raised is not None and scores is not None:
+            _log_scored(scan_id, scores, raised)
         status, reason = ending.to_status, ending.reason
         if not moved:  # the sweep timed it out meanwhile
             log.warning("scan.finish_lost", scan_id=str(scan_id), reason=reason)
@@ -156,6 +157,21 @@ class ScanService:
                 uow.scans.move(scan_id, STAGE_FAILED, at=self._ports.clock.now())
         except Exception as exc:  # noqa: BLE001 (the caller re-raises the stage's own error)
             log.error("scan.finish_failed", scan_id=str(scan_id), error=type(exc).__name__)
+
+
+def _record_and_alert(
+    uow: UnitOfWork, scan_id: uuid.UUID, scores: ScanScores, at: datetime
+) -> list[AlertRule] | None:
+    """The alerts the scan raised with its scores; None when it was scored already."""
+    if not scoring_run.record(uow, scan_id, scores, at=at):
+        return None
+    return alerts.raise_alerts(uow.alerts, scan_id, at=at)
+
+
+def _log_scored(scan_id: uuid.UUID, scores: ScanScores, raised: list[AlertRule]) -> None:
+    log.info("scan.scored", scan_id=str(scan_id), surfaces=len(scores.surfaces))
+    for rule in raised:
+        log.info("alert.raised", scan_id=str(scan_id), rule=rule)
 
 
 def _present(target: ScanTarget | None) -> ScanTarget:
