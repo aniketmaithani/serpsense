@@ -9,6 +9,7 @@ from sqlalchemy import Engine
 
 from serpsense.adapters.cache.health import RedisHealthCheck
 from serpsense.adapters.cache.response_cache import RedisResponseCache
+from serpsense.adapters.crypto.fernet_box import FernetBox
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
@@ -181,7 +182,10 @@ def build_outbox(settings: Settings, celery: Celery) -> OutboxDispatcher:
     """The outbox dispatcher (ADR-0010); it needs no SerpApi or Anthropic key."""
     engine = create_db_engine(settings.database_url.get_secret_value())
     queue = CeleryJobQueue(celery)
-    return OutboxDispatcher(lambda: SqlUnitOfWork(engine, queue), _mailer(settings), SystemClock())
+    box = FernetBox(settings.outbox_key_list)
+    return OutboxDispatcher(
+        lambda: SqlUnitOfWork(engine, queue), _mailer(settings), box, SystemClock()
+    )
 
 
 def _mailer(settings: Settings) -> Mailer:

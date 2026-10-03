@@ -20,10 +20,10 @@ def test_each_purpose_gets_its_own_key() -> None:
 
 def test_the_box_seals_with_the_newest_key_and_opens_with_any() -> None:
     old, new = Fernet.generate_key().decode(), Fernet.generate_key().decode()
-    sealed_before = FernetBox([old]).seal(b"042917")
-    rotated = FernetBox([new, old])
+    sealed_before = FernetBox((old,)).seal(b"042917")
+    rotated = FernetBox((new, old))
     assert rotated.open(sealed_before) == b"042917"  # old messages still open
-    assert FernetBox([new]).open(rotated.seal(b"042917")) == b"042917"  # new ones use the new key
+    assert FernetBox((new,)).open(rotated.seal(b"042917")) == b"042917"  # new ones use the new key
     assert b"042917" not in rotated.seal(b"042917")
     with pytest.raises(SealBroken):
-        FernetBox([new]).open(sealed_before)  # once the old key is gone
+        FernetBox((new,)).open(sealed_before)  # once the old key is gone

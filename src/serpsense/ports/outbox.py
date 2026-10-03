@@ -21,6 +21,8 @@ class DueEmail:
     recipient: str
     template: str
     data: Mapping[str, str]  # the non-sensitive template fields
+    sealed: bytes | None = None  # a sealed secret (a sign-in code), opened only to send it
+    stale: bool = False  # its sign-in code expired, was used or was replaced: drop, don't send
 
 
 class Outbox(Protocol):
@@ -31,9 +33,18 @@ class Outbox(Protocol):
         already, or the owner's account is gone."""
         ...
 
+    def add_otp_email(
+        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+    ) -> bool:
+        """Queue a sign-in code's email to the address it was issued for, with the code sealed;
+        False when it was queued already."""
+        ...
+
     def claim_due(self, at: datetime) -> DueEmail | None:
         """The pending message due longest, locked until the unit of work ends; messages that
-        another dispatcher holds are skipped. None when nothing is due."""
+        another dispatcher holds are skipped. A sign-in code's email gets a two-minute head start
+        (so codes go first without starving alerts), and one whose code went stale is claimed at
+        once to be dropped. None when nothing is due."""
         ...
 
     def record(

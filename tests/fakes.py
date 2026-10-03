@@ -268,6 +268,16 @@ class RecordingOutbox:
     def __init__(self, inside: Callable[[], bool] = lambda: True) -> None:
         self.inside = inside
         self.alert_emails: dict[uuid.UUID, dict[str, str]] = {}
+        self.otp_emails: dict[uuid.UUID, bytes] = {}
+
+    def add_otp_email(
+        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+    ) -> bool:
+        assert self.inside()
+        if otp_code_id in self.otp_emails:
+            return False
+        self.otp_emails[otp_code_id] = sealed
+        return True
 
     def add_alert_email(
         self, alert_id: uuid.UUID, *, data: Mapping[str, str], at: datetime
