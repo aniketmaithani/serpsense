@@ -16,6 +16,7 @@ from serpsense.adapters.crypto.keys import KeyPurpose, derive_key
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.inbox import SqlInbox
+from serpsense.adapters.db.leases import SqlLeases
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.overview import SqlOverview
@@ -37,6 +38,7 @@ from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.adapters.llm.anthropic_client import AnthropicClient
 from serpsense.adapters.llm.prompts import PromptLibrary
 from serpsense.adapters.llm.replay import ReplayLlm
+from serpsense.adapters.llm.unavailable import UnavailableClient
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
 from serpsense.adapters.replay.recording import load as load_recordings
@@ -66,6 +68,7 @@ from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
+from serpsense.services.drafts import Drafter, DraftPorts
 from serpsense.services.evals import Evaluator, MemoryLedger
 from serpsense.services.explanations import Explainer
 from serpsense.services.grouping import Grouper
@@ -95,6 +98,7 @@ __all__ = [
     "build_brand_settings",
     "build_celery",
     "build_container",
+    "build_drafter",
     "build_evaluator",
     "build_grouping_evaluator",
     "build_outbox",
@@ -130,6 +134,7 @@ class Container:
     stories: Stories
     accounts: AccountDeletion
     ai_settings: AiSettings
+    drafts: Drafter
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -167,7 +172,36 @@ def build_container(settings: Settings | None = None) -> Container:
             SystemClock(),
             fallback=resolved.default_llm_preset,
         ),
+        drafts=build_drafter(resolved, engine, celery),
     )
+
+
+def build_drafter(settings: Settings, engine: Engine, celery: Celery) -> Drafter:
+    """Drafting for the web app, in the request (ADR-0008: a person copies the draft). In replay
+    mode or without an Anthropic key every call fails at once and the page says drafting needs
+    live mode."""
+    key = settings.anthropic_api_key
+    live = key is not None and settings.serpsense_mode is RunMode.LIVE
+    client: LLMClient = (
+        AnthropicClient(key.get_secret_value(), PromptLibrary()) if key and live
+        else UnavailableClient()
+    )  # fmt: skip
+    gateway = LlmGateway(
+        client,
+        SqlLlmLedger(engine.begin),
+        SystemClock(),
+        monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
+    )
+    queue = CeleryJobQueue(celery)
+    profiles = SqlLlmProfiles(engine, settings.default_llm_preset)
+    ports = DraftPorts(
+        unit_of_work=lambda: SqlUnitOfWork(engine, queue),
+        gateway=gateway,
+        profiles=profiles,
+        leases=SqlLeases(engine),
+        clock=SystemClock(),
+    )
+    return Drafter(ports)
 
 
 def build_brand_settings(settings: Settings, engine: Engine, celery: Celery) -> BrandSettings:

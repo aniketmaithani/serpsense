@@ -11,6 +11,7 @@ from serpsense.composition import (
     build_account_deletion,
     build_brand_settings,
     build_celery,
+    build_drafter,
     build_scan_now,
     build_session_guard,
     build_sign_in,
@@ -57,4 +58,5 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
             SystemClock(),
             fallback=settings.default_llm_preset,
         ),
+        drafts=build_drafter(settings, engine, celery),
     )
