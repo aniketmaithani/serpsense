@@ -1,7 +1,9 @@
 """The email outbox in Postgres (data-model §8): claims with FOR UPDATE SKIP LOCKED, and the
 status written only with an attempt row, by the rule in `domain/outbox.py`."""
 
+import json
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from typing import cast
 
@@ -17,6 +19,19 @@ MESSAGES = cast(Table, OutboxMessage.__table__)
 ATTEMPTS = cast(Table, OutboxAttempt.__table__)
 # The row stays locked through the send; let the session idle that long (ADR-0010).
 SEND_WINDOW = text("SET LOCAL idle_in_transaction_session_timeout = '3min'")
+ALERT_EMAIL = text(
+    """
+INSERT INTO outbox_messages (id, kind, user_id, alert_id, recipient_email, template, template_data,
+                             dedupe_key, status, next_attempt_at, created_at)
+SELECT :id, 'alert_email', u.id, a.id, u.email, 'alert', CAST(:data AS jsonb),
+       :key, 'pending', :at, :at
+FROM alerts a JOIN scans s ON s.id = a.scan_id JOIN brands b ON b.id = s.brand_id
+JOIN users u ON u.id = b.owner_id
+WHERE a.id = :alert AND u.deleted_at IS NULL
+ON CONFLICT (dedupe_key) DO NOTHING
+RETURNING id
+"""
+)
 CLAIM = text(
     """
 SELECT m.id, m.kind, m.recipient_email, m.template, m.template_data
@@ -34,6 +49,13 @@ class SqlOutbox:
 
     def __init__(self, conn: Connection) -> None:
         self._conn = conn
+
+    def add_alert_email(
+        self, alert_id: uuid.UUID, *, data: Mapping[str, str], at: datetime
+    ) -> bool:
+        values = {"id": uuid.uuid4(), "alert": alert_id, "data": json.dumps(dict(data)), "at": at}
+        added = self._conn.execute(ALERT_EMAIL, values | {"key": rules.alert_email_key(alert_id)})
+        return added.first() is not None
 
     def claim_due(self, at: datetime) -> DueEmail | None:
         self._conn.execute(SEND_WINDOW)

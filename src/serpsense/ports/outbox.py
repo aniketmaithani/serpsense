@@ -24,6 +24,13 @@ class DueEmail:
 
 
 class Outbox(Protocol):
+    def add_alert_email(
+        self, alert_id: uuid.UUID, *, data: Mapping[str, str], at: datetime
+    ) -> bool:
+        """Queue the alert's email to its brand's owner, due at once; False when it was queued
+        already, or the owner's account is gone."""
+        ...
+
     def claim_due(self, at: datetime) -> DueEmail | None:
         """The pending message due longest, locked until the unit of work ends; messages that
         another dispatcher holds are skipped. None when nothing is due."""

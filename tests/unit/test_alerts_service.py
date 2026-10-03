@@ -1,4 +1,5 @@
-"""Raising a scan's alerts: one per rule that fired, each with a notification, written once."""
+"""Raising a scan's alerts: one per rule that fired, each with a notification and an email,
+written once."""
 
 import uuid
 from dataclasses import replace
@@ -11,7 +12,7 @@ from serpsense.domain.alert_rules import AlertFacts
 from serpsense.domain.enums import AlertRule, CrisisLevel
 from serpsense.ports.alert_store import ScanAlertContext
 from serpsense.services.alerts import message, raise_alerts
-from tests.fakes import RecordingAlerts
+from tests.fakes import FakeUnitOfWork, InMemoryScans, StaticSchedules
 
 pytestmark = pytest.mark.unit
 
@@ -21,21 +22,34 @@ FACTS = AlertFacts(AT, CrisisLevel.HIGH, CrisisLevel.LOW, 90, MappingProxyType({
 OLA = ScanAlertContext(FACTS, "Ola", competitor=False, health=58, crisis=74)
 
 
-def test_each_rule_that_fires_raises_an_alert_with_a_notification_once() -> None:
-    store, scan_id = RecordingAlerts(OLA), uuid.uuid4()
-    assert raise_alerts(store, scan_id, at=AT) == [RISE, SUGGESTION]
-    assert sorted(title for title, _ in store.told.values()) == [
-        "Ola: a negative search suggestion appeared",
-        "Ola: crisis level rose to high",
-    ]
-    assert raise_alerts(store, scan_id, at=AT) == []  # a re-run of the finish raises nothing
-    assert len(store.told) == 2
+def unit_of_work(context: ScanAlertContext | None) -> FakeUnitOfWork:
+    uow = FakeUnitOfWork(InMemoryScans(), StaticSchedules([]))
+    uow.alerts.given = context
+    return uow
+
+
+def test_each_rule_that_fires_raises_an_alert_a_notification_and_an_email_once() -> None:
+    uow, scan_id = unit_of_work(OLA), uuid.uuid4()
+    with uow:
+        assert raise_alerts(uow, scan_id, at=AT) == [RISE, SUGGESTION]
+    titles = ["Ola: a negative search suggestion appeared", "Ola: crisis level rose to high"]
+    assert sorted(title for title, _ in uow.alerts.told.values()) == titles
+    emails = uow.outbox.alert_emails
+    assert set(emails) == set(uow.alerts.told)  # one email per alert ...
+    for alert_id, (title, body) in uow.alerts.told.items():  # ... saying what the app says
+        assert emails[alert_id] == {"title": title, "body": body}
+    with uow:
+        assert raise_alerts(uow, scan_id, at=AT) == []  # a re-run of the finish raises nothing
+    assert (len(uow.alerts.told), len(emails)) == (2, 2)
 
 
 def test_a_scan_without_scores_or_a_due_rule_raises_nothing() -> None:
-    assert raise_alerts(RecordingAlerts(None), uuid.uuid4(), at=AT) == []
     calm = replace(OLA, facts=replace(FACTS, level=CrisisLevel.LOW, autocomplete=0))
-    assert raise_alerts(RecordingAlerts(calm), uuid.uuid4(), at=AT) == []
+    for context in (None, calm):
+        uow = unit_of_work(context)
+        with uow:
+            assert raise_alerts(uow, uuid.uuid4(), at=AT) == []
+        assert uow.outbox.alert_emails == {}
 
 
 def test_a_message_states_the_scores_and_marks_a_competitor() -> None:

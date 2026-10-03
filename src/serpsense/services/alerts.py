@@ -1,10 +1,10 @@
 """Raise a finished scan's alerts (BUILD_PLAN §12).
 
-The deterministic rules in `domain/alert_rules.py` decide; each rule that fires writes one alert
-and one in-app notification to the brand's owner, in the unit of work that finishes the scan, so
-they commit with its ending and its scores. A competitor's alert says so in its title. Email goes
-through the outbox (ADR-0010) once the dispatcher lands; the model's explanation comes later and
-never decides anything (ADR-0008).
+The deterministic rules in `domain/alert_rules.py` decide; each rule that fires writes one alert,
+one in-app notification and one email to the brand's owner (through the outbox, ADR-0010), all in
+the unit of work that finishes the scan, so they commit with its ending and its scores. The two
+channels say the same thing. A competitor's alert says so in its title. The model's explanation
+comes later and never decides anything (ADR-0008).
 """
 
 import uuid
@@ -13,11 +13,13 @@ from typing import assert_never
 
 from serpsense.domain import alert_rules
 from serpsense.domain.enums import AlertRule, CrisisLevel
-from serpsense.ports.alert_store import AlertStore, ScanAlertContext
+from serpsense.ports.alert_store import ScanAlertContext
+from serpsense.ports.unit_of_work import UnitOfWork
 
 
-def raise_alerts(store: AlertStore, scan_id: uuid.UUID, *, at: datetime) -> list[AlertRule]:
+def raise_alerts(uow: UnitOfWork, scan_id: uuid.UUID, *, at: datetime) -> list[AlertRule]:
     """The rules that fired for the scan now; none for a scan that wasn't scored."""
+    store = uow.alerts
     context = store.context(scan_id)
     if context is None:
         return []
@@ -28,6 +30,7 @@ def raise_alerts(store: AlertStore, scan_id: uuid.UUID, *, at: datetime) -> list
             continue
         title, body = message(context, rule)
         store.notify(alert_id, title=title, body=body, at=at)
+        uow.outbox.add_alert_email(alert_id, data={"title": title, "body": body}, at=at)
         raised.append(rule)
     return raised
 
