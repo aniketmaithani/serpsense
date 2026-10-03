@@ -56,6 +56,11 @@ class BrandStore(Protocol):
         """A new schedule version, unless the latest is the same; True when one was written."""
         ...
 
+    def stop_schedule(self, brand_id: uuid.UUID, *, at: datetime) -> bool:
+        """A schedule version with no interval (manual scans only) keeping the timezone; False
+        when the brand has no schedule or already has no interval."""
+        ...
+
     def set_search_settings(
         self, brand_id: uuid.UUID, document: Mapping[str, Any], *, at: datetime
     ) -> bool:
