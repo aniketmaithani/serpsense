@@ -25,6 +25,7 @@ from serpsense.adapters.db.models.observations import (
     MentionObservation,
     TrendsObservation,
 )
+from serpsense.adapters.db.models.outbox import OutboxAttempt, OutboxMessage
 from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.adapters.db.models.scores import (
     CrisisComponentValue,
@@ -67,6 +68,8 @@ __all__ = [
     "NotificationRead",
     "OtpCode",
     "OtpVerifyAttempt",
+    "OutboxAttempt",
+    "OutboxMessage",
     "RawResponse",
     "Scan",
     "ScanStatusTransition",
