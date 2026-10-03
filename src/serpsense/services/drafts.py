@@ -34,7 +34,7 @@ from serpsense.domain.model_text import has_invisible
 from serpsense.domain.usage import day_start
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
-from serpsense.ports.drafts import DraftMaterial, NewDraft
+from serpsense.ports.drafts import DraftMaterial, DraftRow, NewDraft
 from serpsense.ports.leases import Leases
 from serpsense.ports.llm_client import LlmCallFailed, PromptUnavailable, Variables
 from serpsense.ports.llm_profiles import LlmProfiles
@@ -164,6 +164,14 @@ class Drafter:
         draft_id = self._record(ask, answer, [ids[k] for k in cited])
         log.info("draft.recorded", draft_id=str(draft_id), llm_call_id=str(answer.call_id))
         return DraftResult(Outcome.DRAFTED, draft_id)
+
+    def drafts(
+        self, user_id: uuid.UUID, brand_id: uuid.UUID, narrative_id: uuid.UUID, *, limit: int = 5
+    ) -> list[DraftRow]:
+        """A story's newest drafts, with what each cites; none for a story that isn't the
+        user's."""
+        with self._ports.unit_of_work() as uow:
+            return uow.drafts.drafts(user_id, brand_id, narrative_id, limit=limit)
 
     def _call(self, material: DraftMaterial, ask: _Ask, settings: TaskSettings) -> Call:
         return Call(

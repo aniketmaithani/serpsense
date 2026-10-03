@@ -10,19 +10,25 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
 from serpsense.adapters.db.inbox import SqlInbox
+from serpsense.adapters.db.leases import SqlLeases
+from serpsense.adapters.db.llm_ledger import SqlLlmLedger
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
+from serpsense.adapters.llm.unavailable import UnavailableClient
 from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.domain.llm_capabilities import LlmPreset
 from serpsense.entrypoints.web.app import create_app
+from serpsense.ports.llm_client import LLMClient
 from serpsense.services.accounts import AccountDeletion
 from serpsense.services.ai_settings import AiSettings
 from serpsense.services.auth import SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
+from serpsense.services.drafts import Drafter, DraftPorts
+from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
 from serpsense.services.sessions import SessionGuard
 from tests.factories import make_settings
@@ -37,7 +43,10 @@ TOKEN = re.compile(r'name="(?:form_token|csrf_token)" value="([^"]+)"')
 
 
 def browser(
-    engine: Engine, clock: FixedClock | None = None, settings: Settings | None = None
+    engine: Engine,
+    clock: FixedClock | None = None,
+    settings: Settings | None = None,
+    model: LLMClient | None = None,
 ) -> TestClient:
     clock = clock or FixedClock(NOW)
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, Jobs()), BOX, Limiter(), clock)
@@ -61,10 +70,26 @@ def browser(
         ai_settings=AiSettings(
             SqlLlmProfiles(engine, LlmPreset.BALANCED), clock, fallback=LlmPreset.BALANCED
         ),
+        drafts=drafter(engine, clock, model or UnavailableClient()),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"
     return TestClient(app, base_url=base, raise_server_exceptions=False, follow_redirects=False)
+
+
+def drafter(engine: Engine, clock: FixedClock, model: LLMClient) -> Drafter:
+    gateway = LlmGateway(
+        model, SqlLlmLedger(engine.begin), clock, monthly_budget_micros=lambda _: 10**9
+    )
+    profiles = SqlLlmProfiles(engine, LlmPreset.BALANCED)
+    ports = DraftPorts(
+        unit_of_work=lambda: SqlUnitOfWork(engine, ScanJobs()),
+        gateway=gateway,
+        profiles=profiles,
+        leases=SqlLeases(engine),
+        clock=clock,
+    )
+    return Drafter(ports)
 
 
 class ScanJobs:

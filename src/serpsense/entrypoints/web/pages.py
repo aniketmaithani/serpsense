@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from serpsense.domain.model_text import has_contact
 from serpsense.entrypoints.web.session import container, sessions
 from serpsense.services.sessions import CurrentUser
 
@@ -25,6 +26,7 @@ SHOWN_IN = ZoneInfo("Asia/Kolkata")  # the demo's audience; stored times stay UT
 
 LABELS = {  # where capitalising the value reads wrong
     "ai_overview": "AI Overview",
+    "faq_entry": "FAQ entry",
     "serp_result": "Search result",
     "youtube": "YouTube",
     "youtube_video": "YouTube video",
@@ -46,6 +48,7 @@ def _when(value: datetime | None) -> str:
 
 TEMPLATES.filters["words"] = _words
 TEMPLATES.filters["when"] = _when
+TEMPLATES.filters["has_contact"] = has_contact
 
 
 def page(
