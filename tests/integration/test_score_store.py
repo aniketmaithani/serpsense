@@ -14,7 +14,7 @@ from sqlalchemy import Connection, func, insert, select, text
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.score_store import SqlScoreStore
 from serpsense.domain.enums import CrisisComponent, LlmTask, MentionSource, Surface, Topic
-from serpsense.domain.scoring.scan import Observed, ScanScores
+from serpsense.domain.scoring.scan import Earlier, Observed, ScanScores
 from serpsense.ports.enrichment_store import MentionLabel
 from serpsense.ports.score_store import ScoreStore
 from tests.integration.db_helpers import (
@@ -182,7 +182,7 @@ def history(conn: Connection) -> uuid.UUID:
     return now
 
 
-def test_inputs_are_the_labelled_sightings_and_the_surfaces_collected_before(
+def test_inputs_are_the_labelled_sightings_and_the_earlier_scored_scans(
     conn: Connection, store: ScoreStore
 ) -> None:
     inputs = store.inputs(history(conn), prompts=PROMPTS)
@@ -200,6 +200,10 @@ def test_inputs_are_the_labelled_sightings_and_the_surfaces_collected_before(
     assert inputs.ratings == (420,)
     assert inputs.newest_reviews == (-1, 1)  # newest first, by the edited text's label
     collected = {Surface.SEARCH_PAGE, Surface.NEWS, Surface.AUTOCOMPLETE}  # unscored ones too
+    assert inputs.earlier == (  # newest first; the unscored scan isn't one of them
+        Earlier({Surface.NEWS: 1}, frozenset(collected)),
+        Earlier({Surface.NEWS: 1}, frozenset()),
+    )
     assert inputs.collected_before == collected | {Surface.PLAY}
 
 
@@ -222,3 +226,29 @@ def test_a_label_is_from_the_mentions_own_task_the_active_prompts_first(
 
     inputs = store.inputs(now, prompts={LlmTask.LABEL_MENTIONS: v2})
     assert [(o.sentiment, o.position) for o in inputs.observed] == [(-1, 1), (0, 2)]
+
+
+def test_a_brands_first_scan_has_nothing_before_it(conn: Connection, store: ScoreStore) -> None:
+    brand = Brand(conn)
+    now = brand.scan(0, Surface.NEWS)
+    mention_id = brand.mention("https://n.in/a", MentionSource.NEWS)
+    brand.seen(mention_id, now)
+    brand.label(mention_id, 0)
+
+    inputs = store.inputs(now, prompts=PROMPTS)
+    assert inputs.observed == (Observed(MentionSource.NEWS, 0, 20, None, NOW, new=True),)
+    assert (inputs.ratings, inputs.newest_reviews, inputs.earlier) == ((), (), ())
+    assert inputs.collected_before == frozenset()
+
+
+def test_the_usual_reads_the_eight_newest_earlier_scored_scans(
+    conn: Connection, store: ScoreStore
+) -> None:
+    brand = Brand(conn)
+    scans = [brand.scan(-12 * n, Surface.NEWS, scored=True) for n in range(10, 0, -1)]
+    for n, scan_id in enumerate(scans):
+        mention_id = brand.mention(f"https://n.in/{n}", MentionSource.NEWS)
+        brand.seen(mention_id, scan_id)
+        brand.label(mention_id, -1 if n >= 2 else 0)  # the two oldest saw nothing negative
+    inputs = store.inputs(brand.scan(0), prompts=PROMPTS)
+    assert [dict(e.new_negative) for e in inputs.earlier] == [{Surface.NEWS: 1}] * 8
