@@ -83,3 +83,7 @@ class ScanStore(Protocol):
     def running_before(self, at: datetime) -> Sequence[uuid.UUID]:
         """Scans still running that were claimed before `at` (stuck)."""
         ...
+
+    def replayed_at(self, brand_id: uuid.UUID) -> frozenset[datetime]:
+        """When the brand's replay scans were created: the recorded scans already played."""
+        ...
