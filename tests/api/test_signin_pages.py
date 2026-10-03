@@ -26,6 +26,7 @@ def test_the_sign_in_page_wears_the_landing_page_look() -> None:
         assert f'<link rel="stylesheet" href="/static/landing/{sheet}">' in page.text
     assert '<a class="s-back" href="/">Back to the landing page</a>' in page.text
     assert "Not affiliated with SerpApi, LLC." in page.text
+    assert "Created by Aniket Maithani." in page.text
     assert "<script" not in page.text and not STYLE_ATTRIBUTE.search(page.text)
     assert '<svg class="orbit" viewBox="0 0 640 360" aria-hidden="true">' in page.text
     assert '<form method="post" action="/login">' in page.text and TOKEN.search(page.text)
