@@ -46,12 +46,20 @@ class _AfterCommit:
 
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
+        self.nudge_outbox = False
         self.closed = False
 
     def run_scan(self, scan_id: uuid.UUID) -> None:
+        self._open()
+        self.scans.append(scan_id)
+
+    def dispatch_outbox(self) -> None:
+        self._open()
+        self.nudge_outbox = True
+
+    def _open(self) -> None:
         if self.closed:
             raise RuntimeError("the unit of work has ended; open a new one")
-        self.scans.append(scan_id)
 
 
 class SqlUnitOfWork:
@@ -128,3 +136,8 @@ class SqlUnitOfWork:
             except JobQueueUnavailable:
                 # Committed already: the scan stays queued and the sweep sends it again.
                 log.warning("job.enqueue_failed", job="run_scan", scan_id=str(scan_id))
+        if pending.nudge_outbox:
+            try:
+                self._queue.dispatch_outbox()
+            except JobQueueUnavailable:  # Beat runs the dispatcher within 15 seconds anyway
+                log.warning("job.enqueue_failed", job="dispatch_outbox")

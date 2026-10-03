@@ -282,9 +282,13 @@ class RecordingOutbox:
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
+        self.outbox_nudges = 0
 
     def run_scan(self, scan_id: uuid.UUID) -> None:
         self.scans.append(scan_id)
+
+    def dispatch_outbox(self) -> None:
+        self.outbox_nudges += 1
 
 
 class FakeUnitOfWork:
@@ -319,6 +323,7 @@ class FakeUnitOfWork:
         self.open = False
         if exc_type is None:
             self.sent.scans.extend(self.jobs.scans)
+            self.sent.outbox_nudges += self.jobs.outbox_nudges
 
 
 Answerer = Callable[[LlmRequest], "str | LlmCallFailed"]

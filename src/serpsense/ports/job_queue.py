@@ -17,3 +17,8 @@ class JobQueue(Protocol):
     def run_scan(self, scan_id: uuid.UUID) -> None:
         """Ask a worker to claim and run a queued scan."""
         ...
+
+    def dispatch_outbox(self) -> None:
+        """Ask the outbox worker to send due emails now rather than at its next Beat (ADR-0010:
+        a sign-in code shouldn't wait)."""
+        ...
