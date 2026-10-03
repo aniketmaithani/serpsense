@@ -18,3 +18,6 @@ Before they were committed, every response was:
 | `ola/google.json` | `google` | `q=Ola`, `google_domain=google.co.in` |
 | `ola/autocomplete.json` | `google_autocomplete` | `q=ola ` |
 | `ola/news.json` | `google_news` | `q=Ola` |
+| `ola/trends_timeseries.json` | `google_trends` | `q=Ola,Uber,Rapido,Namma Yatri,inDrive`, `geo=IN`, `date=today 3-m`, `data_type=TIMESERIES` (first and last days only) |
+| `ola/trends_related.json` | `google_trends` | `q=Ola`, `geo=IN`, `date=today 3-m`, `data_type=RELATED_QUERIES` |
+| `ola/play_product.json` | `google_play_product` | `product_id=com.olacabs.customer`, `store=apps` (the product page: rating and its "most relevant" reviews) |
