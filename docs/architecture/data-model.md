@@ -117,7 +117,7 @@ Every brand (including competitors) is a full brand with its own settings, sched
 | owner_id | uuid | fk → users (RESTRICT); **immutable** (`trg_brands_owner_immutable`, BEFORE UPDATE, reported as `ck_brands_owner_immutable`) because the competitor same-owner rule depends on it |
 | name | text | at most 120 characters and not only whitespace (`ck_brands_name_length`) |
 | slug | text | `uq_brands_owner_id_slug` (its index also serves lookups by owner); lowercase words joined by hyphens, ≤ 64 (`ck_brands_slug_format`) |
-| tone_notes | text null | used by the drafter; ≤ 2000 characters (`ck_brands_tone_notes_length`) |
+| tone_notes | text null | used by the drafter; ≤ 2000 characters (`ck_brands_tone_notes_length`); deleted on account deletion (free text may hold personal data) |
 | created_at | timestamptz | |
 | archived_at | timestamptz null | archived brands are not scheduled; set for all brands on account deletion |
 
@@ -376,7 +376,7 @@ Migration 0024.
 ### `audit_event_network` (mutable: scrubbed on deletion)
 `audit_event_id` pk/fk, `ip inet`, `user_agent text` (≤ 256, `ck_audit_event_network_user_agent_length`). Network details are kept apart so the append-only log never holds raw personal data.
 
-Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row. A pre-login event with no code to point at (a refused or rate-limited request, a verify with no live code) writes no network row, since deletion couldn't find it.
+Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row, and its details hold only how many rows the deletion changed per table. A pre-login event with no code to point at (a refused or rate-limited request, a verify with no live code) writes no network row, since deletion couldn't find it.
 
 ---
 
