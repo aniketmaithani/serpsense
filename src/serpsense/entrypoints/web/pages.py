@@ -9,6 +9,9 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from serpsense.entrypoints.web.session import container, sessions
+from serpsense.services.sessions import CurrentUser
+
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
 TEMPLATES = Environment(
@@ -51,3 +54,13 @@ def page(
     """A rendered page; never cached, since every page is personal or a sign-in form."""
     html = TEMPLATES.get_template(template).render(request=request, **context)
     return HTMLResponse(html, status_code=status_code, headers={"Cache-Control": "no-store"})
+
+
+def signed_in_page(
+    request: Request, user: CurrentUser, template: str, **context: Any
+) -> HTMLResponse:
+    """A page behind sign-in, with what its layout needs: the CSRF token its forms (sign-out
+    among them) carry, and the user's unread notifications."""
+    token = sessions(request).csrf_token(user)
+    unread = container(request).inbox.unread(user.user_id)
+    return page(request, template, csrf_token=token, unread=unread, **context)

@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
+from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
@@ -45,6 +46,7 @@ def browser(
         sessions=guard,
         overview=SqlOverview(engine.connect),
         scan_now=scan_now,
+        inbox=SqlInbox(engine, clock),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"

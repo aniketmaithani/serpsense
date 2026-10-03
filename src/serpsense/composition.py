@@ -14,6 +14,7 @@ from serpsense.adapters.crypto.fernet_box import FernetBox
 from serpsense.adapters.crypto.keys import KeyPurpose, derive_key
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
+from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
@@ -43,6 +44,7 @@ from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
+from serpsense.ports.inbox import Inbox
 from serpsense.ports.mailer import Mailer
 from serpsense.ports.overview import Overview
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
@@ -98,6 +100,7 @@ class Container:
     sessions: SessionGuard
     overview: Overview
     scan_now: ScanNow
+    inbox: Inbox
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -125,6 +128,7 @@ def build_container(settings: Settings | None = None) -> Container:
         sessions=build_session_guard(resolved, celery),
         overview=SqlOverview(engine.connect),
         scan_now=build_scan_now(resolved, engine, celery),
+        inbox=SqlInbox(engine, SystemClock()),
     )
 
 

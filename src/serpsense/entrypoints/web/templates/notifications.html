@@ -1,0 +1,31 @@
+{% extends "signed_in.html" %}
+{% block title %}Notifications · SerpSense{% endblock %}
+{% block main %}
+<h1>Notifications</h1>
+{% if unread and rows %}
+<form method="post" action="/notifications/read">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="notification_id" value="{{ rows[0].notification_id }}">
+  <input type="hidden" name="and_older" value="true">
+  <button type="submit">Mark all read</button>
+</form>
+{% endif %}
+<ul class="notifications">
+{% for n in rows %}
+  <li class="{{ 'read' if n.read else 'unread' }}">
+    <div><strong>{{ n.title }}</strong> <span class="muted">· {{ n.at|when }}</span></div>
+    <div class="body">{{ n.body }}</div>
+    {% if n.brand_id %}<a href="/brands/{{ n.brand_id }}">Open the brand</a>{% endif %}
+    {% if not n.read %}
+    <form method="post" action="/notifications/read" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="notification_id" value="{{ n.notification_id }}">
+      <button type="submit" class="link">Mark read</button>
+    </form>
+    {% endif %}
+  </li>
+{% else %}
+  <li class="muted">Nothing yet. Alerts about your brands show up here and in your email.</li>
+{% endfor %}
+</ul>
+{% endblock %}
