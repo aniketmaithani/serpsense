@@ -165,9 +165,9 @@ def test_a_label_is_used_only_for_the_prompt_version_that_made_it() -> None:
 
 def test_a_task_with_nothing_recorded_fails_without_a_retry() -> None:
     call = label_call("Ola", LATE)
-    grouping = replace(call, task=LlmTask.GROUP_NARRATIVES, prompt_version="group_narratives/v1")
+    explaining = replace(call, task=LlmTask.EXPLAIN_CRISIS, prompt_version="explain_crisis/v1")
     no_brand = replace(call, variables={"mentions": []})
-    for unanswerable in (grouping, no_brand):
+    for unanswerable in (explaining, no_brand):
         with pytest.raises(LlmCallFailed) as failed:
             replaying(MemoryLedger()).run(unanswerable, Labels)
         assert failed.value.code == "llm.replay_unrecorded" and not failed.value.retryable
