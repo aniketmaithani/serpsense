@@ -55,7 +55,8 @@ class AnthropicClient:
                 message = self._sdk.messages.create(**params)
         except anthropic.APIError as exc:
             raise _failure(exc, _elapsed(started, self._timer)) from exc
-        return _response(message, _elapsed(started, self._timer), request.reasoning_summary)
+        latency = _elapsed(started, self._timer)
+        return _response(message, latency, request)
 
 
 def _params(request: LlmRequest, system: str, user: str) -> dict[str, Any]:
@@ -96,7 +97,8 @@ def _thinking(shape: RequestShape, summary: bool) -> dict[str, Any] | None:
     return None  # Haiku with thinking off: no thinking parameter at all
 
 
-def _response(message: Message | BetaMessage, latency_ms: int, want_summary: bool) -> LlmResponse:
+def _response(message: Message | BetaMessage, latency_ms: int, request: LlmRequest) -> LlmResponse:
+    want_summary = request.reasoning_summary
     texts = [block.text for block in message.content if block.type == "text"]
     thoughts = [block.thinking for block in message.content if block.type == "thinking"]
     refused = message.stop_reason == "refusal"
@@ -104,21 +106,24 @@ def _response(message: Message | BetaMessage, latency_ms: int, want_summary: boo
         served_model=message.model,
         stop_reason=message.stop_reason or "unknown",
         output=None if refused or not texts else texts[0],
-        hops=_hops(message),
+        hops=_hops(message, request.shape.model),
         latency_ms=latency_ms,
         reasoning_summary=("\n".join(thoughts) or None) if want_summary else None,
     )
 
 
-def _hops(message: Message | BetaMessage) -> tuple[Hop, ...]:
+def _hops(message: Message | BetaMessage, requested: str) -> tuple[Hop, ...]:
     """Each model that ran: `usage.iterations` is the per-attempt record when a fallback
-    may have run; otherwise the top-level usage is the one attempt."""
+    may have run (a first attempt that names no model is the requested one); otherwise, or
+    when it holds no message attempts, the top-level usage is the one attempt."""
     if isinstance(message, BetaMessage) and message.usage.iterations:
-        return tuple(
-            Hop(iteration.model or message.model, _tokens(iteration))
+        hops = tuple(
+            Hop(iteration.model or requested, _tokens(iteration))
             for iteration in message.usage.iterations
             if iteration.type in ("message", "fallback_message")
         )
+        if hops:
+            return hops
     return (Hop(message.model, _tokens(message.usage)),)
 
 

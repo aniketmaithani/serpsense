@@ -186,5 +186,5 @@ def test_every_model_that_ran_is_billed_at_its_own_price() -> None:
     unknown = response(served_model="claude-next", hops=(Hop("claude-next", USAGE),))
     with capture_logs() as logs:
         gateway(Scripted(unknown), ledger).run(CALL, Labels)
-    assert ledger.calls[2].cost_micros == 14_000  # no price: charged as the requested model
+    assert ledger.calls[2].cost_micros == 17_500  # no price: charged at the dearest known
     assert [entry["event"] for entry in logs] == ["llm_price.substituted", "llm_call.recorded"]
