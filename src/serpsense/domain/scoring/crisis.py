@@ -14,7 +14,7 @@ from serpsense.domain.scoring.surfaces import ratio
 
 USUAL_SCANS = 8  # a brand's usual is the median of its newest eight earlier scans
 USUAL_FLOOR = 2
-WARM_UP_SCANS = 3  # earlier succeeded scans a brand needs before its crisis has a level
+WARM_UP_SCANS = 3  # earlier scored scans a brand needs before its crisis has a level
 
 CRISIS_WEIGHTS_BP: Mapping[CrisisComponent, int] = {
     CrisisComponent.VELOCITY: 3000,
