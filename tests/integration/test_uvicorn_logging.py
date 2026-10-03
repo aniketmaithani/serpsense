@@ -18,15 +18,15 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
-from serpsense.composition import Container, build_settings
+from serpsense.composition import build_settings
 from serpsense.entrypoints.web.app import create_app
-from tests.factories import make_settings
+from tests.factories import make_container, make_settings
 
 pytestmark = pytest.mark.integration
 
 
 def _factory() -> FastAPI:
-    app = create_app(Container(settings=build_settings(make_settings()), health_checks=()))
+    app = create_app(make_container(build_settings(make_settings())))
 
     @app.get("/boom")
     def boom(request: Request) -> None:
