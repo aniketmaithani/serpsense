@@ -200,6 +200,22 @@ class AlertRule(StrEnum):
     NARRATIVE_SPREAD = "narrative_spread"  # a story reached 5+ mentions on 2+ surfaces
 
 
+class DraftKind(StrEnum):
+    """What a response draft is for (`draft_kind` Postgres enum; BUILD_PLAN §13)."""
+
+    HOLDING_STATEMENT = "holding_statement"  # a short public statement while facts are checked
+    REVIEW_REPLY = "review_reply"  # a reply under one of the story's reviews
+    FAQ_ENTRY = "faq_entry"  # a help-centre question and answer
+
+
+class DraftPreset(StrEnum):
+    """How hard the model thinks about a draft (`draft_preset`; BUILD_PLAN §7.2, §13)."""
+
+    STANDARD = "standard"  # the task's effort in the user's profile
+    HIGH_THINKING = "high_thinking"  # xhigh effort
+    MAX = "max"  # max effort
+
+
 class OutboxKind(StrEnum):
     """What an outbox email is (`outbox_kind` Postgres enum; ADR-0010)."""
 
