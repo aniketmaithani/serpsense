@@ -13,8 +13,10 @@ from sqlalchemy import TextClause, TextualSelect, Uuid, column, text
 OWNED = "SELECT id FROM brands WHERE owner_id = :user AND archived_at IS NULL"
 
 
-def scoped(sql: str) -> TextClause:
-    """`sql` with `{owned}` replaced by the owner check; values stay bound parameters."""
+def scoped(*parts: str) -> TextClause:
+    """The query `parts` make, with `{owned}` replaced by the owner check; values stay bound
+    parameters. Parts let queries share a fragment, such as a common table expression."""
+    sql = "".join(parts)
     if "{owned}" not in sql:
         raise ValueError("a user-scoped query must reach its rows through {owned}")
     return text(sql.replace("{owned}", OWNED))

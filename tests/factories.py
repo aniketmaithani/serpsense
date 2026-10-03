@@ -3,6 +3,7 @@
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.overview import SqlOverview
+from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.system_clock import SystemClock
 from serpsense.composition import (
     Container,
@@ -46,4 +47,5 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
         scan_now=build_scan_now(settings, engine, celery),
         inbox=SqlInbox(engine, SystemClock()),
         brand_settings=build_brand_settings(settings, engine, celery),
+        stories=SqlStories(engine.connect),
     )

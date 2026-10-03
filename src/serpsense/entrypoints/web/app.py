@@ -21,6 +21,7 @@ from serpsense.entrypoints.web.middleware import (
 )
 from serpsense.entrypoints.web.notifications import router as notifications_router
 from serpsense.entrypoints.web.pages import STATIC
+from serpsense.entrypoints.web.stories import router as stories_router
 from serpsense.observability import get_logger
 
 log = get_logger(__name__)
@@ -38,6 +39,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(brands_router)
     app.include_router(notifications_router)
     app.include_router(settings_router)
+    app.include_router(stories_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.exception_handler(RequestValidationError)
