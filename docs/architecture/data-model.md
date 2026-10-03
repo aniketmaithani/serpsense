@@ -34,7 +34,7 @@ Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the 
 |---|---|---|
 | id | uuid | pk |
 | email | citext | `uq_users_email`; replaced by `deleted+<id>@serpsense.invalid` (RFC 2606 reserved TLD) on deletion; never logged |
-| created_at | timestamptz | = first successful OTP verification (users are created only then) |
+| created_at | timestamptz | when the user was created: at their first successful OTP verification, or when an operator seeded them (`serpsense seed-demo`, ADR-0009 amendment) |
 | deleted_at | timestamptz null | set by the account-deletion flow (ADR-0013) |
 
 No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
