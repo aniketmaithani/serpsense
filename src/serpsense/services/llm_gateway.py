@@ -19,7 +19,14 @@ from pydantic import BaseModel, ValidationError
 
 from serpsense.domain.enums import LlmCallOutcome, LlmTask
 from serpsense.domain.llm_capabilities import RequestShape, TaskSettings, request_shape
-from serpsense.domain.llm_pricing import CURRENCY, Hop, TokenUsage, UnknownModel, cost_micros
+from serpsense.domain.llm_pricing import (
+    CURRENCY,
+    PRICES,
+    Hop,
+    TokenUsage,
+    UnknownModel,
+    cost_micros,
+)
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
 from serpsense.ports.llm_client import LlmCallFailed, LLMClient, LlmRequest, LlmResponse, Variables
@@ -29,6 +36,7 @@ log = get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 NO_TOKENS = TokenUsage(input=0, output=0, cache_read=0, cache_write=0)
+DEAREST = "dearest_known"
 FINISHED = frozenset({"end_turn", "stop_sequence"})
 STOPPED = {
     "refusal": LlmCallOutcome.REFUSED,
@@ -135,7 +143,7 @@ class LlmGateway:
             prompt_version=call.prompt_version,
             request_settings=_settings(call, shape),
             usage=usage,
-            cost_micros=_cost(response.hops if response else (), shape.model),
+            cost_micros=_cost(response.hops if response else ()),
             currency=CURRENCY,
             stop_reason=response.stop_reason if response else None,
             outcome=outcome,
@@ -179,17 +187,17 @@ def _classify(response: LlmResponse, output: type[T]) -> tuple[LlmCallOutcome, T
         return LlmCallOutcome.INVALID_OUTPUT, None
 
 
-def _cost(hops: tuple[Hop, ...], requested: str) -> int:
+def _cost(hops: tuple[Hop, ...]) -> int:
     """Every model that ran is billed, a declined first attempt included."""
     total = 0
     for hop in hops:
         try:
             total += cost_micros(hop.model, hop.usage)
         except UnknownModel:
-            # A model with no price here is charged at the requested model's price rather
-            # than as free, and said so.
-            log.warning("llm_price.substituted", model=hop.model, priced_as=requested)
-            total += cost_micros(requested, hop.usage)
+            # A model with no price here is charged at the dearest price known rather than
+            # as free or as a cheaper model, and said so.
+            log.warning("llm_price.substituted", model=hop.model, priced_as=DEAREST)
+            total += max(cost_micros(model, hop.usage) for model in PRICES)
     return total
 
 

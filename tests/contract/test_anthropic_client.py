@@ -235,3 +235,31 @@ def test_the_default_client_is_pinned_to_the_api_host(monkeypatch: pytest.Monkey
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://elsewhere.example")
     real = AnthropicClient("sk-ant-test-not-a-key", PromptLibrary())
     assert str(real._sdk.base_url).rstrip("/") == API_HOST  # the pinned host
+
+
+@pytest.mark.parametrize(
+    ("iterations", "hops"),
+    [
+        # A first attempt that names no model is the requested one.
+        (
+            [{"type": "message", "input_tokens": 100, "output_tokens": 40}],
+            (Hop(OPUS, TokenUsage(input=100, output=40, cache_read=0, cache_write=0)),),
+        ),
+        # No message attempts listed: the top-level usage is the one attempt.
+        (
+            [{"type": "compaction", "input_tokens": 9, "output_tokens": 9}],
+            (
+                Hop(
+                    "claude-opus-4-8",
+                    TokenUsage(input=1200, output=300, cache_read=4000, cache_write=0),
+                ),
+            ),
+        ),
+    ],
+)
+def test_iterations_that_name_no_model_or_no_attempt(
+    prompts: PromptLibrary, iterations: list[dict[str, Any]], hops: tuple[Hop, ...]
+) -> None:
+    answer = message(model="claude-opus-4-8")  # a fallback answered: not the requested model
+    answer["usage"] = {**answer["usage"], "iterations": iterations}
+    assert client(prompts, Api(answer)).complete(request()).hops == hops
