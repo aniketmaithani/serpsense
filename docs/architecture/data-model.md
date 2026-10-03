@@ -360,19 +360,21 @@ Migration 0022 (alerts and in-app notifications) and 0023 (the email outbox).
 ## 9. Audit
 
 ### 🔒 `audit_events`
+Migration 0024.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
 | actor_user_id | uuid null | fk → users (RESTRICT) |
-| action | text | `noun.verb_past` |
-| target_type / target_id | text / uuid null | |
+| action | text | `noun.verb_past` (`ck_audit_events_action_format`) |
+| target_type / target_id | text / uuid null | both or neither (`ck_audit_events_target_type_iff_target_id`); `ix_audit_events_target_id` (deletion finds a user's pre-login events through their OTP codes) |
 | 📄 details | jsonb null | never contains email, IP, codes or tokens |
 | created_at | timestamptz | `ix_audit_events_actor_user_id_created_at` |
 
 ### `audit_event_network` (mutable: scrubbed on deletion)
-`audit_event_id` pk/fk, `ip inet`, `user_agent text`. Network details are kept apart so the append-only log never holds raw personal data.
+`audit_event_id` pk/fk, `ip inet`, `user_agent text` (≤ 256, `ck_audit_event_network_user_agent_length`). Network details are kept apart so the append-only log never holds raw personal data.
 
-Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row.
+Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row. A pre-login event with no code to point at (a refused or rate-limited request, a verify with no live code) writes no network row, since deletion couldn't find it.
 
 ---
 

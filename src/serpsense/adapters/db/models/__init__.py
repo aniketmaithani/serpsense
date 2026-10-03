@@ -1,6 +1,7 @@
 """ORM models. Importing this package registers every table on `Base.metadata`."""
 
 from serpsense.adapters.db.models.alerts import Alert, Notification, NotificationRead
+from serpsense.adapters.db.models.audit import AuditEvent, AuditEventNetwork
 from serpsense.adapters.db.models.brands import (
     Brand,
     BrandAlias,
@@ -46,6 +47,8 @@ from serpsense.adapters.db.models.settings import (
 __all__ = [
     "Alert",
     "AppRatingObservation",
+    "AuditEvent",
+    "AuditEventNetwork",
     "Brand",
     "BrandAlias",
     "BrandApp",
