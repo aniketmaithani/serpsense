@@ -46,13 +46,16 @@ class AnthropicClient:
     def complete(self, request: LlmRequest) -> LlmResponse:
         prompt = self._prompts.render(request.prompt_version, request.variables)
         params = _params(request, prompt.system, prompt.user)
+        sdk = self._sdk
+        if request.max_retries is not None:  # a person waiting on one call: no silent retries
+            sdk = sdk.with_options(max_retries=request.max_retries)
         started = self._timer()
         try:
             if request.refusal_fallback and request.shape.model in FALLBACK_MODELS:
                 params.update(betas=[FALLBACK_BETA], fallbacks="default")
-                message = self._sdk.beta.messages.create(**params)
+                message = sdk.beta.messages.create(**params)
             else:
-                message = self._sdk.messages.create(**params)
+                message = sdk.messages.create(**params)
         except anthropic.APIError as exc:
             raise _failure(exc, _elapsed(started, self._timer)) from exc
         latency = _elapsed(started, self._timer)

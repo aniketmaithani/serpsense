@@ -29,6 +29,7 @@ class LlmRequest:
     refusal_fallback: bool = True  # server-side fallback on a refusal (Opus and Sonnet)
     timeout_seconds: float = 60.0
     reasoning_summary: bool = False  # ask for a summary of the model's thinking
+    max_retries: int | None = None  # the client's own retries; None keeps its default
 
     def __post_init__(self) -> None:
         if self.prompt_version.split("/")[0] != self.task.value:
