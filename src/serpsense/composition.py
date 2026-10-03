@@ -17,6 +17,7 @@ from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_factory import (
     DISPATCH_TASK,
     HEARTBEAT_TASK,
+    OUTBOX_TASK,
     RUN_SCAN_TASK,
     SCAN_TIME_LIMIT_SECONDS,
     SWEEP_TASK,
@@ -26,19 +27,23 @@ from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.adapters.llm.anthropic_client import AnthropicClient
 from serpsense.adapters.llm.profiles import PresetProfiles
 from serpsense.adapters.llm.prompts import PromptLibrary
+from serpsense.adapters.mail.console import ConsoleMailer
+from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
 from serpsense.adapters.serp.client import SerpApiSearchProvider
 from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.system_clock import SystemClock
-from serpsense.config import AppEnv, ConfigError, Settings
+from serpsense.config import AppEnv, ConfigError, EmailBackend, Settings
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
+from serpsense.ports.mailer import Mailer
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
+from serpsense.services.outbox import OutboxDispatcher
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
 from serpsense.services.scoring_run import score_backlog
 from serpsense.services.search import SearchLimits, SearchPorts, SearchService
@@ -47,6 +52,7 @@ from serpsense.services.sweep import Sweeper
 __all__ = [
     "DISPATCH_TASK",
     "HEARTBEAT_TASK",
+    "OUTBOX_TASK",
     "RUN_SCAN_TASK",
     "SCAN_TIME_LIMIT_SECONDS",
     "SWEEP_TASK",
@@ -54,6 +60,7 @@ __all__ = [
     "Worker",
     "build_celery",
     "build_container",
+    "build_outbox",
     "build_seeder",
     "build_settings",
     "build_worker",
@@ -168,6 +175,28 @@ def build_scorer(settings: Settings, celery: Celery) -> Callable[[], int]:
     engine = create_db_engine(settings.database_url.get_secret_value())
     queue = CeleryJobQueue(celery)
     return lambda: score_backlog(lambda: SqlUnitOfWork(engine, queue), SystemClock())
+
+
+def build_outbox(settings: Settings, celery: Celery) -> OutboxDispatcher:
+    """The outbox dispatcher (ADR-0010); it needs no SerpApi or Anthropic key."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+    return OutboxDispatcher(lambda: SqlUnitOfWork(engine, queue), _mailer(settings), SystemClock())
+
+
+def _mailer(settings: Settings) -> Mailer:
+    if settings.email_backend is EmailBackend.CONSOLE:
+        return ConsoleMailer(production=settings.is_production)
+    password = settings.smtp_password.get_secret_value() if settings.smtp_password else ""
+    smtp = SmtpSettings(
+        host=settings.smtp_host,
+        port=settings.smtp_port,
+        sender=settings.email_from,
+        user=settings.smtp_user,
+        password=password,
+        starttls=settings.smtp_starttls,
+    )
+    return SmtpMailer(smtp)
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
