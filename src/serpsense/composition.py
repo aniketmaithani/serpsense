@@ -16,6 +16,7 @@ from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
+from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.stories import SqlStories
@@ -31,7 +32,6 @@ from serpsense.adapters.jobs.celery_factory import (
 )
 from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.adapters.llm.anthropic_client import AnthropicClient
-from serpsense.adapters.llm.profiles import PresetProfiles
 from serpsense.adapters.llm.prompts import PromptLibrary
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
@@ -211,7 +211,7 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
         labeller=Labeller(unit_of_work, gateway, clock),
         grouper=Grouper(unit_of_work, gateway, clock),
         usage=SqlSearchLedger(engine.begin),
-        profiles=PresetProfiles(settings.default_llm_preset),
+        profiles=SqlLlmProfiles(engine, settings.default_llm_preset),
         clock=clock,
     )
     limits = ScanLimits(

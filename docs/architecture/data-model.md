@@ -86,7 +86,7 @@ Validated by Pydantic (`domain/settings/*`), always read whole. All four tables 
 
 | Table | Key (FK, RESTRICT) | 📄 `document` contents |
 |---|---|---|
-| 🔒 `user_llm_profile_versions` | user_id → users | per-task model/effort/display/max_tokens/temperature/caching/fallback + preset |
+| 🔒 `user_llm_profile_versions` | user_id → users | a preset, and per task a model and effort the user chose (`domain/settings/llm.py`); a stored task that no longer validates falls back to the preset alone |
 | 🔒 `user_search_default_versions` | user_id → users | default country, languages, device, cache, concurrency, caps |
 | 🔒 `brand_search_settings_versions` | brand_id → brands | per-engine knobs (templates, pages, filters, TTLs) |
 
