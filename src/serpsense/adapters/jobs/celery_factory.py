@@ -44,7 +44,6 @@ def create_celery(broker_url: str) -> Celery:
         task_ignore_result=True,
         result_backend=None,
         task_time_limit=DEFAULT_TIME_LIMIT_SECONDS,
-        task_soft_time_limit=DEFAULT_TIME_LIMIT_SECONDS - 15,
         worker_prefetch_multiplier=1,
         worker_hijack_root_logger=False,
         broker_transport_options={"visibility_timeout": VISIBILITY_TIMEOUT_SECONDS},
@@ -64,6 +63,8 @@ def create_celery(broker_url: str) -> Celery:
         beat_schedule_filename=BEAT_SCHEDULE_FILE,
         beat_schedule={
             "heartbeat": {"task": HEARTBEAT_TASK, "schedule": HEARTBEAT_INTERVAL},
+            "dispatch_due_scans": {"task": DISPATCH_TASK, "schedule": DISPATCH_INTERVAL},
+            "sweep_stuck_work": {"task": SWEEP_TASK, "schedule": SWEEP_INTERVAL},
         },
     )
     return celery
