@@ -160,3 +160,26 @@ class Topic(StrEnum):
     CORPORATE = "corporate"  # leadership, finances, stock, funding
     WORKFORCE = "workforce"  # employees, drivers, partners, layoffs
     OTHER = "other"
+
+
+class CrisisComponent(StrEnum):
+    """What a crisis score is made of (`crisis_component` Postgres enum; docs/scoring.md)."""
+
+    VELOCITY = "velocity"  # negative mentions growing against the brand's usual
+    SPREAD = "spread"  # negativity on many surfaces at once
+    AUTOCOMPLETE = "autocomplete"  # a new negative suggestion as people type the name
+    TRENDS = "trends"  # a rising negative related query
+    PRESS = "press"  # negative news in the last 48 hours
+
+
+class CrisisLevel(StrEnum):
+    """How bad it is (`crisis_level` Postgres enum). Compare levels by `rank`: as strings,
+    "low" would sort after "high"."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+    @property
+    def rank(self) -> int:
+        return list(CrisisLevel).index(self)
