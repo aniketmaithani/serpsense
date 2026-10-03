@@ -17,7 +17,7 @@ from serpsense.adapters.db.models.identity import (
     UserSearchBudget,
     UserSession,
 )
-from serpsense.adapters.db.models.mentions import Mention
+from serpsense.adapters.db.models.mentions import Mention, MentionRevision
 from serpsense.adapters.db.models.observations import (
     AppRatingObservation,
     MentionObservation,
@@ -45,6 +45,7 @@ __all__ = [
     "BrandWatchTerm",
     "Mention",
     "MentionObservation",
+    "MentionRevision",
     "OtpCode",
     "OtpVerifyAttempt",
     "RawResponse",
