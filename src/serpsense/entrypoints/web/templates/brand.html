@@ -7,8 +7,14 @@
   <div class="score"><span class="label">Health</span><span class="big">{{ card.health if card.health is not none else "–" }}</span></div>
   <div class="score"><span class="label">Crisis</span><span class="big">{{ card.crisis if card.crisis is not none else "–" }}</span>
     {% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% else %}<span class="muted">warming up: a level comes after a few scored scans</span>{% endif %}</div>
-  <div class="score"><span class="label">Last scan</span><span>{{ card.last_scan_at|when }}{% if card.last_status %} · {{ card.last_status|words }}{% endif %}</span></div>
+  <div class="score"><span class="label">Last scan</span><span>{{ card.last_scan_at|when }}{% if card.last_status %} · {{ card.last_status|words }}{% endif %}</span>
+    {% if card.last_status in ("queued", "running") %}<span class="muted">Scanning…</span>{% else %}
+    <form method="post" action="/brands/{{ card.brand_id }}/scan" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Scan now</button>
+    </form>{% endif %}</div>
 </section>
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 
 {% if trend %}
 <section class="card"><h2>Over time</h2><canvas id="trend" data-trend='{{ trend|tojson }}' height="90"></canvas></section>

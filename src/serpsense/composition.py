@@ -54,6 +54,7 @@ from serpsense.services.evals import Evaluator, MemoryLedger
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.outbox import OutboxDispatcher
+from serpsense.services.scan_now import ScanNow, ScanNowLimits
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
 from serpsense.services.scoring_run import score_backlog
 from serpsense.services.search import SearchLimits, SearchPorts, SearchService
@@ -73,6 +74,7 @@ __all__ = [
     "build_container",
     "build_evaluator",
     "build_outbox",
+    "build_scan_now",
     "build_seeder",
     "build_session_guard",
     "build_settings",
@@ -86,13 +88,16 @@ COLLECTION_TIME = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) * 2 / 3
 STUCK_AFTER = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) + timedelta(minutes=5)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Container:
+    """What the web app's routes use, built once per process."""
+
     settings: Settings
     health_checks: tuple[HealthCheck, ...]
     sign_in: SignIn
     sessions: SessionGuard
     overview: Overview
+    scan_now: ScanNow
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -109,15 +114,29 @@ def build_settings(settings: Settings | None = None) -> Settings:
 def build_container(settings: Settings | None = None) -> Container:
     resolved = build_settings(settings)
     engine = create_db_engine(resolved.database_url.get_secret_value())
+    celery = build_celery(resolved)
     return Container(
         settings=resolved,
         health_checks=(
             PostgresHealthCheck(engine),
             RedisHealthCheck(resolved.redis_url.get_secret_value()),
         ),
-        sign_in=build_sign_in(resolved, build_celery(resolved)),
-        sessions=build_session_guard(resolved, build_celery(resolved)),
+        sign_in=build_sign_in(resolved, celery),
+        sessions=build_session_guard(resolved, celery),
         overview=SqlOverview(engine.connect),
+        scan_now=build_scan_now(resolved, engine, celery),
+    )
+
+
+def build_scan_now(settings: Settings, engine: Engine, celery: Celery) -> ScanNow:
+    """ "Scan now" for the web app; its scan's job is sent after the commit."""
+    queue = CeleryJobQueue(celery)
+    limits = ScanNowLimits(settings.max_searches_per_scan, settings.default_monthly_search_budget)
+    return ScanNow(
+        lambda: SqlUnitOfWork(engine, queue),
+        SqlSearchLedger(engine.begin),
+        SystemClock(),
+        limits,
     )
 
 
