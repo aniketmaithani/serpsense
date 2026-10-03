@@ -65,6 +65,7 @@ def test_the_owner_sees_their_brands_and_a_brand_page(committing_engine: Engine)
     home = client.get("/")
     assert home.status_code == 200 and "Ola" in home.text and "competitor of Ola" in home.text
     assert "Theirs" not in home.text and "Old" not in home.text  # another's, and archived
+    assert '<footer class="site-foot">Created by Aniket Maithani.' in home.text
     page = client.get(f"/brands/{ola}")
     assert page.status_code == 200 and "warming up" in page.text and "Uber" in page.text
     trend = TREND.search(page.text)
