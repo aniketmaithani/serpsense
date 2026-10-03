@@ -133,6 +133,16 @@ def test_scan_now_reads_one_live_brand_of_its_owner(
              requested_by=owner)  # fmt: skip
     scanned = reader.scan_inputs(owner, brand_id, LATER)
     assert scanned is not None and scanned.last_scan_at == NOW
+    assert (inputs.name, inputs.interval_minutes, inputs.timezone) == (
+        "VoltBox",
+        None,
+        "Asia/Kolkata",
+    )
+    quiet = {"timezone": "UTC", "quiet_start": time(0), "quiet_end": time(6)}
+    schedule(conn, brand_id, 360, **quiet)
+    timed = reader.scan_inputs(owner, brand_id, LATER)
+    assert timed is not None and (timed.interval_minutes, timed.timezone) == (360, "UTC")
+    assert (timed.quiet_start, timed.quiet_end) == (time(0), time(6))
     assert reader.scan_inputs(stranger, brand_id, LATER) is None  # someone else's: missing
     assert reader.scan_inputs(owner, uuid.uuid4(), LATER) is None
 
