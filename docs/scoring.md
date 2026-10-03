@@ -77,6 +77,8 @@ its inputs from what the brand's scans recorded:
 - **New.** A mention is new in the brand's earliest scan that observed it, scored or not.
 - **Collected before.** A surface was collected before a scan when an earlier scan of the brand
   has a `succeeded` result for it.
+- **The usual.** The brand's eight newest earlier scored scans, each with the negative mentions
+  first seen in it per surface, by their latest label.
 - **Play.** The mean of the scan's app ratings, and the scan's labelled reviews, newest
   published first.
 

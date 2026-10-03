@@ -17,8 +17,8 @@ from serpsense.domain.scoring.scan import ScanScores, ScoreInputs
 class ScoreStore(Protocol):
     def inputs(self, scan_id: uuid.UUID, *, prompts: Mapping[LlmTask, str]) -> ScoreInputs:
         """What scoring the scan reads: its labelled mentions about the brand (each by its own
-        task, the active prompt's label first), app ratings and newest reviews, and the surfaces
-        the brand's earlier scans collected."""
+        task, the active prompt's label first), app ratings and newest reviews, and the brand's
+        eight newest earlier scored scans."""
         ...
 
     def record(self, scan_id: uuid.UUID, scores: ScanScores, *, version: str, at: datetime) -> bool:
