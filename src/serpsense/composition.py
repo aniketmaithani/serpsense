@@ -50,6 +50,7 @@ from serpsense.ports.mailer import Mailer
 from serpsense.ports.overview import Overview
 from serpsense.ports.stories import Stories
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
+from serpsense.services.accounts import AccountDeletion
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.collection import CollectorRunner
@@ -77,6 +78,7 @@ __all__ = [
     "SWEEP_TASK",
     "Container",
     "Worker",
+    "build_account_deletion",
     "build_brand_settings",
     "build_celery",
     "build_container",
@@ -293,6 +295,13 @@ def build_sign_in(settings: Settings, celery: Celery) -> SignIn:
         frozenset(settings.allowed_domain_list),
     )
     return SignIn(ports, keys, policy, session_days=settings.session_days)
+
+
+def build_account_deletion(settings: Settings, celery: Celery, sign_in: SignIn) -> AccountDeletion:
+    """Account deletion (ADR-0013), confirming with the sign-in service's codes."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+    return AccountDeletion(lambda: SqlUnitOfWork(engine, queue), sign_in, SystemClock())
 
 
 def build_session_guard(settings: Settings, celery: Celery) -> SessionGuard:
