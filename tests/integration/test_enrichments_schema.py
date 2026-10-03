@@ -14,6 +14,7 @@ from tests.integration.db_helpers import (
     add,
     add_app,
     add_brand,
+    add_llm_call,
     add_mention,
     add_scan,
     add_user,
@@ -25,27 +26,6 @@ pytestmark = pytest.mark.integration
 
 ENRICHMENTS = table("enrichments")
 PROMPT = "label_mentions/v1"
-
-
-def call(conn: Connection, user_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
-    values: dict[str, Any] = {
-        "task": "label_mentions",
-        "requested_model": "claude-opus-5-5",
-        "served_model": "claude-opus-5-5",
-        "prompt_version": PROMPT,
-        "request_settings": {"effort": "low"},
-        "input_tokens": 100,
-        "output_tokens": 50,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "cost_micros": 900,
-        "currency": "USD",
-        "stop_reason": "end_turn",
-        "outcome": "succeeded",
-        "latency_ms": 800,
-        "created_at": NOW,
-    }
-    return add(conn, table("llm_calls"), user_id=user_id, **{**values, **overrides})
 
 
 def review(conn: Connection) -> tuple[uuid.UUID, uuid.UUID]:
@@ -88,10 +68,10 @@ def label(conn: Connection, mention_id: uuid.UUID, call_id: uuid.UUID, **kw: Any
 
 def test_each_text_of_a_mention_gets_its_own_labels(conn: Connection) -> None:
     owner, mention_id = review(conn)
-    call_id = call(conn, owner)
+    call_id = add_llm_call(conn, owner)
     label(conn, mention_id, call_id)
     label(conn, mention_id, call_id, revision=2, topic="reliability", severity=85)
-    v2 = call(conn, owner, prompt_version="label_mentions/v2")
+    v2 = add_llm_call(conn, owner, prompt_version="label_mentions/v2")
     label(conn, mention_id, v2, prompt_version="label_mentions/v2")  # a new prompt relabels
     with pytest.raises(IntegrityError) as exc:
         label(conn, mention_id, call_id)
@@ -101,7 +81,7 @@ def test_each_text_of_a_mention_gets_its_own_labels(conn: Connection) -> None:
 def test_a_revision_the_mention_doesnt_have_is_refused(conn: Connection) -> None:
     owner, mention_id = review(conn)
     with pytest.raises(IntegrityError) as exc:
-        label(conn, mention_id, call(conn, owner), revision=3)
+        label(conn, mention_id, add_llm_call(conn, owner), revision=3)
     assert violation(exc).constraint_name == "ck_enrichments_revision_exists"
 
 
@@ -118,14 +98,14 @@ def test_a_revision_the_mention_doesnt_have_is_refused(conn: Connection) -> None
 def test_enrichment_checks(conn: Connection, overrides: dict[str, Any], check: str) -> None:
     owner, mention_id = review(conn)
     with pytest.raises(IntegrityError) as exc:
-        label(conn, mention_id, call(conn, owner), **overrides)
+        label(conn, mention_id, add_llm_call(conn, owner), **overrides)
     assert violation(exc).constraint_name == f"ck_enrichments_{check}"
 
 
 def test_a_labelled_mention_cannot_be_deleted(conn: Connection) -> None:
     owner = add_user(conn)
     mention_id = add_mention(conn, add_brand(conn, owner))  # a news article, no revisions
-    label(conn, mention_id, call(conn, owner))
+    label(conn, mention_id, add_llm_call(conn, owner))
     with pytest.raises(IntegrityError) as exc:
         conn.execute(delete(table("mentions")).where(table("mentions").c.id == mention_id))
     assert violation(exc).constraint_name == "fk_enrichments_mention_id_mentions"
@@ -140,7 +120,9 @@ def test_labels_come_from_a_labelling_task(conn: Connection) -> None:
     owner, mention_id = review(conn)
     draft = {"task": "draft_response", "prompt_version": "draft_response/v1"}
     with pytest.raises(IntegrityError) as exc:
-        label(conn, mention_id, call(conn, owner, **draft), prompt_version="draft_response/v1")
+        label(
+            conn, mention_id, add_llm_call(conn, owner, **draft), prompt_version="draft_response/v1"
+        )
     assert violation(exc).constraint_name == "ck_enrichments_prompt_from_labelling_task"
 
 
@@ -157,7 +139,7 @@ def test_labels_come_from_a_successful_call_with_their_prompt(
 ) -> None:
     owner, mention_id = review(conn)
     with pytest.raises(IntegrityError) as exc:
-        label(conn, mention_id, call(conn, owner, **call_overrides))
+        label(conn, mention_id, add_llm_call(conn, owner, **call_overrides))
     assert violation(exc).constraint_name == "ck_enrichments_from_call"
 
 
@@ -165,13 +147,13 @@ def test_labels_come_from_a_call_for_the_brands_owner(conn: Connection) -> None:
     _, mention_id = review(conn)
     stranger = add_user(conn, "stranger@example.com")
     with pytest.raises(IntegrityError) as exc:
-        label(conn, mention_id, call(conn, stranger))
+        label(conn, mention_id, add_llm_call(conn, stranger))
     assert violation(exc).constraint_name == "ck_enrichments_from_call"
 
 
 def test_only_the_reason_can_be_rewritten_and_labels_are_never_deleted(conn: Connection) -> None:
     owner, mention_id = review(conn)
-    enrichment_id = label(conn, mention_id, call(conn, owner))
+    enrichment_id = label(conn, mention_id, add_llm_call(conn, owner))
     row = ENRICHMENTS.c.id == enrichment_id
     conn.execute(update(ENRICHMENTS).where(row).values(reason="[removed]"))  # a scrub
     for change in ({"sentiment": 1}, {"topic": "pricing"}, {"mention_id": uuid.uuid4()}):

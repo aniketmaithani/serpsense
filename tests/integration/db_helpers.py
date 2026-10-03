@@ -78,6 +78,27 @@ def add_app(conn: Connection, brand_id: uuid.UUID, **overrides: Any) -> uuid.UUI
     return add(conn, table("brand_apps"), brand_id=brand_id, **values)
 
 
+def add_llm_call(conn: Connection, user_id: uuid.UUID, **overrides: Any) -> uuid.UUID:
+    values: dict[str, Any] = {
+        "task": "label_mentions",
+        "requested_model": "claude-opus-5-5",
+        "served_model": "claude-opus-5-5",
+        "prompt_version": "label_mentions/v1",
+        "request_settings": {"effort": "low"},
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost_micros": 900,
+        "currency": "USD",
+        "stop_reason": "end_turn",
+        "outcome": "succeeded",
+        "latency_ms": 800,
+        "created_at": NOW,
+    }
+    return add(conn, table("llm_calls"), user_id=user_id, **{**values, **overrides})
+
+
 def violation(exc: pytest.ExceptionInfo[DBAPIError]) -> Any:
     """psycopg's diagnostics for the error Postgres raised."""
     return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
