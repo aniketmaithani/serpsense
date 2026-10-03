@@ -10,6 +10,7 @@ from serpsense.composition import (
     STUCK_AFTER,
     build_celery,
     build_container,
+    build_seeder,
     build_worker,
 )
 from serpsense.config import ConfigError, Settings
@@ -56,3 +57,7 @@ def test_until_profiles_can_be_edited_every_user_gets_the_configured_preset() ->
     profiles = PresetProfiles(LlmPreset.HIGH_THINKING)
     settings = profiles.settings(uuid.uuid4(), LlmTask.LABEL_MENTIONS)
     assert settings == preset_settings(LlmPreset.HIGH_THINKING, LlmTask.LABEL_MENTIONS)
+
+
+def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
+    assert callable(build_seeder(settings, build_celery(settings)))
