@@ -2,9 +2,12 @@ from datetime import timedelta
 
 import pytest
 
+from serpsense.adapters.cache.null_cache import NullResponseCache
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
+from serpsense.adapters.llm.replay import ReplayLlm
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer
+from serpsense.adapters.serp.replay import ReplaySearchProvider
 from serpsense.composition import (
     COLLECTION_TIME,
     SCAN_TIME_LIMIT_SECONDS,
@@ -67,6 +70,15 @@ def test_a_worker_needs_both_api_keys(missing: str) -> None:
     settings = make_settings(**{**keys, missing: None})
     with pytest.raises(ConfigError, match="needed to run scans"):
         build_worker(settings, build_celery(settings))
+
+
+def test_a_replay_worker_needs_no_api_keys_and_answers_from_recordings() -> None:
+    settings = make_settings(serpsense_mode="replay")
+    worker = build_worker(settings, build_celery(settings))
+    search = worker.scans._ports.collector._searcher._ports  # type: ignore[attr-defined]  # wiring
+    assert isinstance(search.provider, ReplaySearchProvider)
+    assert isinstance(search.cache, NullResponseCache)
+    assert isinstance(worker.scans._ports.labeller._gateway._client, ReplayLlm)
 
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
