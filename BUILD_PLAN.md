@@ -21,7 +21,7 @@
 - Added `running → skipped` (budget checked after the claim); every finishing transition is a compare-and-set; scan tasks never use Celery `retry`.
 - Account deletion also removes pre-login IP records and stops in-flight scans from sending alerts. Redaction now also strips reviewer identity. The pseudonymous email domain is `serpsense.invalid`.
 - The outbox status now follows a written derivation rule (new `dropped` outcome).
-- Owner decisions recorded in §27 (competitor alerts: email + in-app; Trends: joint query).
+- Owner decisions recorded in §27 (competitor alerts: email + in-app; Trends: joint query with all four competitors; edited reviews keep history; template-only Preview; demo brand Ola on the SerpApi free plan).
 
 ### What changed in v3.1 (after the architecture review)
 - **Postgres is the source of truth for jobs; Celery messages are only nudges.** Scans are claimed with compare-and-set, and a maintenance sweep recovers lost enqueues and stuck scans (ADR-0005).
@@ -178,11 +178,11 @@ Monthly search budget is a `user_search_budgets` row (default from config: 1,500
 | **Google Maps reviews** | on/off · locations (`brand_locations`, resolved once) · sort · pages per location | newest · 1 page · 12h |
 | **YouTube** | on/off · templates · upload-date filter · pages | off · 12h |
 
-**Competitors** are independent brands with their own settings and schedule. When you add one during onboarding it gets the **Lean** preset and a 12h schedule by default, so it costs less; the estimator shows the combined monthly total.
+**Competitors** are independent brands with their own settings and schedule. When you add one during onboarding it gets the **Lean** preset and a 12h schedule by default, so it costs less (the free-plan demo uses lighter custom settings, §22); the estimator shows the combined monthly total.
 
 ### 6.3 Making the settings safe to use
 - **Live estimator** (`domain/estimator.py`, pure function): "17 searches/scan → 68/day → ~2,040/month (budget 1,500 ⚠️)". Used by the UI, before every scan, and in tests.
-- **Preview**: one engine, one call, shows the parsed mentions; logged as a `serp_calls` row with no scan; rate-limited.
+- **Preview**: one engine, one call, shows the parsed mentions; logged as a `serp_calls` row with no scan; rate-limited. It runs **only the brand's configured templates** (no free text), so nothing typed in Preview can persist in the append-only ledger, which account deletion can't scrub.
 - **Presets**: Lean / Standard / Deep (they only fill in values).
 - **Quota check** before each scan: SerpApi Account API (cached 10 min) + the user's month-to-date ledger. If insufficient → scan `skipped` with a reason + in-app notification.
 - **Async searches** (P2): `async=true` for Deep scans.
@@ -332,7 +332,7 @@ Weights and thresholds are **reference rows per scoring version** (`scoring_weig
 | Page | Content |
 |---|---|
 | Log in / verify | Email → 6-digit code (paste support, resend countdown) |
-| Onboarding | Brand, aliases, competitor, apps, locations, languages, watch terms → preset with live estimate |
+| Onboarding | Brand, aliases, competitors (up to 4), apps, locations, languages, watch terms → preset with live estimate |
 | Overview | Health/crisis, trend, top narratives, autocomplete watch, AI Overview, last scan status (partial surfaces flagged), **[Scan now]** |
 | Narratives | List + detail + **[Draft] [High thinking] [Max]**, optional reasoning summary, "AI-generated" labels |
 | Surfaces | One tab per surface; normalised mentions with labels |
@@ -482,9 +482,9 @@ LOG_LEVEL=INFO
 
 | Day | Build (issues/PRs) | Done when |
 |---|---|---|
-| **0** | **Review and accept ADRs 0001–0013**. Pick the brand + competitor; try each engine in the Playground. Create the GitHub repo + labels + branch protection. **Bootstrap PR (your merge):** pyproject/uv, ruff/mypy/import-linter config, pre-commit + gitleaks, CI gate, Dockerfile + Compose (postgres, redis, mailpit), empty layered package, `.env.example`. | CI green on an empty package; `docker compose up` healthy |
+| **0** | **Review and accept ADRs 0001–0013**. Pick the brand + competitors (Ola with Uber, Rapido, Namma Yatri and inDrive); try each engine in the Playground. Create the GitHub repo + labels + branch protection. **Bootstrap PR (your merge):** pyproject/uv, ruff/mypy/import-linter config, pre-commit + gitleaks, CI gate, Dockerfile + Compose (postgres, redis, mailpit), empty layered package, `.env.example`. | CI green on an empty package; `docker compose up` healthy |
 | **1** | **Schema PRs, one per table group (your merge):** SQLAlchemy models + reversible migrations + append-only triggers + naming convention + views + scoring reference seed; data-model doc in sync. **SerpApi PR:** port + client (cache, retry, circuit breaker, redaction, ledger) + collectors for search page / autocomplete / news + contract tests on recorded fixtures. | Migration up/down passes; contract tests green; redaction test proves the key never lands |
-| **2** | Scan state machine + transition log; slot dispatcher + claim + recovery sweep + concurrency tests; scan service end to end with fakes; collectors for Trends + Play (+ Maps/AI Overview if time allows); quota check. **Start scheduled scans for the real brand tonight.** | Two concurrent dispatchers create exactly one scan per slot; scheduled scans running |
+| **2** | Scan state machine + transition log; slot dispatcher + claim + recovery sweep + concurrency tests; scan service end to end with fakes; collectors for Trends + Play (+ Maps/AI Overview if time allows); quota check. **Start scheduled scans for the demo brand (Ola) tonight.** | Two concurrent dispatchers create exactly one scan per slot; scheduled scans running |
 | **3** | LLM port + Anthropic adapter + fake; gateway with capability rules + presets; prompt files v1; **golden sets** from real data; eval runner + first reports; labelling + grouping; backfill from dates. **Cut checkpoint 1.** | Eval reports committed; labelling ≥ 90% agreement or kept log-only |
 | **4** | Scoring + crisis + comparison (pure, unit tested); deterministic alert rules + cooldown; outbox + dispatcher + concurrency test; in-app notifications; first runbooks + alert PromQL | Replaying two snapshots creates one alert → email in Mailpit, no duplicates |
 | **5** | **Auth PR (your merge):** OTP + sessions + CSRF + rate limits + invite mode + security tests. **Account deletion PR (your merge).** Web skeleton (middleware, CSP), onboarding + estimator, Overview, Search settings, AI settings. **Cut checkpoint 2.** | Sign up via Mailpit → onboard → settings → estimate updates; security tests green |
@@ -498,10 +498,10 @@ LOG_LEVEL=INFO
 
 ## 22. Timeline data and budget
 
-1. Scheduled scans from Day 2 (every 6h) → about 28 snapshots before the demo.
+1. Scheduled scans from Day 2 → about 12 snapshots of the demo brand before the demo (every 12h; see the budget below).
 2. **Backfill from dates:** reviews, news and Trends carry dates, so one scan can rebuild a past timeline. Only autocomplete and the search page need repeated snapshots.
-3. Choose a brand with a recent controversy. Present findings as "signals found in public search data", not accusations.
-4. **Budget:** about 1,000 SerpApi searches (scheduled + development); Claude spend tracked in `llm_calls`, capped by `user_llm_budgets` (default US$30/month).
+3. **Demo brand: Ola** (ride-hailing) with its four competitors **Uber, Rapido, Namma Yatri and inDrive**. Present findings as "signals found in public search data", not accusations.
+4. **Budget:** the SerpApi key is on the **free plan: 250 searches/month** (10 spent recording the Ola fixtures). Ola runs custom settings every 12h: the search page (1 template, 1 page), autocomplete (1 prefix), English news, the Trends joint query for interest over time (so the comparison with all four competitors shows) and Play, ≈ 6 searches with the AI Overview follow-up, ≈ 72 before the demo; Trends related queries run once a day in the first scan. Each competitor runs custom settings every 24h: search page, news and Play, 3 searches, ≈ 72. That's ≈ 170 in all, leaving room for development. The demo deployment overrides the product defaults through `.env`: `DEFAULT_MONTHLY_SEARCH_BUDGET=200` and `SERPAPI_DAILY_GLOBAL_CAP=40`. The 1,500/month and 500/day defaults stay for paid plans. Repeated queries within an hour are served from SerpApi's cache for free, backfill from dates fills the past, and replay mode needs no searches. The quota check (Account API) skips a scan rather than overrun. Claude spend is tracked in `llm_calls`, capped by `user_llm_budgets` (default US$30/month).
 
 ---
 
@@ -528,7 +528,7 @@ LOG_LEVEL=INFO
 |---|---|
 | 0:00–0:15 | Problem statement |
 | 0:15–0:35 | Sign up → OTP in Mailpit → onboarding with preset + live estimate |
-| 0:35–0:55 | Search settings (Bengaluru, Hindi + English, Deep) → Preview → Scan now |
+| 0:35–0:55 | Search settings (Bengaluru, Hindi + English, Deep) → Preview → Scan now, recorded in replay mode so the free plan's searches go to scheduled scans |
 | 0:55–1:35 | Overview: health/crisis, narratives, autocomplete watch, AI Overview, competitor check |
 | 1:35–2:10 | Timeline replay: the crisis spreads → alert email in Mailpit + in-app notification |
 | 2:10–2:45 | Draft → **High thinking** draft with reasoning summary + citations ("AI-generated") |
@@ -548,7 +548,7 @@ Before recording, make sure no `.env`, keys, raw payloads or real personal email
 | Competitors as full brands double SerpApi cost | Lean preset + 12h schedule by default for competitors; estimator shows the combined total; budgets enforce it |
 | Golden-set labelling takes time | Keep sets small (~60/15/10), label on Day 3 morning |
 | AI Overview missing | Surface outcome `not_shown` |
-| No crisis this week | Backfill from dates + a brand with a recent controversy + replay |
+| No crisis this week | Backfill from dates (Ola's reviews, news and Trends carry dates) + replay |
 | API key leak | Redaction + test + gitleaks (pre-commit + CI) + video check |
 | Open sign-up uses up paid keys | Invite mode in production, budgets, global caps |
 | LLM outage | Scan finishes `partial` with deterministic scores; the next scan enriches the backlog |
@@ -560,7 +560,7 @@ Before recording, make sure no `.env`, keys, raw payloads or real personal email
 ## 26. Tonight's checklist (Day 0)
 
 - [ ] Read and accept (or amend) **ADRs 0001–0013**
-- [ ] Pick the brand + competitor; try `google`, `google_autocomplete`, `google_news` (en/hi), `google_trends`, `google_play_product`, `google_maps_reviews`, `google_ai_overview` in the Playground
+- [ ] Pick the brand + competitors (done: Ola with Uber, Rapido, Namma Yatri and inDrive); try `google`, `google_autocomplete`, `google_news` (en/hi), `google_trends`, `google_play_product`, `google_maps_reviews`, `google_ai_overview` in the Playground
 - [ ] Note the Play app id(s) and Maps location queries
 - [ ] Add `SERPAPI_API_KEY` to `.env` (only `ANTHROPIC_API_KEY` is there today)
 - [ ] Create the GitHub repo `serpsense`, labels (`agent:in-progress`, `needs-human`, `needs-info`, `blocked`), branch protection on `main`
@@ -579,8 +579,12 @@ Before recording, make sure no `.env`, keys, raw payloads or real personal email
 | No extra Anthropic retention requirement (ADR-0008) |
 | Competitor crises send **email + in-app** alerts, like any brand |
 | Google Trends uses a **joint query** (brand + up to 4 competitors) for comparable share of search |
-| Default budgets kept: 1,500 SerpApi searches and US$30 Claude spend per user per month; global cap 500 searches/day |
+| Default budgets kept: 1,500 SerpApi searches and US$30 Claude spend per user per month; global cap 500 searches/day (product defaults; the free-plan demo overrides them, see below) |
 | Dedicated `worker-outbox` service so long scans can't delay OTP/alert email (ADR-0006 amendment) |
 | Rebase-merge only; atomic commits; no AI attribution; no schedule-day labels in commits/PRs/issues |
+| A brand has **at most 4 competitors**, so all of them are always in the Trends joint query |
+| **Edited reviews keep their history**: each distinct text a scan sees is a revision, and labels attach to the revision they were made for |
+| **Preview runs only configured templates**, so no free text persists in the append-only `serp_calls` ledger |
+| **Demo brand: Ola** with Uber, Rapido, Namma Yatri and inDrive; the demo fits the SerpApi free plan (250 searches/month) through `.env` overrides (`DEFAULT_MONTHLY_SEARCH_BUDGET=200`, `SERPAPI_DAILY_GLOBAL_CAP=40`) and custom settings (§22), while the product defaults stay |
 
 Also deferred to P2 (not in the data model): a per-user "email alerts on/off" setting. Alerts always go to email + in-app.
