@@ -1,9 +1,8 @@
 """A scan's scores in Postgres: the inputs scoring reads, and the results (data-model §5 to §7).
 
-A mention is first seen in the brand's earliest scan that observed it. Its label is that of its
-latest revision, from its own labelling task: under the task's active prompt, or, until the
-mention is labelled again, the newest under an earlier one, so a new prompt version doesn't
-reset the brand's usual. A label that says the mention isn't about the brand leaves it out. A
+A mention is first seen in the brand's earliest scan that observed it. Its label is its current
+one (`adapters/db/labels.py`), so a new prompt version doesn't reset the brand's usual. A label
+that says the mention isn't about the brand leaves it out. A
 surface was collected before a scan when an earlier scan's result for it is `succeeded`. A
 brand's scans are ordered by when they were made, which differ: one is active at a time.
 """
@@ -15,16 +14,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import CTE, Connection, Select, Table, func, select, tuple_
+from sqlalchemy import CTE, Connection, Select, Table, func, select
 from sqlalchemy.dialects.postgresql import distinct_on, insert
 
+from serpsense.adapters.db import labels
 from serpsense.adapters.db.models.llm import Enrichment
-from serpsense.adapters.db.models.mentions import Mention, MentionRevision
+from serpsense.adapters.db.models.mentions import Mention
 from serpsense.adapters.db.models.observations import AppRatingObservation, MentionObservation
 from serpsense.adapters.db.models.scans import Scan, ScanSurfaceResult
 from serpsense.adapters.db.models.scores import CrisisComponentValue, ScoreRun, SurfaceScore
 from serpsense.domain.enums import LlmTask, MentionSource, ScanStatus, Surface, SurfaceOutcome
-from serpsense.domain.labelling import LABELLERS
 from serpsense.domain.mention import SURFACE
 from serpsense.domain.scoring.crisis import USUAL_SCANS
 from serpsense.domain.scoring.scan import Earlier, Observed, ScanScores, ScoreInputs
@@ -32,14 +31,12 @@ from serpsense.domain.scoring.surfaces import NEWEST_REVIEWS
 
 ENRICHMENTS = cast(Table, Enrichment.__table__)
 MENTIONS = cast(Table, Mention.__table__)
-REVISIONS = cast(Table, MentionRevision.__table__)
 OBSERVATIONS = cast(Table, MentionObservation.__table__)
 RATINGS = cast(Table, AppRatingObservation.__table__)
 SCANS = cast(Table, Scan.__table__)
 SURFACE_RESULTS = cast(Table, ScanSurfaceResult.__table__)
 RUNS, SURFACE_SCORES = cast(Table, ScoreRun.__table__), cast(Table, SurfaceScore.__table__)
 COMPONENTS = cast(Table, CrisisComponentValue.__table__)
-OWN_TASK = [(source, task.value) for source, task in LABELLERS.items()]
 UNDATED = datetime.min.replace(tzinfo=UTC)  # a review without a date sorts as the oldest
 
 
@@ -169,15 +166,8 @@ class SqlScoreStore:
 def _labels(
     brand_id: uuid.UUID, scans: Sequence[uuid.UUID], prompts: Mapping[LlmTask, str]
 ) -> Select[tuple[object, ...]]:
-    """Each mention's label: its latest revision's, from its own task, the active prompt's first."""
+    """Each mention's current label (`adapters/db/labels.py`)."""
     first = _first_seen(brand_id, scans)
-    latest = (
-        select(func.coalesce(func.max(REVISIONS.c.revision), 1))
-        .where(REVISIONS.c.mention_id == MENTIONS.c.id)
-        .scalar_subquery()
-    )
-    task = func.split_part(ENRICHMENTS.c.prompt_version, "/", 1)
-    active = ENRICHMENTS.c.prompt_version.in_(list(prompts.values()))
     chosen = (
         select(
             MENTIONS.c.id,
@@ -190,8 +180,8 @@ def _labels(
         )
         .join(first, first.c.mention_id == MENTIONS.c.id)
         .join(ENRICHMENTS, ENRICHMENTS.c.mention_id == MENTIONS.c.id)
-        .where(ENRICHMENTS.c.revision == latest, tuple_(MENTIONS.c.source, task).in_(OWN_TASK))
-        .order_by(MENTIONS.c.id, active.desc(), ENRICHMENTS.c.created_at.desc(), ENRICHMENTS.c.id)
+        .where(*labels.conditions())
+        .order_by(MENTIONS.c.id, *labels.preference(prompts))
         .ext(distinct_on(MENTIONS.c.id))
         .subquery()
     )
