@@ -13,6 +13,7 @@ from serpsense.adapters.db.models.search import RawResponse, SerpCall
 from serpsense.domain.enums import SerpCallOutcome, SerpEngine, SerpErrorCode, ServedFrom
 from serpsense.observability import get_logger
 from serpsense.ports.search_ledger import CallRecord
+from serpsense.ports.search_provider import SearchRequest
 
 log = get_logger(__name__)
 
@@ -95,6 +96,22 @@ class SqlSearchLedger:
             return conn.execute(
                 select(func.count()).select_from(CALLS).where(*conditions)
             ).scalar_one()
+
+    def times_answered(self, request: SearchRequest) -> int:
+        """How many successful calls this request has had: replay mode's place in its
+        recording (adapters/serp/replay.py), kept in Postgres like every other fact."""
+        query = (
+            select(func.count())
+            .select_from(CALLS)
+            .where(
+                CALLS.c.engine == request.engine,
+                CALLS.c.params_hash == request.params_hash,
+                CALLS.c.outcome == SerpCallOutcome.SUCCEEDED,
+            )
+        )
+        with self._transaction() as conn:
+            answered: int = conn.execute(query).scalar_one()
+        return answered
 
     def monthly_budget(self, user_id: uuid.UUID, *, at: datetime) -> int | None:
         query = (
