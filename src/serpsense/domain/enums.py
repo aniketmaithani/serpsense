@@ -90,6 +90,23 @@ class SerpCallOutcome(StrEnum):
     CIRCUIT_OPEN = "circuit_open"
 
 
+class SerpErrorCode(StrEnum):
+    """Why a SerpApi call failed (`serp_calls.error_code`). Only transient failures are retried
+    and counted by the circuit breaker (data-model §5)."""
+
+    NETWORK = "serpapi.network"
+    TIMEOUT = "serpapi.timeout"
+    HTTP_429 = "serpapi.http_429"
+    HTTP_5XX = "serpapi.http_5xx"
+    HTTP_4XX = "serpapi.http_4xx"  # the exact status is in `http_status`
+    SEARCH_ERROR = "serpapi.search_error"
+    INVALID_RESPONSE = "serpapi.invalid_response"
+
+    @property
+    def is_transient(self) -> bool:
+        return self in {self.NETWORK, self.TIMEOUT, self.HTTP_429, self.HTTP_5XX}
+
+
 class MentionSource(StrEnum):
     """Where a mention was found (`mention_source` Postgres enum)."""
 
