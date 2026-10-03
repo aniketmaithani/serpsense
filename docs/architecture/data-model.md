@@ -284,7 +284,7 @@ Migration 0026. `drafts`: `id`, `narrative_id` fk → narratives (RESTRICT), `ki
 | prompt_version | text | `<task>/v<N>`, the prompt file (`ck_llm_calls_prompt_version_format`), of the call's own task (`ck_llm_calls_prompt_matches_task`) |
 | 📄 request_settings | jsonb | resolved effort/thinking/max_tokens/etc.; a JSON object (`ck_llm_calls_request_settings_is_object`) |
 | input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | integer | ≥ 0 (`ck_llm_calls_<column>_non_negative`) |
-| cost_micros | bigint | ≥ 0; priced on `served_model` |
+| cost_micros | bigint | ≥ 0; priced on `served_model`; a call that timed out (no response, but it may have run and been billed) is recorded at its worst case, `max_tokens` at the requested model's output price, so it counts against the monthly budget |
 | currency | char(3) | `USD`; `^[A-Z]{3}$` (`ck_llm_calls_currency_iso_4217`) |
 | stop_reason | text null | `^[a-z][a-z_]{0,31}$` |
 | outcome | enum `llm_call_outcome` (`succeeded`, `refused`, `truncated`, `invalid_output`, `failed`; mirrors `domain.enums.LlmCallOutcome`) | `failed` = no response (network, timeout, API error) |
