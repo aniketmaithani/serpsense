@@ -219,6 +219,19 @@ def test_sdk_errors_become_codes_without_provider_text(
     assert (str(exc.value), exc.value.retryable, exc.value.latency_ms) == (code, retryable, 2500)
 
 
+def test_a_call_can_turn_the_clients_retries_off(prompts: PromptLibrary) -> None:
+    api = Api(status(529, "overloaded_error"))
+    sdk = anthropic.Anthropic(
+        api_key="sk-ant-test-not-a-key", base_url=API_HOST, max_retries=2,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(api)),
+    )  # fmt: skip
+    ticks = iter([10.0, 12.5])
+    llm = AnthropicClient("unused", prompts, sdk=sdk, timer=lambda: next(ticks))
+    with pytest.raises(LlmCallFailed):
+        llm.complete(request(max_retries=0))
+    assert len(api.requests) == 1  # the overloaded answer wasn't retried
+
+
 def test_a_missing_prompt_or_variable_is_refused_before_any_request(prompts: PromptLibrary) -> None:
     api = Api()
     with pytest.raises(PromptError, match="no prompt file"):
