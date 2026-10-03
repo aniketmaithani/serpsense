@@ -10,6 +10,7 @@ from typing import Any, Self
 import structlog
 
 from serpsense.domain.enums import (
+    AlertRule,
     LlmTask,
     MentionSource,
     ScanStatus,
@@ -23,6 +24,7 @@ from serpsense.domain.mention import ParsedMention, best_ranked, text_key
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
 from serpsense.domain.scoring.scan import ScanScores, ScoreInputs
+from serpsense.ports.alert_store import ScanAlertContext
 from serpsense.ports.collector import Lead, Reading, Target
 from serpsense.ports.enrichment_store import MentionLabel, PendingText
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
@@ -225,6 +227,36 @@ class RecordingScores:
         return True
 
 
+class RecordingAlerts:
+    """An alert store in memory: one alert per (scan, rule), one notification per alert; used
+    only inside a unit of work when given one. Scans have no scores unless a context is given."""
+
+    def __init__(
+        self, context: ScanAlertContext | None = None, inside: Callable[[], bool] = lambda: True
+    ) -> None:
+        self.given, self.inside = context, inside
+        self.fired: dict[tuple[uuid.UUID, AlertRule], uuid.UUID] = {}
+        self.told: dict[uuid.UUID, tuple[str, str]] = {}
+
+    def context(self, scan_id: uuid.UUID) -> ScanAlertContext | None:
+        assert self.inside()
+        return self.given
+
+    def fire(self, scan_id: uuid.UUID, rule: AlertRule, *, at: datetime) -> uuid.UUID | None:
+        assert self.inside()
+        if (scan_id, rule) in self.fired:
+            return None
+        self.fired[scan_id, rule] = uuid.uuid4()
+        return self.fired[scan_id, rule]
+
+    def notify(self, alert_id: uuid.UUID, *, title: str, body: str, at: datetime) -> bool:
+        assert self.inside()
+        if alert_id in self.told:
+            return False
+        self.told[alert_id] = (title, body)
+        return True
+
+
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
@@ -243,6 +275,7 @@ class FakeUnitOfWork:
         self.enrichments = RecordingEnrichments()
         self.targets = StaticTargets()
         self.scores = RecordingScores(lambda: self.open)
+        self.alerts = RecordingAlerts(inside=lambda: self.open)
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
         self.open = False

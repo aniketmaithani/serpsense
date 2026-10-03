@@ -11,6 +11,7 @@ from serpsense.domain.alert_rules import AlertFacts
 from serpsense.domain.enums import AlertRule, CrisisLevel
 from serpsense.ports.alert_store import ScanAlertContext
 from serpsense.services.alerts import message, raise_alerts
+from tests.fakes import RecordingAlerts
 
 pytestmark = pytest.mark.unit
 
@@ -20,32 +21,8 @@ FACTS = AlertFacts(AT, CrisisLevel.HIGH, CrisisLevel.LOW, 90, MappingProxyType({
 OLA = ScanAlertContext(FACTS, "Ola", competitor=False, health=58, crisis=74)
 
 
-class Alerts:
-    """An alert store in memory: one alert per (scan, rule), one notification per alert."""
-
-    def __init__(self, context: ScanAlertContext | None) -> None:
-        self.given = context
-        self.fired: dict[tuple[uuid.UUID, AlertRule], uuid.UUID] = {}
-        self.told: dict[uuid.UUID, tuple[str, str]] = {}
-
-    def context(self, scan_id: uuid.UUID) -> ScanAlertContext | None:
-        return self.given
-
-    def fire(self, scan_id: uuid.UUID, rule: AlertRule, *, at: datetime) -> uuid.UUID | None:
-        if (scan_id, rule) in self.fired:
-            return None
-        self.fired[scan_id, rule] = uuid.uuid4()
-        return self.fired[scan_id, rule]
-
-    def notify(self, alert_id: uuid.UUID, *, title: str, body: str, at: datetime) -> bool:
-        if alert_id in self.told:
-            return False
-        self.told[alert_id] = (title, body)
-        return True
-
-
 def test_each_rule_that_fires_raises_an_alert_with_a_notification_once() -> None:
-    store, scan_id = Alerts(OLA), uuid.uuid4()
+    store, scan_id = RecordingAlerts(OLA), uuid.uuid4()
     assert raise_alerts(store, scan_id, at=AT) == [RISE, SUGGESTION]
     assert sorted(title for title, _ in store.told.values()) == [
         "Ola: a negative search suggestion appeared",
@@ -56,9 +33,9 @@ def test_each_rule_that_fires_raises_an_alert_with_a_notification_once() -> None
 
 
 def test_a_scan_without_scores_or_a_due_rule_raises_nothing() -> None:
-    assert raise_alerts(Alerts(None), uuid.uuid4(), at=AT) == []
+    assert raise_alerts(RecordingAlerts(None), uuid.uuid4(), at=AT) == []
     calm = replace(OLA, facts=replace(FACTS, level=CrisisLevel.LOW, autocomplete=0))
-    assert raise_alerts(Alerts(calm), uuid.uuid4(), at=AT) == []
+    assert raise_alerts(RecordingAlerts(calm), uuid.uuid4(), at=AT) == []
 
 
 def test_a_message_states_the_scores_and_marks_a_competitor() -> None:
