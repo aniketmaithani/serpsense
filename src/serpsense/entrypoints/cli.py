@@ -20,15 +20,19 @@ from serpsense.composition import (
     build_seeder,
     build_settings,
 )
-from serpsense.config import ConfigError
+from serpsense.composition_replay import build_replayer
+from serpsense.config import ConfigError, RunMode, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
 from serpsense.services.grouping_eval import GoldenMention, GroupingBrand, grouping_report
+from serpsense.services.replay import Played
 
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
 
 app = typer.Typer(help="SerpSense command-line tools.", no_args_is_help=True)
+replay = typer.Typer(help="Replay mode: recorded scans, played back with no API keys.")
+app.add_typer(replay, name="replay", no_args_is_help=True)
 
 
 @app.command()
@@ -50,8 +54,12 @@ def gen_secrets() -> None:
 def seed_demo(
     owner: str = typer.Option(..., help="The demo owner's email address; created if new."),
 ) -> None:
-    """Set up the Ola demo (BUILD_PLAN §22): Ola and four competitors on a schedule."""
+    """Set up the Ola demo (BUILD_PLAN §22): Ola and four competitors on a schedule. In replay
+    mode they are scanned on request only, and the recorded scans are played in."""
     settings = build_settings()
+    if settings.serpsense_mode is RunMode.REPLAY:
+        _replay(settings, owner)
+        return
     try:
         seeded = build_seeder(settings, build_celery(settings))(owner)
     except InvalidEmail:
@@ -60,6 +68,33 @@ def seed_demo(
     rivals = len(seeded.competitor_ids)
     typer.echo(f"Seeded Ola ({seeded.brand_id}) and {rivals} competitors.")
     typer.echo("The dispatcher queues their first scans within five minutes.")
+
+
+@replay.command("load")
+def replay_load(
+    owner: str = typer.Option(..., help="The demo owner's email address; created if new."),
+) -> None:
+    """Seed the demo and play every recorded scan into it, in order (SERPSENSE_MODE=replay)."""
+    settings = build_settings()
+    if settings.serpsense_mode is not RunMode.REPLAY:
+        typer.echo("Recordings are played only with SERPSENSE_MODE=replay.", err=True)
+        raise typer.Exit(2)
+    _replay(settings, owner)
+
+
+def _replay(settings: Settings, owner: str) -> None:
+    try:
+        replayed = build_replayer(settings, build_celery(settings))(owner)
+    except InvalidEmail:
+        typer.echo("That isn't an email address.", err=True)
+        raise typer.Exit(2) from None
+    played = replayed.played
+    typer.echo(f"Seeded Ola ({replayed.seeded.brand_id}) and its competitors for replay.")
+    typer.echo(
+        f"Played {played[Played.PLAYED]} recorded scans"
+        f" ({played[Played.ALREADY]} played before, {played[Played.BUSY]} left for later);"
+        " brands are scanned on request only."
+    )
 
 
 @app.command("score-backlog")
