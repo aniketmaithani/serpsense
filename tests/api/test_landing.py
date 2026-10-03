@@ -81,3 +81,10 @@ def test_the_sequence_loads_as_modules_from_our_own_origin() -> None:
         response = client.get(f"/static/{script}")
         assert response.status_code == 200 and "javascript" in response.headers["content-type"]
     assert "../vendor/anime/anime.esm.min.js" in client.get("/static/landing/landing.js").text
+
+
+def test_the_rail_links_every_chapter_and_the_signal_has_every_shape() -> None:
+    page = TestClient(create_app(make_container(make_settings()))).get("/").text
+    assert all(f'href="#{chapter}" data-chapter="{chapter}"' in page for chapter in CHAPTERS)
+    shapes = ["search", "ring", "funnel", "frame", "gauge", "envelope", "doc", "track", "strip"]
+    assert all(f'id="k-{shape}"' in page for shape in [*shapes, "cta"])
