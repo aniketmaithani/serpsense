@@ -6,6 +6,7 @@ from serpsense.adapters.cache.null_cache import NullResponseCache
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.llm.replay import ReplayLlm
+from serpsense.adapters.llm.unavailable import UnavailableClient
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer
 from serpsense.adapters.serp.replay import ReplaySearchProvider
@@ -27,8 +28,10 @@ from serpsense.composition import (
 from serpsense.composition_replay import build_recording_export, build_replayer
 from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
-from serpsense.domain.llm_capabilities import preset_settings
+from serpsense.domain.llm_capabilities import LlmPreset, preset_settings, request_shape
+from serpsense.ports.llm_client import LlmCallFailed, LlmRequest
 from serpsense.services.dispatch import Dispatcher
+from serpsense.services.drafts import Drafter
 from serpsense.services.explanations import Explainer
 from serpsense.services.scan_now import ScanNow
 from serpsense.services.scans import ScanService
@@ -45,6 +48,20 @@ def test_build_container_wires_postgres_and_redis_checks_without_connecting(
     assert container.settings is settings
     assert [check.name for check in container.health_checks] == ["postgres", "redis"]
     assert isinstance(container.scan_now, ScanNow)
+    assert isinstance(container.drafts, Drafter)
+
+
+def test_without_an_anthropic_key_the_web_drafter_fails_at_once_offline() -> None:
+    request = LlmRequest(
+        task=LlmTask.DRAFT_RESPONSE,
+        prompt_version="draft_response/v1",
+        variables={},
+        shape=request_shape(preset_settings(LlmPreset.BALANCED, LlmTask.DRAFT_RESPONSE)),
+        output_schema={},
+    )
+    with pytest.raises(LlmCallFailed) as failed:
+        UnavailableClient().complete(request)
+    assert (failed.value.code, failed.value.retryable) == ("llm.unconfigured", False)
 
 
 def test_build_celery_uses_redis_broker(settings: Settings) -> None:
