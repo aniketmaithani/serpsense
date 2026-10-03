@@ -10,3 +10,5 @@ they land, the deferred entries below say what watches the failure meanwhile.
 | A job can't be enqueued after commit | `job.enqueue_failed` (warning) | Deferred to `redis-unavailable` (P1). The scan stays queued and the sweep sends it again within 5 min, so nothing is lost. |
 | A brand is never scanned (bad schedule or settings) | `dispatch.brand_rejected` (warning, with the error class) | Deferred: a per-brand error belongs on the brand's settings page, which will show it; it is not an on-call page. |
 | A scan runs past its time limit | `scan.timed_out` (warning); failed scans with reason `timed_out` | Covered by the P0 `scan-failures-high` alert when scan metrics land. |
+| Labelling stops early (the model down or refusing) | `labelling.stopped` (warning); `llm_calls` rows with outcome `failed` | Covered by the P0 `llm-errors-high` alert when LLM metrics land. The texts stay pending and the next scan labels them. |
+| A user's monthly LLM budget runs out | `llm_budget.exhausted` | Deferred to the P1 `llm-budget-exhausted` runbook. Scans go on without labels, and the usage page will show the spend. |
