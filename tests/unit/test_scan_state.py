@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from serpsense.domain.enums import ScanStatus, TransitionActor
+from serpsense.domain.enums import ScanStatus, SurfaceOutcome, TransitionActor
 from serpsense.domain.scan_state import (
     ACTIVE,
     FINAL,
@@ -13,6 +13,7 @@ from serpsense.domain.scan_state import (
     IllegalTransition,
     Transition,
     TransitionReason,
+    finished,
     is_final,
 )
 
@@ -86,3 +87,40 @@ def test_active_and_final_states_split_the_lifecycle() -> None:
 def test_reasons_fit_the_ledger_format() -> None:
     """Every reason passes ck_scan_status_transitions_reason_format."""
     assert all(re.fullmatch(r"[a-z][a-z0-9_.]{0,63}", r.value) for r in TransitionReason)
+
+
+SUCCEEDED, NOT_SHOWN = SurfaceOutcome.SUCCEEDED, SurfaceOutcome.NOT_SHOWN
+FAILED, CIRCUIT = SurfaceOutcome.FAILED, SurfaceOutcome.CIRCUIT_OPEN
+SPENT, DISABLED = SurfaceOutcome.BUDGET_EXHAUSTED, SurfaceOutcome.DISABLED
+
+
+E = TransitionReason
+
+
+@pytest.mark.parametrize(
+    ("surfaces", "answered", "enrichment_failed", "ending"),
+    [
+        ([SUCCEEDED, NOT_SHOWN, DISABLED], True, False, (ScanStatus.SUCCEEDED, E.COMPLETED)),
+        ([SUCCEEDED, NOT_SHOWN], True, True, (ScanStatus.PARTIAL, E.ENRICHMENT_FAILED)),
+        ([SUCCEEDED, FAILED], True, True, (ScanStatus.PARTIAL, E.SURFACES_FAILED)),
+        ([NOT_SHOWN, SPENT, DISABLED], False, False, (ScanStatus.PARTIAL, E.SURFACES_FAILED)),
+        ([FAILED, SPENT], True, False, (ScanStatus.PARTIAL, E.SURFACES_FAILED)),  # some came back
+        (
+            [FAILED, CIRCUIT, SPENT, DISABLED],
+            False,
+            False,
+            (ScanStatus.FAILED, E.ALL_SURFACES_FAILED),
+        ),
+        ([CIRCUIT], False, False, (ScanStatus.FAILED, E.ALL_SURFACES_FAILED)),
+        ([SPENT, SPENT, DISABLED], False, False, (ScanStatus.SKIPPED, E.BUDGET_EXHAUSTED)),
+        ([DISABLED], False, False, (ScanStatus.SUCCEEDED, E.COMPLETED)),
+    ],
+)
+def test_a_running_scan_ends_by_how_its_surfaces_went(
+    surfaces: list[SurfaceOutcome],
+    answered: bool,
+    enrichment_failed: bool,
+    ending: tuple[ScanStatus, TransitionReason],
+) -> None:
+    done = finished(iter(surfaces), answered=answered, enrichment_failed=enrichment_failed)
+    assert (done.from_status, done.to_status, done.reason) == (ScanStatus.RUNNING, *ending)
