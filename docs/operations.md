@@ -35,7 +35,7 @@ naming the failed dependency in the log (`health.not_ready`), when one is down.
 
 ```bash
 docker compose run --rm tools serpsense gen-secrets           # SECRET_KEY and OUTBOX_ENCRYPTION_KEYS
-docker compose run --rm tools serpsense seed-demo you@example.com   # the demo brands, owned by you
+docker compose run --rm tools serpsense seed-demo --owner you@example.com   # the demo brands; in replay mode, plays the recordings back
 docker compose run --rm tools serpsense score-backlog          # score finished scans that missed scoring
 docker compose run --rm tools serpsense eval label_mentions    # an eval run; live mode only, spends credits
 docker compose logs -f worker                                  # JSON logs (structlog)
