@@ -9,6 +9,7 @@ brand's scans are ordered by when they were made, which differ: one is active at
 """
 
 import uuid
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,7 +25,9 @@ from serpsense.adapters.db.models.scans import Scan, ScanSurfaceResult
 from serpsense.adapters.db.models.scores import CrisisComponentValue, ScoreRun, SurfaceScore
 from serpsense.domain.enums import LlmTask, MentionSource, Surface, SurfaceOutcome
 from serpsense.domain.labelling import LABELLERS
-from serpsense.domain.scoring.scan import Observed, ScanScores, ScoreInputs
+from serpsense.domain.mention import SURFACE
+from serpsense.domain.scoring.crisis import USUAL_SCANS
+from serpsense.domain.scoring.scan import Earlier, Observed, ScanScores, ScoreInputs
 from serpsense.domain.scoring.surfaces import NEWEST_REVIEWS
 
 ENRICHMENTS = cast(Table, Enrichment.__table__)
@@ -62,7 +65,8 @@ class SqlScoreStore:
         brand_id, at = self._conn.execute(
             select(SCANS.c.brand_id, SCANS.c.created_at).where(SCANS.c.id == scan_id)
         ).one()
-        labelled = self._labelled(brand_id, [scan_id], prompts)
+        earlier = self._earlier_scans(brand_id, at)
+        labelled = self._labelled(brand_id, [scan_id, *(s for s, _ in earlier)], prompts)
         observed = self._observed(scan_id, at, labelled)
         firsts = self._first_collected(brand_id, at)
         ratings = select(RATINGS.c.rating_hundredths).where(RATINGS.c.scan_id == scan_id)
@@ -71,6 +75,7 @@ class SqlScoreStore:
             observed=observed,
             ratings=tuple(self._conn.execute(ratings).scalars()),
             newest_reviews=_newest_reviews(observed),
+            earlier=_earlier([created for _, created in earlier], labelled, firsts),
             collected_before=_before(firsts, at),
         )
 
@@ -88,6 +93,16 @@ class SqlScoreStore:
     def _insert(self, table: Table, rows: list[dict[str, object]], scan_id: uuid.UUID) -> None:
         if rows:  # a scan whose surfaces all showed nothing has no surface scores
             self._conn.execute(insert(table), [{"scan_id": scan_id, **row} for row in rows])
+
+    def _earlier_scans(self, brand_id: uuid.UUID, at: datetime) -> list[tuple[uuid.UUID, datetime]]:
+        query = (
+            select(SCANS.c.id, SCANS.c.created_at)
+            .join(RUNS, RUNS.c.scan_id == SCANS.c.id)
+            .where(SCANS.c.brand_id == brand_id, SCANS.c.created_at < at)
+            .order_by(SCANS.c.created_at.desc())
+            .limit(USUAL_SCANS)
+        )
+        return [(row.id, row.created_at) for row in self._conn.execute(query)]
 
     def _labelled(
         self, brand_id: uuid.UUID, scans: Sequence[uuid.UUID], prompts: Mapping[LlmTask, str]
@@ -183,6 +198,18 @@ def _first_seen(brand_id: uuid.UUID, scans: Sequence[uuid.UUID]) -> CTE:
         .where(SCANS.c.brand_id == brand_id, OBSERVATIONS.c.mention_id.in_(seen))
         .group_by(OBSERVATIONS.c.mention_id)
         .cte("first_seen")
+    )
+
+
+def _earlier(
+    times: Sequence[datetime], labelled: Sequence[_Labelled], firsts: Mapping[Surface, datetime]
+) -> tuple[Earlier, ...]:
+    """Each earlier scan's negatives first seen in it, per surface, and what was collected
+    before it."""
+    negatives = Counter((m.first_at, SURFACE[m.source]) for m in labelled if m.sentiment < 0)
+    return tuple(
+        Earlier({s: n for (when, s), n in negatives.items() if when == at}, _before(firsts, at))
+        for at in times
     )
 
 
