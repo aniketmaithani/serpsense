@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection, Table, insert
+from sqlalchemy import Connection, Table, Text, cast, func, insert, literal, select, sql, text
 from sqlalchemy.exc import DBAPIError
 
 from serpsense.adapters.db import models  # noqa: F401  (registers tables)
@@ -102,3 +102,27 @@ def add_llm_call(conn: Connection, user_id: uuid.UUID, **overrides: Any) -> uuid
 def violation(exc: pytest.ExceptionInfo[DBAPIError]) -> Any:
     """psycopg's diagnostics for the error Postgres raised."""
     return exc.value.orig.diag  # type: ignore[union-attr]  # orig is the DBAPI error
+
+
+def traces(conn: Connection, needle: str) -> list[str]:
+    """Every `table.column` of text, address or JSON type in which some row holds `needle`
+    (ignoring case): where personal data could be left behind (ADR-0013)."""
+    columns = conn.execute(
+        text(
+            """
+SELECT c.table_name, c.column_name FROM information_schema.columns c
+JOIN information_schema.tables t USING (table_schema, table_name)
+WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+  AND (c.data_type IN ('text', 'character varying', 'character', 'inet', 'jsonb')
+       OR c.udt_name = 'citext')
+ORDER BY 1, 2
+"""
+        )
+    ).all()
+    found = []
+    for name, column in columns:
+        value = func.lower(cast(sql.column(column), Text))
+        holds = select(literal(1)).select_from(sql.table(name))
+        if conn.execute(holds.where(func.strpos(value, needle.lower()) > 0).limit(1)).first():
+            found.append(f"{name}.{column}")
+    return found
