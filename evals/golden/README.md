@@ -17,7 +17,7 @@ To review the set:
 
 ### Runner contract: the brand context
 
-The set describes one brand. The runner must send these variables exactly as written, together with `mentions`:
+The set describes one brand. The runner sends these variables exactly as written (from `label_mentions.brand.json`), together with `mentions`:
 
 | Variable | Value |
 |---|---|
