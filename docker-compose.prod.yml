@@ -1,0 +1,157 @@
+# Production stack on one host (ADR-0006). Differences from docker-compose.yml: production
+# settings forced, a real SMTP provider instead of Mailpit, Caddy terminating TLS, only ports 80
+# and 443 published, the Postgres password from .env, and log rotation on every service.
+# Setup, deploys, backups and rollback: docs/operations.md#production.
+#   docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+name: serpsense
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app-env: &app-env
+  APP_ENV: production
+  DATABASE_URL: postgresql+psycopg://serpsense:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/serpsense
+  REDIS_URL: redis://redis:6379/0
+
+x-app: &app
+  build: .
+  image: serpsense:prod
+  env_file: .env
+  environment: *app-env
+  logging: *logging
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: serpsense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: serpsense
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serpsense -d serpsense"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    # Trust X-Forwarded-For only from the edge network, where Caddy is the only other member, so
+    # per-IP rate limits see the client's address rather than Caddy's.
+    command: ["uvicorn", "serpsense.entrypoints.web.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "172.30.0.0/24", "--no-access-log"]
+    networks: [default, edge]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "worker", "-Q", "scans,maintenance", "-n", "scans@%h", "--concurrency", "2", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A serpsense.entrypoints.jobs.celery_app inspect ping -d scans@$$HOSTNAME --timeout 5 >/dev/null"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker-outbox:
+    <<: *app
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "worker", "-Q", "outbox", "-n", "outbox@%h", "--concurrency", "2", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A serpsense.entrypoints.jobs.celery_app inspect ping -d outbox@$$HOSTNAME --timeout 5 >/dev/null"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "serpsense.entrypoints.jobs.celery_app", "beat", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import glob, os, sys, time; f = glob.glob('/tmp/celerybeat-schedule*'); sys.exit(0 if f and time.time() - max(map(os.path.getmtime, f)) < 180 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.11.6-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    depends_on:
+      web:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  tools:
+    <<: *app
+    profiles: ["tools"]
+    restart: "no"
+    command: ["serpsense", "--help"]
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
