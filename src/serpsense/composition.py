@@ -40,6 +40,7 @@ from serpsense.services.dispatch import Dispatcher
 from serpsense.services.labelling import Labeller
 from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
+from serpsense.services.scoring_run import score_backlog
 from serpsense.services.search import SearchLimits, SearchPorts, SearchService
 from serpsense.services.sweep import Sweeper
 
@@ -160,6 +161,13 @@ def _maintenance(
         unit_of_work, clock, max_searches_per_scan=settings.max_searches_per_scan
     )
     return dispatcher, Sweeper(unit_of_work, clock, stuck_after=STUCK_AFTER)
+
+
+def build_scorer(settings: Settings, celery: Celery) -> Callable[[], int]:
+    """Scores the finished scans that have no scores; the engine lasts as long as the command."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+    return lambda: score_backlog(lambda: SqlUnitOfWork(engine, queue), SystemClock())
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
