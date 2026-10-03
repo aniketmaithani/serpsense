@@ -16,12 +16,41 @@
 <main>
   <section class="track" id="track">
     <div class="stage" id="stage">
+      <p class="cue" aria-hidden="true">Scroll</p>
+      <div class="scene" aria-hidden="true">
+        <div class="box">
+          <svg class="art" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet">
+            <g class="keys">
+              <path id="k-search" d="M280 390H720A30 30 0 0 1 750 420A30 30 0 0 1 720 450H280A30 30 0 0 1 250 420A30 30 0 0 1 280 390Z"/>
+              <path id="k-ring" d="M100 300A400 235 0 1 1 900 300A400 235 0 1 1 100 300Z"/>
+              <path id="k-funnel" d="M330 160H670L560 300V450H440V300Z"/>
+              <path id="k-frame" d="M284 175H716A14 14 0 0 1 730 189V411A14 14 0 0 1 716 425H284A14 14 0 0 1 270 411V189A14 14 0 0 1 284 175Z"/>
+            </g>
+            <g class="wires">
+              <path d="M500 65L500 238"/><path d="M813 153L556 274"/><path d="M890 352L561 308"/><path d="M674 512L539 348"/>
+              <path d="M326 512L461 348"/><path d="M110 352L439 308"/><path d="M187 153L444 274"/>
+            </g>
+            <path id="signal" class="signal" d="M280 390H720A30 30 0 0 1 750 420A30 30 0 0 1 720 450H280A30 30 0 0 1 250 420A30 30 0 0 1 280 390Z"/>
+          </svg>
+          <p class="query"><span class="glass"></span><span class="typed">VoltBox</span></p>
+          <ul class="cards">
+            {% for engine, surface, searches in engines %}
+            <li class="card c{{ loop.index }}"><b>{{ surface }}</b><span class="engine">{{ engine }}</span><span class="count">{{ searches }}</span></li>
+            {% endfor %}
+          </ul>
+          <p class="core">SerpApi</p>
+          <div class="cells">{% for tone in tones %}<i data-tone="{{ tone }}"><b></b></i>{% endfor %}</div>
+          <p class="tag g1">topic: battery</p><p class="tag g2">severity 80</p><p class="tag g3">complaint</p>
+          {% for label, count, spread in stories %}
+          <p class="cluster k{{ loop.index }}"><b>{{ label }}</b>{{ count }} mentions · {{ spread }}</p>
+          {% endfor %}
+        </div>
+      </div>
       <div class="chapters">
         <article class="chapter" id="hero">
           <h1 class="headline">Your brand's reputation is whatever Google shows people.</h1>
           <p class="sub">SerpSense watches it for you.</p>
           <div class="still still-search"><span class="glass"></span><span>VoltBox</span></div>
-          <p class="cue">Scroll</p>
         </article>
         <article class="chapter" id="surfaces">
           <h2>Customers, investors and candidates don't read your press releases. They read this.</h2>
@@ -105,5 +134,6 @@ docker compose run --rm tools serpsense seed-demo --owner you@example.com</code>
   </section>
 </main>
 <footer class="l-foot">Built with SerpApi for the SerpApi India Hackathon 2026. Not affiliated with SerpApi, LLC.</footer>
+<script type="module" src="/static/landing/landing.js"></script>
 </body>
 </html>

@@ -91,3 +91,45 @@ a { color: var(--signal); }
 .secondary { color: var(--ink); }
 .quickstart { overflow-x: auto; margin: 0; padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--panel); color: var(--muted); font-size: 0.85rem; line-height: 1.7; }
 .quickstart-note { margin: 0.75rem 0 0; font-size: 0.85rem; }
+
+/* The scroll-scrubbed sequence: landing.js adds `motion` to <html> unless motion is reduced. */
+.scene { display: none; }
+.motion .track { height: 1100vh; }
+.motion .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
+.motion .scene { position: absolute; inset: 9vh 4vw 25vh; display: grid; place-items: center; }
+.motion .box { position: relative; width: min(100%, 110vh); aspect-ratio: 5 / 3; }
+.art { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.keys { visibility: hidden; }
+.signal { fill: none; stroke: var(--signal); stroke-width: 2.5; stroke-linejoin: round; }
+.wires path { fill: none; stroke: var(--signal); stroke-opacity: 0.55; stroke-width: 1.5; }
+.box > p, .box > ul, .box > div { position: absolute; margin: 0; translate: -50% -50%; }
+.query { left: 50%; top: 70%; display: flex; align-items: center; gap: 0.75rem; font-size: clamp(1rem, 2.4vh, 1.5rem); }
+.box > .cards { inset: 0; translate: none; list-style: none; padding: 0; }
+.card { position: absolute; translate: -50% -50%; display: grid; min-width: 9rem; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--panel); font-size: 0.9rem; opacity: 0; will-change: transform, opacity; }
+.card .engine { color: var(--signal); font: 0.72rem/1.5 var(--mono); opacity: 0; }
+.card .count { position: absolute; top: -0.6rem; right: -0.6rem; padding: 0 0.4rem; border-radius: 1rem; background: var(--signal); color: var(--bg); font: 0.7rem/1.6 var(--mono); opacity: 0; }
+.card .count::before { content: "×"; }
+.c1 { left: 50%; top: 10.8%; } .c2 { left: 81.3%; top: 25.6%; } .c3 { left: 89%; top: 58.7%; }
+.c4 { left: 67.4%; top: 85.3%; } .c5 { left: 32.6%; top: 85.3%; } .c6 { left: 11%; top: 58.7%; } .c7 { left: 18.7%; top: 25.6%; }
+.core { left: 50%; top: 50%; display: grid; place-items: center; width: 7rem; aspect-ratio: 1; border: 1.5px solid var(--signal); border-radius: 50%; background: var(--bg); font-weight: 500; opacity: 0; }
+.cells { left: 50%; top: 50%; display: grid; grid-template-columns: repeat(8, 1fr); gap: 1%; width: 40%; }
+.cells i { --tone: var(--neu); position: relative; aspect-ratio: 1; border-radius: 18%; background: var(--line); opacity: 0; will-change: transform, opacity; }
+.cells b { position: absolute; inset: 0; border-radius: inherit; background: var(--tone); opacity: 0; } /* the sentiment, faded in */
+.cells [data-tone="p"] { --tone: var(--pos); } .cells [data-tone="x"] { --tone: var(--neg); }
+.tag { padding: 0.15rem 0.55rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); font: 0.72rem/1.5 var(--mono); opacity: 0; }
+.g1 { left: 34%; top: 24%; } .g2 { left: 60%; top: 77%; } .g3 { left: 70%; top: 24%; }
+.cluster { width: 15rem; color: var(--muted); font-size: 0.85rem; text-align: center; opacity: 0; }
+.cluster b { display: block; color: var(--neg); font-size: 1.05rem; }
+.k1 { left: 34%; top: 20%; } .k2 { left: 66%; top: 80%; }
+
+.motion .chapters { position: absolute; inset: 0; max-width: none; margin: 0; padding: 0; pointer-events: none; }
+.motion .chapter { position: absolute; left: clamp(1rem, 6vw, 5rem); bottom: 6vh; max-width: 40rem; padding: 0; border: 0; opacity: 0; visibility: hidden; pointer-events: auto; will-change: transform, opacity; }
+/* Only the copy on screen can be clicked, selected or reached with Tab (landing.js sets `on`). */
+.motion .chapter.on { visibility: visible; }
+.motion .chapter h2 { margin: 0; font-size: clamp(1.25rem, 2.6vw, 2rem); }
+.motion #hero { top: 11vh; bottom: auto; max-width: 52rem; opacity: 1; }
+.motion .headline { font-size: clamp(2rem, 5vw, 4rem); }
+.motion .still { display: none; }
+.motion .cue { display: block; position: absolute; left: 50%; bottom: 3vh; margin: 0; translate: -50% 0; color: var(--muted); font: 0.75rem var(--mono); letter-spacing: 0.2em; text-transform: uppercase; }
+.motion #cta .actions { display: flex; }
+.motion .quickstart, .motion .quickstart-note { display: none; }
