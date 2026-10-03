@@ -3,7 +3,8 @@
 The status follows from the message's send attempts: none, or fewer than 8 retryable errors, is
 `pending`; the last outcome `sent` or `dropped` is that; a permanent error, or the 8th retryable
 one, is `dead`. A retryable error waits before the next attempt: 1 minute, doubling, at most an
-hour.
+hour. An alert's email first waits up to EXPLANATION_WAIT for the model's explanation of the
+alert, and goes as soon as it exists (ADR-0008: the email never depends on it).
 """
 
 import uuid
@@ -15,6 +16,7 @@ from serpsense.domain.enums import OutboxOutcome, OutboxStatus
 
 MAX_RETRYABLE = 8
 FIRST_WAIT, LONGEST_WAIT = timedelta(minutes=1), timedelta(hours=1)
+EXPLANATION_WAIT = timedelta(minutes=2)
 FINAL = MappingProxyType(
     {
         OutboxOutcome.SENT: OutboxStatus.SENT,
