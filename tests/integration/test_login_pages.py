@@ -10,11 +10,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
 from serpsense.adapters.db.overview import SqlOverview
+from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.entrypoints.web.app import create_app
 from serpsense.services.auth import SignIn, SignInPorts
+from serpsense.services.scan_now import ScanNow, ScanNowLimits
 from serpsense.services.sessions import SessionGuard
 from tests.factories import make_settings
 from tests.fakes import FixedClock
@@ -34,10 +36,32 @@ def browser(
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, Jobs()), BOX, Limiter(), clock)
     sign_in = SignIn(ports, KEYS, OPEN, session_days=7)
     guard = SessionGuard(ports.unit_of_work, clock, KEYS.csrf, session_days=7)
-    reads = SqlOverview(engine.connect)
-    app = create_app(Container(settings or make_settings(), (), sign_in, guard, reads))
+    unit_of_work = lambda: SqlUnitOfWork(engine, ScanJobs())  # noqa: E731 (one line, one use)
+    scan_now = ScanNow(unit_of_work, SqlSearchLedger(engine.begin), clock, ScanNowLimits(20, 240))
+    container = Container(
+        settings=settings or make_settings(),
+        health_checks=(),
+        sign_in=sign_in,
+        sessions=guard,
+        overview=SqlOverview(engine.connect),
+        scan_now=scan_now,
+    )
+    app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"
     return TestClient(app, base_url=base, raise_server_exceptions=False, follow_redirects=False)
+
+
+class ScanJobs:
+    """Scans "Scan now" queued, after their commit."""
+
+    def __init__(self) -> None:
+        self.scans: list[uuid.UUID] = []
+
+    def run_scan(self, scan_id: uuid.UUID) -> None:
+        self.scans.append(scan_id)
+
+    def dispatch_outbox(self) -> None:
+        raise AssertionError("Scan now sends no email")
 
 
 def token(html: str) -> str:

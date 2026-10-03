@@ -2,7 +2,13 @@
 
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.overview import SqlOverview
-from serpsense.composition import Container, build_celery, build_session_guard, build_sign_in
+from serpsense.composition import (
+    Container,
+    build_celery,
+    build_scan_now,
+    build_session_guard,
+    build_sign_in,
+)
 from serpsense.config import Settings
 from serpsense.ports.health import HealthCheck
 
@@ -28,4 +34,11 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
     celery = build_celery(settings)
     sign_in, sessions = build_sign_in(settings, celery), build_session_guard(settings, celery)
     engine = create_db_engine(settings.database_url.get_secret_value())
-    return Container(settings, checks, sign_in, sessions, SqlOverview(engine.connect))
+    return Container(
+        settings=settings,
+        health_checks=checks,
+        sign_in=sign_in,
+        sessions=sessions,
+        overview=SqlOverview(engine.connect),
+        scan_now=build_scan_now(settings, engine, celery),
+    )
