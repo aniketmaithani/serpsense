@@ -7,6 +7,8 @@ from enum import StrEnum
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from serpsense.domain.llm_capabilities import LlmPreset
+
 MIN_SECRET_KEY_LENGTH = 32
 FERNET_KEY_BYTES = 32
 # Credentials hard-coded for local development in docker-compose.yml; never valid in production.
@@ -32,13 +34,6 @@ class EmailBackend(StrEnum):
 class SignupMode(StrEnum):
     OPEN = "open"
     INVITE = "invite"
-
-
-class LlmPreset(StrEnum):
-    FAST = "fast"
-    BALANCED = "balanced"
-    HIGH_THINKING = "high_thinking"
-    MAXIMUM = "maximum"
 
 
 class LogLevel(StrEnum):
