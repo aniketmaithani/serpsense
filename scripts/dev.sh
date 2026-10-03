@@ -90,10 +90,14 @@ uv sync -q
 uv run alembic upgrade head
 trap 'kill 0' INT TERM EXIT
 APP=serpsense.entrypoints.jobs.celery_app
+# Threads, not the prefork pool: on macOS its spawned children never initialise (every task
+# fails with "not enough values to unpack"); the app is synchronous, so threads suit it.
 run web uv run uvicorn serpsense.entrypoints.web.app:create_app --factory --reload \
   --host 127.0.0.1 --port "$WEB_PORT"
-run worker uv run celery -A "$APP" worker -Q scans,maintenance -n scans@%h --concurrency 2 --loglevel INFO
-run outbox uv run celery -A "$APP" worker -Q outbox -n outbox@%h --concurrency 2 --loglevel INFO
+run worker uv run celery -A "$APP" worker -Q scans,maintenance -n scans@%h --pool threads \
+  --concurrency 2 --loglevel INFO
+run outbox uv run celery -A "$APP" worker -Q outbox -n outbox@%h --pool threads \
+  --concurrency 2 --loglevel INFO
 run beat uv run celery -A "$APP" beat --loglevel INFO --schedule "$DEV/celerybeat-schedule"
 echo "SerpSense: http://127.0.0.1:$WEB_PORT   ${MAIL:-mail from .env}   (Ctrl-C stops it)"
 wait
