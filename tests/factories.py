@@ -22,6 +22,7 @@ from serpsense.config import Settings
 from serpsense.ports.health import HealthCheck
 from serpsense.services.ai_settings import AiSettings
 from serpsense.services.brands import BrandCreator
+from serpsense.services.crisis_tuning import CrisisTuner
 
 # Obviously fake, low-entropy values: never real secrets.
 TEST_SECRET_KEY = "unit-test-only-" + "x" * 32
@@ -57,6 +58,9 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
         stories=SqlStories(engine.connect),
         accounts=build_account_deletion(settings, celery, sign_in),
         brands=BrandCreator(lambda: SqlUnitOfWork(engine, CeleryJobQueue(celery)), SystemClock()),
+        crisis_tuning=CrisisTuner(
+            lambda: SqlUnitOfWork(engine, CeleryJobQueue(celery)), SystemClock()
+        ),
         ai_settings=AiSettings(
             SqlLlmProfiles(engine, settings.default_llm_preset),
             SystemClock(),

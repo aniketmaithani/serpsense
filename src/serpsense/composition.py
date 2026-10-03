@@ -67,6 +67,7 @@ from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.brands import BrandCreator
 from serpsense.services.collection import CollectorRunner
+from serpsense.services.crisis_tuning import CrisisTuner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.drafts import Drafter, DraftPorts
@@ -137,6 +138,7 @@ class Container:
     stories: Stories
     accounts: AccountDeletion
     brands: BrandCreator
+    crisis_tuning: CrisisTuner
     ai_settings: AiSettings
     drafts: Drafter
 
@@ -172,6 +174,9 @@ def build_container(settings: Settings | None = None) -> Container:
         stories=SqlStories(engine.connect),
         accounts=build_account_deletion(resolved, celery, sign_in),
         brands=BrandCreator(lambda: SqlUnitOfWork(engine, CeleryJobQueue(celery)), SystemClock()),
+        crisis_tuning=CrisisTuner(
+            lambda: SqlUnitOfWork(engine, CeleryJobQueue(celery)), SystemClock()
+        ),
         ai_settings=AiSettings(
             SqlLlmProfiles(engine, resolved.default_llm_preset),
             SystemClock(),
