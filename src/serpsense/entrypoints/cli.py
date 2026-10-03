@@ -12,6 +12,7 @@ from serpsense import __version__
 from serpsense.composition import (
     build_celery,
     build_evaluator,
+    build_recording_export,
     build_scorer,
     build_seeder,
     build_settings,
@@ -24,6 +25,8 @@ from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
 
 app = typer.Typer(help="SerpSense command-line tools.", no_args_is_help=True)
+replay = typer.Typer(help="Replay mode: recorded scans, played back with no API keys.")
+app.add_typer(replay, name="replay", no_args_is_help=True)
 
 
 @app.command()
@@ -96,3 +99,25 @@ def run_eval(
     typer.echo(f"Cost: ${result.cost_micros / 1_000_000:.4f}")
     if result.answered < result.items:
         raise typer.Exit(1)
+
+
+@replay.command("export")
+def replay_export(
+    brand: Annotated[str, typer.Option(help="The brand's slug, e.g. ola.")],
+    out: Annotated[
+        Path, typer.Option(help="e.g. src/serpsense/adapters/replay/recordings/ola.json")
+    ],
+) -> None:
+    """Record a brand's stored scans as a replay recording. Read-only on the database."""
+    exporter = build_recording_export(build_settings())  # outside the try: never echo settings
+    try:
+        exported = exporter.export(brand)
+    except (LookupError, ValueError) as exc:  # no brand, or an unsafe recording refused
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(exported.text, encoding="utf-8")
+    typer.echo(
+        f"Recorded {exported.scans} scans ({exported.answers} answers) and"
+        f" {exported.labels} labels in {out}."
+    )

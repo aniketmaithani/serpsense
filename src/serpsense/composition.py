@@ -17,6 +17,7 @@ from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
 from serpsense.adapters.db.overview import SqlOverview
+from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_factory import (
@@ -80,6 +81,7 @@ __all__ = [
     "build_container",
     "build_evaluator",
     "build_outbox",
+    "build_recording_export",
     "build_seeder",
     "build_session_guard",
     "build_settings",
@@ -294,6 +296,11 @@ def build_evaluator(settings: Settings) -> tuple[Evaluator, str]:
     gateway = LlmGateway(client, ledger, SystemClock(), monthly_budget_micros=lambda _: 2**62)
     task_settings = preset_settings(settings.default_llm_preset, LlmTask.LABEL_MENTIONS)
     return Evaluator(gateway, ledger, task_settings), task_settings.model
+
+
+def build_recording_export(settings: Settings) -> SqlRecordingExport:
+    """Records a brand's stored scans for replay mode; read-only, and needs no API key."""
+    return SqlRecordingExport(create_db_engine(settings.database_url.get_secret_value()))
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
