@@ -10,7 +10,7 @@ strict cookie that the form must echo.
 import hmac
 import secrets
 from ipaddress import IPv4Address, IPv6Address, ip_address
-from typing import cast
+from typing import Literal, cast
 
 from fastapi import HTTPException, Request, Response, status
 
@@ -60,7 +60,7 @@ def set_session(request: Request, response: Response, token: str) -> None:
 
 
 def clear_session(request: Request, response: Response) -> None:
-    response.delete_cookie(cookie_name(request, SESSION))
+    _forget(request, response, SESSION, samesite="lax")
 
 
 def require_csrf(request: Request, user: CurrentUser, submitted: str | None) -> None:
@@ -81,7 +81,7 @@ def keep_form_token(request: Request, response: Response, token: str) -> None:
 
 
 def drop_form_token(request: Request, response: Response) -> None:
-    response.delete_cookie(cookie_name(request, FORM))
+    _forget(request, response, FORM, samesite="strict")
 
 
 def require_form_token(request: Request, submitted: str) -> None:
@@ -90,6 +90,16 @@ def require_form_token(request: Request, submitted: str) -> None:
         expected.encode(), submitted.encode("utf-8", "replace")
     ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This form has expired; reload the page.")
+
+
+def _forget(
+    request: Request, response: Response, name: str, *, samesite: Literal["lax", "strict"]
+) -> None:
+    """Delete a cookie with the attributes it was set with: a browser lets only a Secure cookie
+    replace a __Host- one, so a plain deletion would leave it in place in production."""
+    secure = container(request).settings.is_production
+    name = cookie_name(request, name)
+    response.delete_cookie(name, secure=secure, httponly=True, samesite=samesite)
 
 
 def _ip(host: str | None) -> IPv4Address | IPv6Address | None:
