@@ -51,6 +51,21 @@ FACTS = (
     "Replay mode that needs no API keys",
 )
 
+RAIL = (
+    ("hero", "Search"),
+    ("surfaces", "Surfaces"),
+    ("collect", "Collect"),
+    ("normalise", "Normalise"),
+    ("enrich", "Enrich"),
+    ("narratives", "Stories"),
+    ("score", "Score"),
+    ("alert", "Alert"),
+    ("draft", "Draft"),
+    ("replay", "Replay"),
+    ("built-right", "Built right"),
+    ("cta", "Run it"),
+)
+
 
 def landing_page(request: Request) -> Response:
     return page(
@@ -62,4 +77,5 @@ def landing_page(request: Request) -> Response:
         stories=STORIES,
         weights=WEIGHTS,
         facts=FACTS,
+        rail=RAIL,
     )

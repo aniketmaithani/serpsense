@@ -133,3 +133,82 @@ a { color: var(--signal); }
 .motion .cue { display: block; position: absolute; left: 50%; bottom: 3vh; margin: 0; translate: -50% 0; color: var(--muted); font: 0.75rem var(--mono); letter-spacing: 0.2em; text-transform: uppercase; }
 .motion #cta .actions { display: flex; }
 .motion .quickstart, .motion .quickstart-note { display: none; }
+
+/* Chapters 7-12 on the stage. Their text scales with the stage (container units), so each
+   figure keeps its proportions at any width, and landing.js draws the Signal around it. */
+.motion .box { container-type: inline-size; }
+.gauge, .ac, .alertcard, .docu, .scrub, .box > .strip { font-size: clamp(0.6rem, 1.45cqw, 0.95rem); }
+.gauge, .ac, .alertcard, .docu, .scrub { opacity: 0; will-change: transform, opacity; }
+.box > .gauge { left: 50%; top: 40%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; }
+.readout { display: flex; align-items: flex-end; gap: 2.6em; }
+.readout p { margin: 0; }
+.gauge .label { display: block; color: var(--muted); font-size: 0.85em; }
+.gauge .num { display: inline-block; min-width: 2ch; font: 400 3.2em/1 var(--mono); font-variant-numeric: tabular-nums; }
+.gauge .crisis { color: var(--neg); }
+.lvls { display: inline-grid; margin-left: 0.6em; vertical-align: 0.45em; }
+.lvl { grid-area: 1 / 1; justify-self: start; padding: 0.15em 0.6em; border-radius: 1em; color: var(--bg); font-size: 0.8em; white-space: nowrap; opacity: 0; }
+.l1 { background: var(--pos); } .l2 { background: var(--warn); } .l3 { background: var(--neg); }
+.bars { width: 26em; list-style: none; margin: 3.4em 0 0; padding: 0; }
+.bars li { display: grid; grid-template-columns: 8em 1fr; align-items: center; color: var(--muted); font-size: 0.85em; line-height: 1.7; }
+.bars b { height: 0.35em; border-radius: 1em; background: var(--signal); transform-origin: left; }
+.bars .w25 { width: 100%; } .bars .w20 { width: 80%; } .bars .w15 { width: 60%; } .bars .w10 { width: 40%; }
+.box > .ac { left: 26%; top: 50%; width: 30%; padding: 0.6em 0; border: 1px solid var(--line); border-radius: 0.75em; background: var(--panel); font-family: var(--mono); }
+.ac > p { margin: 0 0 0.4em; padding: 0 0.9em 0.5em; border-bottom: 1px solid var(--line); }
+.ac ol { list-style: none; margin: 0; padding: 0; overflow: hidden; }
+.ac li { padding: 0.25em 0.9em; color: var(--muted); }
+.ac .ac-new { color: var(--neg); background: rgb(248 113 113 / 0.12); opacity: 0; }
+.box > .alertcard { left: 69%; top: 55%; width: 27%; }
+.alertcard p { margin: 0 0 0.35em; }
+.alertcard p:last-child { margin: 0; }
+.alertcard .hot { color: var(--neg); font-weight: 500; }
+.box > .docu { left: 50%; top: 50%; width: 36%; }
+.docu p { margin: 0.5em 0; }
+.cites span, .docu .buttons span { opacity: 0; }
+.cites span { display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; margin-right: 0.35em; border-radius: 0.3em; background: var(--signal); color: var(--bg); font: 600 0.75em/1 var(--mono); }
+.docu .buttons span { padding: 0.2em 0.5em; font-size: 0.85em; }
+.box > .scrub { left: 50%; top: 52%; width: 60%; }
+.mini { display: flex; justify-content: space-between; list-style: none; margin: 0 0 2.5em; padding: 0; }
+.mini li { position: relative; padding: 0.3em 0.6em; border: 1px solid var(--line); border-radius: 0.4em; font-size: 0.9em; }
+.mini i { position: absolute; inset: -1px; border: 1px solid var(--neg); border-radius: inherit; opacity: 0; } /* the crisis reaching it */
+.ticks { display: flex; justify-content: space-between; margin: 1.6em 0 0; color: var(--ink); font: 0.85em var(--mono); }
+.ticks i { font-style: normal; opacity: 0.35; }
+.knob { position: absolute; left: 0; top: 3.3em; width: 1.1em; height: 1.1em; margin-left: -0.55em; border-radius: 50%; background: var(--signal); will-change: transform; }
+.box > .strip { left: 50%; top: 50%; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5em; width: 76%; list-style: none; padding: 0; }
+.strip li { padding: 0.35em 0.75em; border: 1px solid var(--line); border-radius: 0.5em; background: var(--panel); opacity: 0; }
+.motion #cta { left: 50%; top: 18vh; bottom: auto; translate: -50% 0; width: min(36rem, 92vw); text-align: center; }
+.motion #cta .actions { flex-direction: column; gap: 0.9rem; margin-top: 16.5vh; }
+.motion #cta .quickstart, .motion #cta .quickstart-note { display: block; text-align: left; }
+
+/* The progress rail: one dot per chapter, filled as the chapter plays. */
+.rail { display: none; }
+.motion .rail { position: fixed; right: clamp(0.75rem, 2vw, 1.5rem); top: 50%; z-index: 5; display: flex; flex-direction: column; gap: 0.6rem; translate: 0 -50%; }
+.rail a { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; color: var(--muted); font-size: 0.7rem; text-decoration: none; }
+.rail span { opacity: 0; transition: opacity 0.2s; }
+.rail a:hover span, .rail a:focus-visible span { opacity: 1; }
+.rail i { width: 0.3rem; height: 1.1rem; border-radius: 1rem; background: var(--signal); box-shadow: 0 0 0 1px var(--line); transform: scaleY(0); transform-origin: top; }
+
+/* Phones: the scene above, the copy below, smaller pieces. */
+@media (max-width: 767px) {
+  .motion .scene { inset: 16vh 2vw 38vh; }
+  .c2 { left: 76%; } .c3 { left: 80%; } .c6 { left: 20%; } .c7 { left: 24%; }
+  .draft-text { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .docu .buttons { display: none; }
+  .motion .cue { display: none; }
+  .motion .box { width: 100%; }
+  .motion .chapter { left: 1rem; right: 2.5rem; bottom: 5vh; }
+  .motion #hero { top: auto; bottom: 8vh; }
+  .card { min-width: 0; padding: 0.3rem 0.45rem; font-size: 0.6rem; }
+  .card .engine { font-size: 0.5rem; }
+  .core { width: 3.5rem; font-size: 0.6rem; }
+  .box > .gauge { top: 28%; }
+  .bars { display: grid; grid-template-columns: 1fr 1fr; column-gap: 1.4em; width: 30em; margin-top: 3em; }
+  .bars li { grid-template-columns: 7.4em 1fr; }
+  .box > .ac { left: 25%; width: 42%; } .box > .alertcard { left: 72%; width: 38%; } .box > .docu { width: 56%; }
+  .box > .scrub { width: 84%; }
+  .mini li { padding: 0.2em 0.35em; font-size: 0.8em; }
+  .cluster { width: 9rem; font-size: 0.6rem; }
+  .motion #cta { top: 14vh; }
+  .rail span { display: none; }
+  .motion .rail { top: auto; right: 50%; bottom: 1.5vh; flex-direction: row; gap: 0.5rem; translate: 50% 0; }
+  .rail i { height: 0.8rem; }
+}
