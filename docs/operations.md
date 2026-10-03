@@ -41,6 +41,21 @@ docker compose run --rm tools serpsense eval label_mentions    # an eval run; li
 docker compose logs -f worker                                  # JSON logs (structlog)
 ```
 
+### Without Docker (a development machine)
+
+`scripts/dev.sh` runs the same processes natively: a private Postgres (port 5434) and Redis
+(6381) with their data in `.dev/`, the web app, both workers and beat, their log lines prefixed
+`[web]`, `[worker]`, `[outbox]` and `[beat]` in one terminal. The commands above become:
+
+```bash
+uv run serpsense gen-secrets >> .env              # once: SECRET_KEY and OUTBOX_ENCRYPTION_KEYS
+scripts/dev.sh cli seed-demo --owner you@example.com
+scripts/dev.sh cli score-backlog
+scripts/dev.sh test -m "integration or api"      # tests on a throwaway database and Redis
+pg_dump -h 127.0.0.1 -p 5434 -U serpsense -Fc serpsense > serpsense-$(date +%F).dump
+scripts/dev.sh stop                              # stop the app and the private services
+```
+
 ## Logs
 
 Every process logs JSON lines through `observability.get_logger()`, with `request_id`, `user_id`,
