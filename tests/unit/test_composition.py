@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pytest
 
+from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer
 from serpsense.composition import (
@@ -51,6 +52,13 @@ def test_build_worker_wires_the_scan_pipeline_without_connecting() -> None:
     assert isinstance(worker.scans, ScanService)
     assert isinstance(worker.dispatcher, Dispatcher) and isinstance(worker.sweeper, Sweeper)
     assert COLLECTION_TIME < timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) < STUCK_AFTER
+
+
+def test_a_worker_reads_each_users_saved_model_settings() -> None:
+    keys = {"serpapi_api_key": "test-serp-key", "anthropic_api_key": "test-llm-key"}
+    settings = make_settings(**keys)
+    worker = build_worker(settings, build_celery(settings))
+    assert isinstance(worker.scans._ports.profiles, SqlLlmProfiles)
 
 
 @pytest.mark.parametrize("missing", ["serpapi_api_key", "anthropic_api_key"])
