@@ -24,7 +24,7 @@ def test_a_scored_scan_raises_its_alerts_as_it_finishes() -> None:
     run.uow.alerts.given = OLA
     with capture_logs() as logs:
         assert run.service.run(run.scan_id) is S.SUCCEEDED
-    assert [rule for _, rule in run.uow.alerts.fired] == [AlertRule.LEVEL_INCREASE]
+    assert [rule for _, rule, _ in run.uow.alerts.fired] == [AlertRule.LEVEL_INCREASE]
     assert [title for title, _ in run.uow.alerts.told.values()] == [
         "Ola: crisis level rose to high"
     ]

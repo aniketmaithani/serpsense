@@ -306,26 +306,34 @@ class RecordingScores:
 
 
 class RecordingAlerts:
-    """An alert store in memory: one alert per (scan, rule), one notification per alert; used
-    only inside a unit of work when given one. Scans have no scores unless a context is given."""
+    """An alert store in memory: one alert per (scan, rule, narrative), one notification per
+    alert; used only inside a unit of work when given one. Scans have no scores unless a context
+    is given."""
 
     def __init__(
         self, context: ScanAlertContext | None = None, inside: Callable[[], bool] = lambda: True
     ) -> None:
         self.given, self.inside = context, inside
-        self.fired: dict[tuple[uuid.UUID, AlertRule], uuid.UUID] = {}
+        self.fired: dict[tuple[uuid.UUID, AlertRule, uuid.UUID | None], uuid.UUID] = {}
         self.told: dict[uuid.UUID, tuple[str, str]] = {}
 
     def context(self, scan_id: uuid.UUID) -> ScanAlertContext | None:
         assert self.inside()
         return self.given
 
-    def fire(self, scan_id: uuid.UUID, rule: AlertRule, *, at: datetime) -> uuid.UUID | None:
+    def fire(
+        self,
+        scan_id: uuid.UUID,
+        rule: AlertRule,
+        *,
+        at: datetime,
+        narrative_id: uuid.UUID | None = None,
+    ) -> uuid.UUID | None:
         assert self.inside()
-        if (scan_id, rule) in self.fired:
+        if (scan_id, rule, narrative_id) in self.fired:
             return None
-        self.fired[scan_id, rule] = uuid.uuid4()
-        return self.fired[scan_id, rule]
+        self.fired[scan_id, rule, narrative_id] = uuid.uuid4()
+        return self.fired[scan_id, rule, narrative_id]
 
     def notify(self, alert_id: uuid.UUID, *, title: str, body: str, at: datetime) -> bool:
         assert self.inside()
