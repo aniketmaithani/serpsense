@@ -314,23 +314,22 @@ Health, crisis score and crisis level are derived in `v_scan_scores` (with each 
 
 ## 8. Alerts, notifications, outbox
 
-### `alerts`
+Migration 0022 (alerts and in-app notifications); the outbox comes with the email dispatcher.
+
+### 🔒 `alerts`
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| brand_id | uuid | fk → brands, `ix_alerts_brand_id_created_at` |
-| scan_id | uuid | fk → scans |
-| narrative_id | uuid null | fk → narratives |
-| rule | enum (`level_increase`, `new_negative_autocomplete`, `narrative_spread`) | |
-| explanation | text null | model output, labelled AI-generated |
-| explanation_llm_call_id | uuid null | fk → llm_calls |
+| scan_id | uuid | fk → scans; the alert's brand is the scan's (not stored again) |
+| narrative_id | uuid null | fk → narratives, `ix_alerts_narrative_id`; `ck_alerts_narrative_iff_spread`: set exactly for `narrative_spread`; a narrative of the scan's brand (`trg_alerts_narrative_of_brand` → `ck_alerts_narrative_of_brand`) |
+| rule | enum `alert_rule` (`level_increase`, `new_negative_autocomplete`, `narrative_spread`) | mirrors `domain.enums.AlertRule` |
 | created_at | timestamptz | |
 
-**`uq_alerts_scan_id_rule_narrative_id`** with `NULLS NOT DISTINCT` (PG16): re-running a scan's alert step can't duplicate alerts. Level is read from the scan's derived score. Cooldown is race-free because only one scan per brand is active at a time.
+**`uq_alerts_scan_id_rule_narrative_id`** with `NULLS NOT DISTINCT` (PG16): re-running a scan's alert step can't duplicate alerts. Level is read from the scan's derived score. The 12-hour cooldown per (brand, narrative, rule) is a query through `scans` (`ix_scans_brand_id_created_at`), race-free because only one scan per brand is active at a time. An alert is a fact and never changes: the model's explanation of it is model output with its own provenance, in its own append-only table, added with the explanation feature (no placeholder columns).
 
-### `notifications` / `notification_reads`
-`notifications`: `id`, `user_id` fk, `alert_id` null fk, `title`, `body`, `created_at`; `uq_notifications_alert_id_user_id`.
-`notification_reads`: `notification_id` pk/fk, `read_at`.
+### 🔒 `notifications` / 🔒 `notification_reads`
+`notifications`: `id`, `user_id` fk → users, `alert_id` null fk → alerts, `title` (non-blank, ≤ 200), `body` (non-blank, ≤ 2000), `created_at`; `ix_notifications_user_id_created_at`; `uq_notifications_alert_id_user_id` (nulls distinct: notifications about no alert may repeat). One about an alert goes to the owner of the alert's brand (`trg_notifications_alert_owner` → `ck_notifications_alert_owner`). Written in the same transaction as what caused it; no personal data.
+`notification_reads`: `notification_id` pk/fk → notifications, `read_at`. Unread is the absence of a row; a second read is `ON CONFLICT DO NOTHING`.
 
 ### `outbox_messages` (mutable: scrubbed on deletion)
 | Column | Type | Notes |
