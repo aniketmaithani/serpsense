@@ -88,3 +88,18 @@ class SerpCallOutcome(StrEnum):
     FAILED = "failed"
     SKIPPED_BUDGET = "skipped_budget"
     CIRCUIT_OPEN = "circuit_open"
+
+
+class MentionSource(StrEnum):
+    """Where a mention was found (`mention_source` Postgres enum)."""
+
+    SERP_RESULT = "serp_result"
+    TOP_STORY = "top_story"
+    PEOPLE_ALSO_ASK = "people_also_ask"
+    AUTOCOMPLETE = "autocomplete"
+    AI_OVERVIEW = "ai_overview"
+    NEWS = "news"
+    TRENDS_QUERY = "trends_query"
+    PLAY_REVIEW = "play_review"
+    MAPS_REVIEW = "maps_review"
+    YOUTUBE_VIDEO = "youtube_video"

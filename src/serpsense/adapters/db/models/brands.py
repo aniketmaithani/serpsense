@@ -112,6 +112,8 @@ class BrandApp(Base):
     __tablename__ = "brand_apps"
     __table_args__ = (
         UniqueConstraint("brand_id", "store", "app_id"),
+        # Target of mentions' composite FK, so a mention can't cite another brand's app.
+        UniqueConstraint("brand_id", "id"),
         CheckConstraint("app_id ~ '^\\S{1,255}$'", name="app_id_format"),
     )
 
@@ -127,6 +129,8 @@ class BrandLocation(Base):
     __tablename__ = "brand_locations"
     __table_args__ = (
         UniqueConstraint("brand_id", "query"),
+        # Target of mentions' composite FK, so a mention can't cite another brand's location.
+        UniqueConstraint("brand_id", "id"),
         CheckConstraint(
             "query ~ '^\\S(.*\\S)?$' AND char_length(query) <= 200", name="query_length"
         ),
