@@ -7,9 +7,10 @@
     <h1>Your brands</h1>
     <p class="muted">How each brand looks to someone who Googles it: health is how good, crisis how fast it is turning bad.</p>
   </div>
+  <div class="actions"><a class="button-secondary" href="/brands/new">+ Add a brand</a></div>
 </header>
 {% if not cards %}
-<section class="card"><p>No brands yet.</p></section>
+<section class="card"><p>No brands yet. <a href="/brands/new">Add your first brand</a>.</p></section>
 {% else %}
 <div class="brand-grid">
   {% for card in cards %}
