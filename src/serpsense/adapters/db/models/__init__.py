@@ -11,6 +11,7 @@ from serpsense.adapters.db.models.brands import (
     BrandLocation,
     BrandWatchTerm,
 )
+from serpsense.adapters.db.models.explanations import AlertExplanation
 from serpsense.adapters.db.models.identity import (
     OtpCode,
     OtpVerifyAttempt,
@@ -46,6 +47,7 @@ from serpsense.adapters.db.models.settings import (
 
 __all__ = [
     "Alert",
+    "AlertExplanation",
     "AppRatingObservation",
     "AuditEvent",
     "AuditEventNetwork",
