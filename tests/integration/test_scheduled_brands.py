@@ -111,3 +111,32 @@ def test_later_versions_and_scans_that_cover_no_slot_are_ignored(
 
     (brand,) = reader.scheduled_brands(NOW + 2 * HOUR - timedelta(seconds=1))
     assert (brand.interval_minutes, brand.last_scan_at) == (360, NOW)
+
+
+def test_scan_now_reads_one_live_brand_of_its_owner(
+    conn: Connection, reader: ScheduledBrands
+) -> None:
+    owner, stranger = add_user(conn), add_user(conn, "else@example.com")
+    brand_id = add_brand(conn, owner, slug="ola")  # no schedule: "Scan now" still works
+    document(conn, "user_search_default_versions", "user_id", owner, document={"country": "in"})
+    later = {"document": {"country": "us"}, "created_at": LATER + HOUR}  # not yet
+    document(conn, "user_search_default_versions", "user_id", owner, **later)
+    conn.execute(insert(table("brand_languages")).values(brand_id=brand_id, language_code="hi"))
+    add_app(conn, brand_id)
+
+    inputs = reader.scan_inputs(owner, brand_id, LATER)
+    assert inputs is not None
+    assert (inputs.user_defaults, inputs.brand_settings) == ({"country": "in"}, {})
+    assert inputs.languages == ("hi",) and inputs.facts == BrandFacts(apps=1, locations=0)
+    assert inputs.last_scan_at is None
+    add_scan(conn, brand_id, status="succeeded", scheduled_for=None, trigger="manual",
+             requested_by=owner)  # fmt: skip
+    scanned = reader.scan_inputs(owner, brand_id, LATER)
+    assert scanned is not None and scanned.last_scan_at == NOW
+    assert reader.scan_inputs(stranger, brand_id, LATER) is None  # someone else's: missing
+    assert reader.scan_inputs(owner, uuid.uuid4(), LATER) is None
+
+    archived = add_brand(conn, owner, slug="old", archived_at=NOW)
+    assert reader.scan_inputs(owner, archived, LATER) is None
+    conn.execute(update(table("users")).where(table("users").c.id == owner).values(deleted_at=NOW))
+    assert reader.scan_inputs(owner, brand_id, LATER) is None
