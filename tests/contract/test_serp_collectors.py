@@ -119,7 +119,7 @@ def test_the_recorded_answers_are_to_the_collectors_own_requests(
 ) -> None:
     lead = collector.leads(target(languages=("en",)))[0]
     assert_answers(lead, fixture(name)["search_parameters"])
-    assert lead.surface is surface and collector.enabled(target()) == {surface}
+    assert lead.surface is surface and surface in collector.enabled(target())
     reading = collector.read(lead, fixture(name))
     assert reading.mentions == tuple(parse(fixture(name)))
     assert len(reading.mentions) > 0

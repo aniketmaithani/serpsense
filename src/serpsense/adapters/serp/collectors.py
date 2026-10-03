@@ -1,10 +1,10 @@
 """Collectors: the searches each surface makes, read by the parsers (ADR-0007, BUILD_PLAN §10).
 
 Each collector asks for the searches `domain.estimator` counts for it, so the budget check
-before a scan holds; the estimator also counts the AI Overview follow-up, which comes with its
-collector. The search page is searched in the brand's first language and news in every
-language, as the estimator counts them. Maps and YouTube follow once responses showing them are
-recorded.
+before a scan holds, the AI Overview follow-up included: a search page shows the overview
+inline or links to it, and the link is followed once. The search page is searched in the
+brand's first language and news in every language, as the estimator counts them. Maps and
+YouTube follow once responses showing them are recorded.
 """
 
 from collections.abc import Iterable, Mapping
@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Any
 
 from serpsense.adapters.serp.parsers import (
+    ai_overview_token,
+    parse_ai_overview,
     parse_autocomplete,
     parse_news,
     parse_play_product,
@@ -44,20 +46,25 @@ def _on(surface: Surface, enabled: bool) -> frozenset[Surface]:
 
 
 class SearchPageCollector:
-    """Organic results and People also ask for each template; each page leads to the next."""
+    """Organic results and People also ask for each template; each page leads to the next. A
+    first page also shows Google's AI Overview, or links to it for one follow-up search."""
 
     def enabled(self, target: Target) -> frozenset[Surface]:
-        return _on(Surface.SEARCH_PAGE, target.settings.search_page.enabled)
+        page = target.settings.search_page
+        return _on(Surface.SEARCH_PAGE, page.enabled) | _on(
+            Surface.AI_OVERVIEW, page.enabled and page.ai_overview
+        )
 
     def leads(self, target: Target) -> list[Lead]:
         settings, page = target.settings, target.settings.search_page
-        if not self.enabled(target):
+        if not page.enabled:
             return []
         common = {
             "gl": settings.country,
             "hl": settings.languages[0],
             "google_domain": settings.google_domain,
         }
+        also = _on(Surface.AI_OVERVIEW, page.ai_overview)
         return [
             Lead(
                 Surface.SEARCH_PAGE,
@@ -66,15 +73,34 @@ class SearchPageCollector:
                     SerpEngine.GOOGLE,
                     {**common, "q": template.format(brand=target.brand.name)},
                 ),
+                also=also,
                 pages=page.pages,
             )
             for template in page.templates
         ]
 
     def read(self, lead: Lead, payload: Mapping[str, Any]) -> Reading:
-        return Reading(
-            mentions=tuple(parse_search_page(payload)), follow_ups=_next_result_page(lead)
+        if lead.surface is Surface.AI_OVERVIEW:
+            return Reading(mentions=tuple(parse_ai_overview(payload)))
+        mentions = parse_search_page(payload)
+        if Surface.AI_OVERVIEW in lead.also:
+            mentions += parse_ai_overview(payload)
+        follow_ups = _next_result_page(lead) + _ai_overview_follow_up(lead, payload)
+        return Reading(mentions=tuple(mentions), follow_ups=follow_ups)
+
+
+def _ai_overview_follow_up(lead: Lead, payload: Mapping[str, Any]) -> tuple[Lead, ...]:
+    """The `google_ai_overview` search for an overview the page only links to."""
+    token = ai_overview_token(payload) if Surface.AI_OVERVIEW in lead.also else None
+    if token is None or len(token) > MAX_PAGE_TOKEN:
+        return ()
+    try:
+        overview = SearchRequest(
+            SerpEngine.GOOGLE_AI_OVERVIEW, {"page_token": token}, no_cache=lead.request.no_cache
         )
+    except InvalidSearchParams:  # a token with control characters, or shaped like a key
+        return ()
+    return (Lead(Surface.AI_OVERVIEW, overview),)
 
 
 def _next_result_page(lead: Lead) -> tuple[Lead, ...]:
