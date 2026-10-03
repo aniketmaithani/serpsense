@@ -8,8 +8,10 @@ from celery import Celery
 from sqlalchemy import Engine
 
 from serpsense.adapters.cache.health import RedisHealthCheck
+from serpsense.adapters.cache.rate_limiter import RedisRateLimiter
 from serpsense.adapters.cache.response_cache import RedisResponseCache
 from serpsense.adapters.crypto.fernet_box import FernetBox
+from serpsense.adapters.crypto.keys import KeyPurpose, derive_key
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
@@ -33,12 +35,14 @@ from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
 from serpsense.adapters.serp.client import SerpApiSearchProvider
 from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.system_clock import SystemClock
-from serpsense.config import AppEnv, ConfigError, EmailBackend, Settings
+from serpsense.config import AppEnv, ConfigError, EmailBackend, Settings, SignupMode
+from serpsense.domain.auth import SignupPolicy
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
 from serpsense.ports.mailer import Mailer
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
+from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
@@ -64,6 +68,7 @@ __all__ = [
     "build_outbox",
     "build_seeder",
     "build_settings",
+    "build_sign_in",
     "build_worker",
 ]
 
@@ -201,6 +206,28 @@ def _mailer(settings: Settings) -> Mailer:
         starttls=settings.smtp_starttls,
     )
     return SmtpMailer(smtp)
+
+
+def build_sign_in(settings: Settings, celery: Celery) -> SignIn:
+    """Sign-in (ADR-0009): keys derived from SECRET_KEY per purpose, the invite policy from the
+    settings; nothing connects until a request comes."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+    secret = settings.secret_key.get_secret_value()
+    limiter_key = derive_key(secret, KeyPurpose.RATE_LIMIT)
+    ports = SignInPorts(
+        lambda: SqlUnitOfWork(engine, queue),
+        FernetBox(settings.outbox_key_list),
+        RedisRateLimiter(settings.redis_url.get_secret_value(), limiter_key),
+        SystemClock(),
+    )
+    keys = AuthKeys(derive_key(secret, KeyPurpose.OTP), derive_key(secret, KeyPurpose.CSRF))
+    policy = SignupPolicy(
+        settings.signup_mode is SignupMode.INVITE,
+        frozenset(settings.allowed_email_list),
+        frozenset(settings.allowed_domain_list),
+    )
+    return SignIn(ports, keys, policy, session_days=settings.session_days)
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
