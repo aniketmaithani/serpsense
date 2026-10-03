@@ -32,6 +32,14 @@ Users need accounts that own brands. Requirement: sign-up and log-in via a one-t
 - Console mailer refused in production (ADR-0010).
 - Never logged or put in audit details: codes, tokens, emails. Audit events: `auth.code_requested`, `auth.login_succeeded`, `auth.verify_failed`, `auth.logged_out`, `auth.sessions_revoked`; IP/user agent go to `audit_event_network` (ADR-0013).
 
+**Amendment (2026-10-03):** an operator can also create a user from the command line
+(`serpsense seed-demo --owner EMAIL`), to own the demo brands before anyone signs in. Such a user
+signs in like any other: the first successful verification finds the existing row. Their
+`created_at` is when they were seeded, not a verification time. Seeding is an operator action, so
+it bypasses `SIGNUP_MODE=invite`; a seeded address should also be on the invite list. Addresses
+are checked the same way everywhere (`ports.accounts.email_address`): at most 254 characters, no
+control characters, and never the reserved `.invalid` domain of deleted accounts' pseudonyms.
+
 ## Alternatives considered
 - **Passwords (Argon2)** — more surface (reset flow, breach handling) for no user benefit.
 - **Magic links** — similar security; codes work across devices and survive link pre-fetching by email scanners.
