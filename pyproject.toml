@@ -134,6 +134,7 @@ name = "Layered architecture"
 type = "layers"
 layers = [
     "serpsense.entrypoints",
+    "serpsense.composition_replay",
     "serpsense.composition",
     "serpsense.adapters",
     "serpsense.services",
@@ -176,7 +177,7 @@ forbidden_modules = [
 # SDK isolation (AGENTS.md §2): one contract per SDK over the whole package, with the single
 # allowed home whitelisted, so new packages are covered automatically. Unmatched whitelist
 # entries are allowed because some adapters don't exist yet. The composition root may import
-# celery only to type the app it wires.
+# celery only to type the app it wires (its replay half, composition_replay, likewise).
 [[tool.importlinter.contracts]]
 name = "Anthropic SDK only in adapters.llm"
 type = "forbidden"
@@ -210,6 +211,7 @@ allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "serpsense.composition -> celery",
+    "serpsense.composition_replay -> celery",
     "serpsense.adapters.jobs -> celery",
     "serpsense.adapters.jobs.** -> celery",
     "serpsense.adapters.jobs -> kombu",

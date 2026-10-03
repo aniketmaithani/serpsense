@@ -6,7 +6,9 @@ AI Overview, one autocomplete prefix, English news, the Trends comparison with a
 competitors plus Ola's related queries, and its Play rating with a page of newest reviews. Each
 competitor is scanned every 24 hours with 3: its search page, news and Play rating. Seeding again
 changes nothing, unless the brands' settings or schedules were edited since: those are put back to
-the demo's as new versions.
+the demo's as new versions. In replay mode (`SERPSENSE_MODE=replay`) every brand gets the settings
+its recordings were made with, and is scanned only on request: the replay loader plays the
+recorded scans (services/replay.py), and repeating them on a schedule would add nothing.
 """
 
 import uuid
@@ -82,6 +84,9 @@ RIVALS = tuple(
 )
 
 
+DEMO_BRANDS = (OLA, *RIVALS)  # in the order seed_demo seeds them
+
+
 @dataclass(frozen=True)
 class Seeded:
     owner_id: uuid.UUID
@@ -89,26 +94,40 @@ class Seeded:
     competitor_ids: tuple[uuid.UUID, ...]
 
 
-def seed_demo(unit_of_work: UnitOfWorkFactory, clock: Clock, *, owner_email: str) -> Seeded:
+def seed_demo(
+    unit_of_work: UnitOfWorkFactory,
+    clock: Clock,
+    *,
+    owner_email: str,
+    replay: Mapping[str, Mapping[str, Any]] | None = None,
+) -> Seeded:
     """Ola and its competitors under the owner with this email (created if new), in one unit
-    of work."""
+    of work. For replay mode, `replay` gives each brand's recorded settings by slug, and no
+    brand is scheduled."""
     with unit_of_work() as uow:
         owner = uow.accounts.user_for(owner_email, at=clock.now())
-        ola = _brand(uow, owner, OLA, clock)
-        rivals = tuple(_brand(uow, owner, rival, clock) for rival in RIVALS)
+        ola, *rest = (_brand(uow, owner, demo, clock, replay) for demo in DEMO_BRANDS)
+        rivals = tuple(rest)
         for rival in rivals:
             uow.brands.link_competitor(ola, rival)
     log.info("demo.seeded", user_id=str(owner), brand_id=str(ola))
     return Seeded(owner, ola, rivals)
 
 
-def _brand(uow: UnitOfWork, owner: uuid.UUID, demo: DemoBrand, clock: Clock) -> uuid.UUID:
+def _brand(
+    uow: UnitOfWork,
+    owner: uuid.UUID,
+    demo: DemoBrand,
+    clock: Clock,
+    replay: Mapping[str, Mapping[str, Any]] | None,
+) -> uuid.UUID:
     now = clock.now()
     brand_id = uow.brands.brand(NewBrand(owner, demo.name, demo.slug, now))
     for alias in demo.aliases:
         uow.brands.add_alias(brand_id, alias)
     uow.brands.add_app(brand_id, AppStore.GOOGLE_PLAY, demo.app)
-    uow.brands.set_schedule(brand_id, demo.every, at=now)
-    resolve(demo.settings)  # a document the dispatcher can use, or ValidationError
-    uow.brands.set_search_settings(brand_id, demo.settings, at=now)
+    uow.brands.set_schedule(brand_id, None if replay is not None else demo.every, at=now)
+    settings = (replay or {}).get(demo.slug, demo.settings)
+    resolve(settings)  # a document the dispatcher can use, or ValidationError
+    uow.brands.set_search_settings(brand_id, settings, at=now)
     return brand_id
