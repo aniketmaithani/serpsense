@@ -12,6 +12,7 @@ from serpsense.adapters.db.alert_store import SqlAlertStore
 from serpsense.adapters.db.audit import SqlAuditLog
 from serpsense.adapters.db.brand_store import SqlBrandStore
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
+from serpsense.adapters.db.explanation_store import SqlExplanationStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
 from serpsense.adapters.db.narrative_store import SqlNarrativeStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
@@ -28,6 +29,7 @@ from serpsense.ports.alert_store import AlertStore
 from serpsense.ports.audit import AuditLog
 from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
+from serpsense.ports.explanations import ExplanationStore
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.narrative_store import NarrativeStore
@@ -87,6 +89,7 @@ class SqlUnitOfWork:
     outbox: Outbox
     scores: ScoreStore
     alerts: AlertStore
+    explanations: ExplanationStore
     jobs: JobQueue
 
     def __init__(self, engine: Engine, queue: JobQueue) -> None:
@@ -116,6 +119,7 @@ class SqlUnitOfWork:
         self.outbox = SqlOutbox(self._conn)
         self.scores = SqlScoreStore(self._conn)
         self.alerts = SqlAlertStore(self._conn)
+        self.explanations = SqlExplanationStore(self._conn)
         self.jobs = self._pending
         return self
 
