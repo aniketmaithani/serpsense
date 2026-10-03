@@ -288,8 +288,8 @@ No prompt or completion content stored.
 
 ## 7. Scores (results stored; totals derived)
 
-Migration 0020 (reference data). Every table here is 🔒 **append-only**: a version's reference
-rows never change.
+Migrations 0020 (reference data) and 0021 (a scan's scores). Every table here is 🔒
+**append-only**: a version's reference rows never change, and a scan is scored once.
 
 ### 🔒 Reference data (seeded by migration, per scoring version)
 | Table | Columns |
@@ -301,7 +301,14 @@ rows never change.
 `s1` is seeded with the numbers in `domain/scoring/` (docs/scoring.md); an integration test keeps the two equal.
 Weights are 1–10000 (leave a surface out by giving it no row: a zero weight would divide by zero); crisis weights sum to 10000 and level floors are unique per version and include 0 (`uq_crisis_level_thresholds_version_min_score`; the cross-row rules are tested over every version). A new version is its own seed migration; since the tables are append-only, its downgrade disables the trigger in its own transaction to delete its rows (as `trg_scans_identity_immutable` does), and the RESTRICT foreign keys keep a version in use from being deleted. Adding a surface or crisis component recreates `ck_scoring_weights_component_of_kind` in the same migration.
 
-A scan's scores (results, and `v_scan_scores` deriving health, crisis and level) come with migration 0021.
+### 🔒 Results
+| Table | Columns | Key |
+|---|---|---|
+| `score_runs` | `scan_id` fk → scans, `version` fk, `computed_at` | pk (scan_id) |
+| `surface_scores` | `scan_id` fk → score_runs, `surface` enum `surface`, `score smallint` (0–100) | pk (scan_id, surface); a surface that showed nothing about the brand has no row |
+| `crisis_components` | `scan_id` fk → score_runs, `component` enum `crisis_component` (`velocity`, `spread`, `autocomplete`, `trends`, `press`), `value smallint` (0–100) | pk (scan_id, component); a missing component counts as 0 |
+
+Health, crisis score and crisis level are derived in `v_scan_scores` (with each scan's `brand_id` and `created_at`; each row computed on its own, so reading a brand's latest scans costs only their rows; weights, thresholds and warm-up joined by version) and mirrored by pure functions in `domain/scoring/`; an integration test checks the view against them. Health is the weighted mean of the surface scores (none when no surface showed anything), the crisis score the weighted sum of the components ÷ 10000, both rounded half up; the level is the highest threshold the score reaches, once the brand has `warm_up_scans` earlier scored scans, succeeded or partial (by scan creation time). Weights are multiplied as integers: smallint products overflow.
 
 ---
 
@@ -375,7 +382,7 @@ Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no acto
 - `v_mention_first_last_seen` — min/max scan per mention.
 - `v_scan_usage` — billable searches (`served_from = 'live'`) and LLM cost per scan.
 - `v_user_monthly_usage` — searches and LLM spend per user per month.
-- `v_scan_scores` — health, crisis score, crisis level per scan.
+- `v_scan_scores` — health, crisis score, crisis level per scored scan (migration 0021; §7).
 - `v_narrative_activity` — first/last seen and open/dormant per narrative; current assignment per mention.
 - `v_current_settings`, `v_current_schedule`, `v_current_budgets` — latest version rows.
 - `v_scan_timing` — started/finished from transitions.
