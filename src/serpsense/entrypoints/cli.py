@@ -2,8 +2,11 @@
 
 import base64
 import secrets
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Annotated
 
 import typer
@@ -12,6 +15,7 @@ from serpsense import __version__
 from serpsense.composition import (
     build_celery,
     build_evaluator,
+    build_grouping_evaluator,
     build_scorer,
     build_seeder,
     build_settings,
@@ -20,6 +24,7 @@ from serpsense.config import ConfigError
 from serpsense.domain.enums import LlmTask
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
+from serpsense.services.grouping_eval import GoldenMention, GroupingBrand, grouping_report
 
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
 
@@ -65,9 +70,17 @@ def score_backlog() -> None:
     typer.echo(f"Scored {scored} scans.")
 
 
+@dataclass(frozen=True)
+class Ran:
+    report: str
+    answered: int
+    items: int
+    cost_micros: int
+
+
 @app.command("eval")
 def run_eval(
-    task: str = typer.Argument(..., help="The labelling task to score; label_mentions for now."),
+    task: str = typer.Argument(..., help="The task to score: label_mentions or group_narratives."),
     split: str = typer.Option("test", help="Golden split: test, dev or all."),
     cap_cents: int = typer.Option(300, min=0, help="Stop before spending more, in US cents."),
     golden: Annotated[Path, typer.Option(help="Where the golden sets are.")] = GOLDEN,
@@ -75,24 +88,47 @@ def run_eval(
 ) -> None:
     """Score a prompt against its golden set with the real model (it spends credits); exits 1
     when some items went unanswered."""
-    if task != LlmTask.LABEL_MENTIONS or split not in ("all", *Split):
+    if task not in EVALS or split not in ("all", *Split):
         typer.echo(f"No eval for {task} on split {split}.", err=True)
         raise typer.Exit(2)
     lines = (golden / f"{task}.jsonl").read_text().splitlines()
-    items = [GoldenItem.model_validate_json(line) for line in lines if line.strip()]
-    chosen = [item for item in items if split in ("all", item.split)]
-    brand = GoldenBrand.model_validate_json((golden / f"{task}.brand.json").read_text())
+    brand = (golden / f"{task}.brand.json").read_text()
+    today = datetime.now(UTC).date().isoformat()
     try:
-        evaluator, model = build_evaluator(build_settings())
+        ran = EVALS[LlmTask(task)](lines, brand, split, cap_cents * 10_000, today)
     except ConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
-    result = evaluator.label_mentions(chosen, brand, cap_micros=cap_cents * 10_000)
-    today = datetime.now(UTC).date().isoformat()
     path = reports / f"{today}-{task}.md"
     reports.mkdir(parents=True, exist_ok=True)
-    path.write_text(report(result, on=today, model=model, split=split))
-    typer.echo(f"Scored {result.answered} of {result.items} items; report: {path}")
-    typer.echo(f"Cost: ${result.cost_micros / 1_000_000:.4f}")
-    if result.answered < result.items:
+    path.write_text(ran.report)
+    typer.echo(f"Scored {ran.answered} of {ran.items} items; report: {path}")
+    typer.echo(f"Cost: ${ran.cost_micros / 1_000_000:.4f}")
+    if ran.answered < ran.items:
         raise typer.Exit(1)
+
+
+def _label_mentions(lines: list[str], brand: str, split: str, cap: int, today: str) -> Ran:
+    items = [GoldenItem.model_validate_json(line) for line in lines if line.strip()]
+    chosen = [item for item in items if split in ("all", item.split)]
+    evaluator, model = build_evaluator(build_settings())
+    result = evaluator.label_mentions(
+        chosen, GoldenBrand.model_validate_json(brand), cap_micros=cap
+    )
+    text = report(result, on=today, model=model, split=split)
+    return Ran(text, result.answered, result.items, result.cost_micros)
+
+
+def _group_narratives(lines: list[str], brand: str, split: str, cap: int, today: str) -> Ran:
+    items = [GoldenMention.model_validate_json(line) for line in lines if line.strip()]
+    chosen = [item for item in items if split in ("all", item.split)]
+    context = GroupingBrand.model_validate_json(brand)
+    evaluator, model = build_grouping_evaluator(build_settings())
+    result = evaluator.group_narratives(chosen, context, cap_micros=cap)
+    text = grouping_report(result, context, on=today, model=model)
+    return Ran(text, result.answered, len(chosen), result.cost_micros)
+
+
+EVALS: Mapping[LlmTask, Callable[[list[str], str, str, int, str], Ran]] = MappingProxyType(
+    {LlmTask.LABEL_MENTIONS: _label_mentions, LlmTask.GROUP_NARRATIVES: _group_narratives}
+)
