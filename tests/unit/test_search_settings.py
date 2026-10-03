@@ -10,6 +10,8 @@ from serpsense.domain.settings.search import (
     Preset,
     ReviewSort,
     SearchSettings,
+    for_brand,
+    merge,
     preset,
     resolve,
 )
@@ -137,3 +139,13 @@ def test_the_estimate_counts_every_surface() -> None:
     assert estimate(everything, facts) == 6 + 6 + 4 + 2 + 6 + 7 + 1
     nothing = {key: {"enabled": False} for key in SURFACES}
     assert estimate(resolve(nothing), facts) == 0
+
+
+def test_a_brands_own_languages_win_over_every_document() -> None:
+    defaults, brand = (
+        {"languages": ["en"], "news": {"enabled": False}},
+        {"news": {"extra_terms": ["x"]}},
+    )
+    assert for_brand(defaults, brand, ("hi", "en")).languages == ("hi", "en")
+    assert for_brand(defaults, brand, ()).languages == ("en",)
+    assert merge(defaults, brand)["news"] == {"enabled": False, "extra_terms": ["x"]}
