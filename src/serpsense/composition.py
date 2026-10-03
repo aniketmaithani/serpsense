@@ -18,6 +18,7 @@ from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
+from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_factory import (
     DISPATCH_TASK,
@@ -47,6 +48,7 @@ from serpsense.ports.health import HealthCheck
 from serpsense.ports.inbox import Inbox
 from serpsense.ports.mailer import Mailer
 from serpsense.ports.overview import Overview
+from serpsense.ports.stories import Stories
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
@@ -104,6 +106,7 @@ class Container:
     scan_now: ScanNow
     inbox: Inbox
     brand_settings: BrandSettings
+    stories: Stories
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -133,6 +136,7 @@ def build_container(settings: Settings | None = None) -> Container:
         scan_now=build_scan_now(resolved, engine, celery),
         inbox=SqlInbox(engine, SystemClock()),
         brand_settings=build_brand_settings(resolved, engine, celery),
+        stories=SqlStories(engine.connect),
     )
 
 

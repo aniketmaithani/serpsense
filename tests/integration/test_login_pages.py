@@ -12,6 +12,7 @@ from sqlalchemy import Engine, select
 from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
+from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.composition import Container
 from serpsense.config import Settings
@@ -51,6 +52,7 @@ def browser(
         brand_settings=BrandSettings(
             lambda: SqlUnitOfWork(engine, ScanJobs()), clock, max_searches_per_scan=20
         ),
+        stories=SqlStories(engine.connect),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"
