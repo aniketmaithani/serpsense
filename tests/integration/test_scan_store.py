@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import Connection, select
 
 from serpsense.adapters.db.scan_store import SqlScanStore
-from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
+from serpsense.domain.enums import ScanStatus, ScanTrigger, Surface, SurfaceOutcome, TransitionActor
 from serpsense.domain.scan_state import IllegalTransition, Transition, TransitionReason
-from serpsense.ports.scan_store import NewScan
+from serpsense.ports.scan_store import NewScan, SurfaceResult
 from tests.integration.db_helpers import NOW, add_owned_brand, table
 
 pytestmark = pytest.mark.integration
@@ -135,3 +135,27 @@ def test_the_sweep_finds_lost_and_stuck_scans(conn: Connection, store: SqlScanSt
     assert store.running_before(cutoff) == [stuck]
     assert store.running_before(NOW) == []
     assert_status_matches_history(conn)
+
+
+def test_a_scans_surface_results_are_written_once(conn: Connection) -> None:
+    store = SqlScanStore(conn)
+    scan_id = store.create(scheduled(add_owned_brand(conn)))
+    assert scan_id is not None
+    first = [
+        SurfaceResult(Surface.SEARCH_PAGE, SurfaceOutcome.SUCCEEDED),
+        SurfaceResult(Surface.NEWS, SurfaceOutcome.FAILED, "serpapi.http_5xx"),
+    ]
+    assert store.record_surfaces(scan_id, first) == 2
+    again = [
+        SurfaceResult(Surface.NEWS, SurfaceOutcome.SUCCEEDED),  # a retry keeps the first
+        SurfaceResult(Surface.MAPS, SurfaceOutcome.DISABLED),
+    ]
+    assert store.record_surfaces(scan_id, again) == 1
+    assert store.record_surfaces(scan_id, []) == 0
+    results = table("scan_surface_results")
+    rows = conn.execute(select(results.c.surface, results.c.outcome, results.c.error_code))
+    assert sorted(tuple(row) for row in rows) == [
+        ("maps", "disabled", None),
+        ("news", "failed", "serpapi.http_5xx"),
+        ("search_page", "succeeded", None),
+    ]
