@@ -14,6 +14,7 @@ from serpsense.composition import (
     build_container,
     build_outbox,
     build_seeder,
+    build_session_guard,
     build_sign_in,
     build_worker,
 )
@@ -82,3 +83,9 @@ def test_build_sign_in_wires_sign_in_without_connecting() -> None:
     sign_in = build_sign_in(settings, build_celery(settings))
     assert sign_in._policy.allows("a@serpsense.in") and not sign_in._policy.allows("a@x.in")
     assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
+
+
+def test_build_session_guard_wires_sessions_without_connecting() -> None:
+    settings = make_settings()
+    guard = build_session_guard(settings, build_celery(settings))
+    assert guard._csrf_key != build_sign_in(settings, build_celery(settings))._keys.otp
