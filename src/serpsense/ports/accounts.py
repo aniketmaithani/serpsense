@@ -11,7 +11,9 @@ from datetime import datetime
 from typing import Protocol
 
 MAX_EMAIL = 254  # RFC 5321's path limit
-EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# One bare address: no list or display-name characters an SMTP server would fan out on, the same
+# rule as the outbox's recipient check.
+EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 
 
 class InvalidEmail(ValueError):
