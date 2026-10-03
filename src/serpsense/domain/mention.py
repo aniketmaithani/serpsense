@@ -9,6 +9,7 @@ parser can't produce a row Postgres would reject.
 import hashlib
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -102,6 +103,21 @@ class ParsedMention:
             self.source not in REVIEW_SOURCES or not 1 <= self.star_rating <= 5
         ):
             raise ValueError("a star rating is 1-5, and only on reviews")
+
+
+def best_ranked(mentions: Iterable[ParsedMention]) -> list[ParsedMention]:
+    """One mention per identity, at its best rank (unranked counts last), ordered by source and
+    rank. A scan's observations are append-only, so its rank is settled before it is stored."""
+    best: dict[tuple[MentionSource, str], ParsedMention] = {}
+    for mention in mentions:
+        key = (mention.source, mention.identity_key)
+        if key not in best or _rank(mention) < _rank(best[key]):
+            best[key] = mention
+    return sorted(best.values(), key=lambda m: (m.source, _rank(m)))
+
+
+def _rank(mention: ParsedMention) -> int:
+    return mention.position or MAX_POSITION + 1
 
 
 def _check_identity(source: MentionSource, key: str) -> None:
