@@ -1,23 +1,12 @@
 """Real Postgres and Redis via testcontainers (AGENTS.md §9: same engine as production)."""
 
-from collections.abc import Iterator
-
 import pytest
-from testcontainers.redis import RedisContainer
 
 from serpsense.adapters.cache.health import RedisHealthCheck
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.health import PostgresHealthCheck
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def redis_url() -> Iterator[str]:
-    with RedisContainer("redis:7-alpine") as container:
-        host = container.get_container_host_ip()
-        port = container.get_exposed_port(6379)
-        yield f"redis://{host}:{port}/0"
 
 
 def test_postgres_check_passes_when_database_reachable(postgres_url: str) -> None:

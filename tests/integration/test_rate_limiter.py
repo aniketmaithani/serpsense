@@ -2,13 +2,11 @@
 
 import hashlib
 import uuid
-from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
 from redis import Redis
 from structlog.testing import capture_logs
-from testcontainers.redis import RedisContainer
 
 from serpsense.adapters.cache.rate_limiter import PREFIX, RedisRateLimiter
 from serpsense.ports.rate_limiter import RateLimiter
@@ -17,13 +15,6 @@ pytestmark = pytest.mark.integration
 
 HOUR = timedelta(hours=1)
 KEY = b"k" * 32
-
-
-@pytest.fixture(scope="module")
-def redis_url() -> Iterator[str]:
-    with RedisContainer("redis:7-alpine") as container:
-        host, port = container.get_container_host_ip(), container.get_exposed_port(6379)
-        yield f"redis://{host}:{port}/0"
 
 
 def test_a_key_gets_its_limit_per_window(redis_url: str) -> None:
