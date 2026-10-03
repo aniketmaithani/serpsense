@@ -36,6 +36,8 @@ def test_metadata_has_expected_tables() -> None:
         "serp_calls",
         "raw_responses",
         "mentions",
+        "mention_observations",
+        "app_rating_observations",
     }
 
 
