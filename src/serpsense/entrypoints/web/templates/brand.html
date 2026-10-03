@@ -4,7 +4,7 @@
 {% macro score(value) %}{{ value if value is not none else "–" }}{% endmacro %}
 {% macro reply(story_id) %}<form method="post" action="/brands/{{ card.brand_id }}/narratives/{{ story_id }}/drafts" class="inline reply">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="review_reply"><input type="hidden" name="preset" value="standard">
-  <button type="submit" class="secondary small" title="Claude drafts a reply for a person to edit and copy; nothing is sent">Draft a reply</button>
+  <button type="submit" class="secondary small" title="AI drafts a reply for a person to edit and copy; nothing is sent">Draft a reply</button>
 </form>{% endmacro %}
 {% macro sentiment(value) %}{% if value is none %}<span class="sent sent-pending">not labelled yet</span>{% elif value < 0 %}<span class="sent sent--1">negative</span>{% elif value > 0 %}<span class="sent sent-1">positive</span>{% else %}<span class="sent sent-0">neutral</span>{% endif %}{% endmacro %}
 {% block main %}
@@ -56,14 +56,14 @@
       <ul class="rules">
         <li><strong>Levels:</strong> low below {{ t.medium_at }}, medium from {{ t.medium_at }} to {{ t.high_at - 1 }}, high from {{ t.high_at }}.</li>
         <li><strong>Warm-up:</strong> a scan gets a level once {{ t.warm_up_scans }} earlier scan{{ "s" if t.warm_up_scans != 1 }} {{ "have" if t.warm_up_scans != 1 else "has" }} been scored; this brand has {{ brand.scored_scans }} scored so far.</li>
-        <li><strong>Alerts:</strong> when the level rises, when a negative suggestion first appears in autocomplete, or when a story reaches {{ t.spread_mentions }} mentions on {{ t.spread_surfaces }} surfaces. Each rule then rests {{ t.cooldown_hours }} h. Claude only writes the explanation.</li>
+        <li><strong>Alerts:</strong> when the level rises, when a negative suggestion first appears in autocomplete, or when a story reaches {{ t.spread_mentions }} mentions on {{ t.spread_surfaces }} surfaces. Each rule then rests {{ t.cooldown_hours }} h. AI only writes the explanation.</li>
       </ul>
     </section>
 
     <section class="card ai-card">
-      <div class="card-head"><h2>Stories Claude found</h2><span class="ai-badge">AI-generated</span></div>
+      <div class="card-head"><h2>Stories found</h2><span class="ai-badge">AI-generated</span></div>
       {% if stories %}
-      {% if drafting %}<p class="muted">Claude can draft a reply, holding statement or FAQ entry from a story's evidence: use the buttons here, or open a story for every kind.</p>{% endif %}
+      {% if drafting %}<p class="muted">AI can draft a reply, holding statement or FAQ entry from a story's evidence: use the buttons here, or open a story for every kind.</p>{% endif %}
       <ul class="stories">
       {% for s in stories %}
         <li><a href="/brands/{{ card.brand_id }}/narratives/{{ s.narrative_id }}">{{ s.label }}</a>
@@ -72,12 +72,12 @@
       {% endfor %}
       </ul>
       {% else %}
-      <p class="muted">After each scan Claude groups the brand's complaints into stories, so a crisis shows up as one thread rather than scattered posts. None yet.</p>
+      <p class="muted">After each scan AI groups the brand's complaints into stories, so a crisis shows up as one thread rather than scattered posts. None yet.</p>
       {% endif %}
     </section>
 
     <section class="card" id="mentions">
-      <div class="card-head"><h2>What people see</h2><span class="ai-badge">labels by Claude</span></div>
+      <div class="card-head"><h2>What people see</h2><span class="ai-badge">AI labels</span></div>
       <ul class="mentions">
       {% for m in brand.mentions %}
         <li>

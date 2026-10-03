@@ -8,7 +8,7 @@
   <a href="/notifications"{% if here == "/notifications" %} aria-current="page"{% endif %}>Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
   <a href="/settings/ai"{% if here == "/settings/ai" %} aria-current="page"{% endif %}>AI settings</a>
   <a href="/settings/account"{% if here.startswith("/settings/account") %} aria-current="page"{% endif %}>Account</a>
-  <a class="model-chip" href="/settings/ai"><strong>✦ Claude</strong>labels every mention, groups complaints into stories, explains alerts and drafts replies</a>
+  <a class="model-chip" href="/settings/ai"><strong>✦ AI</strong>labels every mention, groups complaints into stories, explains alerts and drafts replies</a>
   <form method="post" action="/logout" class="inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="link">Sign out</button>
