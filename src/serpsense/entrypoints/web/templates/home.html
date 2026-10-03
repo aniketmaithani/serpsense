@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block nav %}
+<form method="post" action="/logout" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="link">Sign out</button>
+</form>
+{% endblock %}
+{% block main %}
+<section class="card">
+  <h1>You're signed in</h1>
+  <p class="muted">Your brands' overview is on its way.</p>
+</section>
+{% endblock %}

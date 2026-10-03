@@ -1,0 +1,89 @@
+"""Who is asking, and whether a form really came from our page (ADR-0009).
+
+The session cookie holds a random token (HttpOnly, SameSite=Lax, Secure in production). A
+signed-in write carries the session's CSRF token, in a form field or the X-CSRF-Token header.
+The two sign-in forms come before any session, so they carry a double-submit token instead: a
+random value in a strict cookie that the form must echo.
+"""
+
+import hmac
+import secrets
+from ipaddress import IPv4Address, IPv6Address, ip_address
+from typing import cast
+
+from fastapi import HTTPException, Request, Response, status
+
+from serpsense.composition import Container
+from serpsense.ports.audit import Network
+from serpsense.services.auth import SignIn
+from serpsense.services.sessions import CurrentUser, SessionGuard
+
+SESSION, FORM = "serpsense_session", "serpsense_form"
+
+
+def container(request: Request) -> Container:
+    return cast(Container, request.app.state.container)
+
+
+def sign_in(request: Request) -> SignIn:
+    return container(request).sign_in
+
+
+def sessions(request: Request) -> SessionGuard:
+    return container(request).sessions
+
+
+def network(request: Request) -> Network:
+    host = request.client.host if request.client else None
+    return Network(_ip(host), request.headers.get("user-agent"))
+
+
+def current_user(request: Request) -> CurrentUser | None:
+    return sessions(request).current(request.cookies.get(SESSION))
+
+
+def set_session(request: Request, response: Response, token: str) -> None:
+    settings = container(request).settings
+    response.set_cookie(
+        SESSION,
+        token,
+        max_age=settings.session_days * 24 * 3600,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+    )
+
+
+def clear_session(response: Response) -> None:
+    response.delete_cookie(SESSION)
+
+
+def require_csrf(request: Request, user: CurrentUser, submitted: str | None) -> None:
+    token = submitted or request.headers.get("x-csrf-token") or ""
+    if not sessions(request).csrf_valid(user, token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This form has expired; reload the page.")
+
+
+def form_token(request: Request) -> str:
+    """The sign-in forms' double-submit token: the one this browser has, or a new one."""
+    return request.cookies.get(FORM) or secrets.token_urlsafe(32)
+
+
+def keep_form_token(request: Request, response: Response, token: str) -> None:
+    secure = container(request).settings.is_production
+    response.set_cookie(FORM, token, httponly=True, secure=secure, samesite="strict")
+
+
+def require_form_token(request: Request, submitted: str) -> None:
+    expected = request.cookies.get(FORM, "")
+    if not expected or not hmac.compare_digest(
+        expected.encode(), submitted.encode("utf-8", "replace")
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This form has expired; reload the page.")
+
+
+def _ip(host: str | None) -> IPv4Address | IPv6Address | None:
+    try:
+        return ip_address(host) if host else None
+    except ValueError:  # a test client, or a proxy that sent something else
+        return None

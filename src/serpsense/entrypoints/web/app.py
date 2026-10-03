@@ -5,8 +5,10 @@ Run with `uvicorn serpsense.entrypoints.web.app:create_app --factory`.
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from serpsense.composition import Container, build_container
+from serpsense.entrypoints.web.auth import router as auth_router
 from serpsense.entrypoints.web.health import router as health_router
 from serpsense.entrypoints.web.middleware import (
     RequestContextMiddleware,
@@ -14,6 +16,7 @@ from serpsense.entrypoints.web.middleware import (
     apply_security_headers,
     route_template,
 )
+from serpsense.entrypoints.web.pages import STATIC
 from serpsense.observability import get_logger
 
 log = get_logger(__name__)
@@ -27,6 +30,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware, hsts=hsts)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
+    app.include_router(auth_router)
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.exception_handler(Exception)
     def internal_error(request: Request, exc: Exception) -> PlainTextResponse:

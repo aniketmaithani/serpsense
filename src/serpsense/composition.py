@@ -84,6 +84,8 @@ STUCK_AFTER = timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) + timedelta(minutes=5)
 class Container:
     settings: Settings
     health_checks: tuple[HealthCheck, ...]
+    sign_in: SignIn
+    sessions: SessionGuard
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -106,6 +108,8 @@ def build_container(settings: Settings | None = None) -> Container:
             PostgresHealthCheck(engine),
             RedisHealthCheck(resolved.redis_url.get_secret_value()),
         ),
+        sign_in=build_sign_in(resolved, build_celery(resolved)),
+        sessions=build_session_guard(resolved, build_celery(resolved)),
     )
 
 

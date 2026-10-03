@@ -3,11 +3,10 @@ from dataclasses import dataclass
 import pytest
 from fastapi.testclient import TestClient
 
-from serpsense.composition import Container
 from serpsense.config import Settings
 from serpsense.entrypoints.web.app import create_app
 from serpsense.observability import configure_logging
-from tests.factories import make_settings
+from tests.factories import make_container, make_settings
 
 pytestmark = pytest.mark.api
 
@@ -30,7 +29,7 @@ class FakeCheck:
 
 
 def client_with(settings: Settings, *checks: FakeCheck) -> TestClient:
-    app = create_app(Container(settings=settings, health_checks=checks))
+    app = create_app(make_container(settings, checks))
     return TestClient(app, raise_server_exceptions=False)
 
 
