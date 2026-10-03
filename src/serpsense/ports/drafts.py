@@ -69,6 +69,11 @@ class DraftStore(Protocol):
         """Write the draft and its citations."""
         ...
 
+    def thinking_drafts_since(self, user_id: uuid.UUID, since: datetime) -> int:
+        """The user's draft calls at high-thinking or max effort since a time, failed ones
+        included (they may have been billed)."""
+        ...
+
     def drafts(
         self, user_id: uuid.UUID, brand_id: uuid.UUID, narrative_id: uuid.UUID, *, limit: int
     ) -> list[DraftRow]:
