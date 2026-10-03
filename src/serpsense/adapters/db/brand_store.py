@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any, cast
 
@@ -16,9 +17,14 @@ from serpsense.adapters.db.models.brands import (
     BrandCompetitor,
     BrandLanguage,
 )
-from serpsense.adapters.db.models.settings import BrandScheduleVersion, BrandSearchSettingsVersion
+from serpsense.adapters.db.models.settings import (
+    BrandCrisisTuningVersion,
+    BrandScheduleVersion,
+    BrandSearchSettingsVersion,
+)
 from serpsense.domain.enums import AppStore
 from serpsense.domain.schedule import Schedule
+from serpsense.domain.scoring.tuning import DEFAULT_TUNING, CrisisTuning
 from serpsense.ports.brand_store import NewBrand
 
 BRANDS, ALIASES = cast(Table, Brand.__table__), cast(Table, BrandAlias.__table__)
@@ -26,6 +32,8 @@ APPS, COMPETITORS = cast(Table, BrandApp.__table__), cast(Table, BrandCompetitor
 LANGUAGES = cast(Table, BrandLanguage.__table__)
 SCHEDULES = cast(Table, BrandScheduleVersion.__table__)
 SETTINGS = cast(Table, BrandSearchSettingsVersion.__table__)
+TUNINGS = cast(Table, BrandCrisisTuningVersion.__table__)
+KNOBS = tuple(asdict(DEFAULT_TUNING))
 SCHEMA_VERSION = 1  # of the search settings document (domain/settings/search.py)
 
 
@@ -98,6 +106,20 @@ class SqlBrandStore:
             return False
         version = {"document": stored, "schema_version": SCHEMA_VERSION}
         self._version(SETTINGS, brand_id, at, version)
+        return True
+
+    def crisis_tuning(self, brand_id: uuid.UUID) -> CrisisTuning:
+        latest = self._latest(TUNINGS, brand_id, *(TUNINGS.c[knob] for knob in KNOBS))
+        return (
+            DEFAULT_TUNING
+            if latest is None
+            else CrisisTuning(**dict(zip(KNOBS, latest, strict=True)))
+        )
+
+    def set_crisis_tuning(self, brand_id: uuid.UUID, tuning: CrisisTuning, *, at: datetime) -> bool:
+        if self.crisis_tuning(brand_id) == tuning:
+            return False
+        self._version(TUNINGS, brand_id, at, asdict(tuning))
         return True
 
     def _version(

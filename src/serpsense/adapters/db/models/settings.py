@@ -101,3 +101,29 @@ class BrandScheduleVersion(Base):
     quiet_end: Mapped[time | None] = mapped_column(Time)
     timezone: Mapped[str] = mapped_column(Text, server_default=text(f"'{DEFAULT_TIMEZONE}'"))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class BrandCrisisTuningVersion(Base):
+    """Relational (`v_scan_scores` reads it): how a brand's crisis is read and its alerts paced
+    (domain/scoring/tuning.py). A brand without one uses its scoring version's numbers."""
+
+    __tablename__ = "brand_crisis_tuning_versions"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "created_at"),
+        CheckConstraint("warm_up_scans BETWEEN 0 AND 8", name="warm_up_scans_range"),
+        CheckConstraint("medium_at BETWEEN 1 AND 99", name="medium_at_range"),
+        CheckConstraint("high_at > medium_at AND high_at <= 100", name="high_above_medium"),
+        CheckConstraint("cooldown_hours BETWEEN 1 AND 72", name="cooldown_hours_range"),
+        CheckConstraint("spread_mentions BETWEEN 2 AND 50", name="spread_mentions_range"),
+        CheckConstraint("spread_surfaces BETWEEN 1 AND 5", name="spread_surfaces_range"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = _fk("brands.id")
+    warm_up_scans: Mapped[int] = mapped_column(SmallInteger)
+    medium_at: Mapped[int] = mapped_column(SmallInteger)
+    high_at: Mapped[int] = mapped_column(SmallInteger)
+    cooldown_hours: Mapped[int] = mapped_column(SmallInteger)
+    spread_mentions: Mapped[int] = mapped_column(SmallInteger)
+    spread_surfaces: Mapped[int] = mapped_column(SmallInteger)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)

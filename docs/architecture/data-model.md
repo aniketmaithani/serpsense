@@ -102,6 +102,19 @@ Each has `id`, the key FK, `document jsonb` (must be a JSON object: `ck_<table>_
 | timezone | text | IANA name, default `Asia/Kolkata`; 1–64 non-whitespace chars (`ck_brand_schedule_versions_timezone_format`); validity checked by the application (a CHECK can't consult `pg_timezone_names`; an invalid name would break `AT TIME ZONE` queries, so the dispatcher must not rely on SQL time-zone maths without validating) |
 | created_at | timestamptz | |
 
+### 🔒 `brand_crisis_tuning_versions` (relational: `v_scan_scores` reads it)
+How a brand's crisis is read and its alerts paced (`domain/scoring/tuning.py`, docs/scoring.md). A brand without a row uses its scoring version's numbers. Migration 0027.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| brand_id | uuid | fk → brands (RESTRICT); `uq_brand_crisis_tuning_versions_brand_id_created_at` |
+| warm_up_scans | smallint | 0–8 (`ck_…_warm_up_scans_range`): earlier scored scans before a level |
+| medium_at / high_at | smallint | medium 1–99 (`ck_…_medium_at_range`); high above medium, at most 100 (`ck_…_high_above_medium`) |
+| cooldown_hours | smallint | 1–72 (`ck_…_cooldown_hours_range`): a rule that fired stays quiet this long |
+| spread_mentions / spread_surfaces | smallint | 2–50 / 1–5: a story spreading |
+| created_at | timestamptz | |
+
 Resolution order: system defaults → user defaults → brand settings → per-run override; resolved result snapshotted into `scans.settings_snapshot` / `llm_calls.request_settings`.
 
 ---
@@ -317,7 +330,7 @@ Weights are 1–10000 (leave a surface out by giving it no row: a zero weight wo
 | `surface_scores` | `scan_id` fk → score_runs, `surface` enum `surface`, `score smallint` (0–100) | pk (scan_id, surface); a surface that showed nothing about the brand has no row |
 | `crisis_components` | `scan_id` fk → score_runs, `component` enum `crisis_component` (`velocity`, `spread`, `autocomplete`, `trends`, `press`), `value smallint` (0–100) | pk (scan_id, component); a missing component counts as 0 |
 
-Health, crisis score and crisis level are derived in `v_scan_scores` (with each scan's `brand_id` and `created_at`; each row computed on its own, so reading a brand's latest scans costs only their rows; weights, thresholds and warm-up joined by version) and mirrored by pure functions in `domain/scoring/`; an integration test checks the view against them. Health is the weighted mean of the surface scores (none when no surface showed anything), the crisis score the weighted sum of the components ÷ 10000, both rounded half up; the level is the highest threshold the score reaches, once the brand has `warm_up_scans` earlier scored scans, succeeded or partial (by scan creation time). Weights are multiplied as integers: smallint products overflow.
+Health, crisis score and crisis level are derived in `v_scan_scores` (with each scan's `brand_id` and `created_at`; each row computed on its own, so reading a brand's latest scans costs only their rows; weights, thresholds and warm-up joined by version) and mirrored by pure functions in `domain/scoring/`; an integration test checks the view against them. Health is the weighted mean of the surface scores (none when no surface showed anything), the crisis score the weighted sum of the components ÷ 10000, both rounded half up; the level is the highest threshold the score reaches, once the brand has `warm_up_scans` earlier scored scans, succeeded or partial (by scan creation time). Since 0027 the warm-up and the medium/high floors come from the brand's latest `brand_crisis_tuning_versions` row when it has one, for all its scans, so its levels are always compared under one set of cut-offs; the weights stay the version's. Weights are multiplied as integers: smallint products overflow.
 
 ---
 
@@ -394,7 +407,7 @@ Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no acto
 - `v_mention_first_last_seen` — min/max scan per mention.
 - `v_scan_usage` — billable searches (`served_from = 'live'`) and LLM cost per scan.
 - `v_user_monthly_usage` — searches and LLM spend per user per month.
-- `v_scan_scores` — health, crisis score, crisis level per scored scan (migration 0021; §7).
+- `v_scan_scores` — health, crisis score, crisis level per scored scan (migrations 0021, 0027; §7).
 - `v_narrative_activity` — first/last seen and open/dormant per narrative; current assignment per mention.
 - `v_current_settings`, `v_current_schedule`, `v_current_budgets` — latest version rows.
 - `v_scan_timing` — started/finished from transitions.
