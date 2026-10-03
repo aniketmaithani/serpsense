@@ -3,6 +3,7 @@
 // module, or with reduced motion, the page stays the plain story the HTML already is.
 import { createScope, createTimeline, onScroll } from '../vendor/anime/anime.esm.min.js';
 import { CHAPTER, firstChapters, intro } from './chapters-a.js';
+import { lastChapters } from './chapters-b.js';
 import { fitShapes } from './shapes.js';
 
 const root = document.documentElement;
@@ -55,10 +56,16 @@ const scope = createScope({
   });
   showChapters(0);
   crossfade(tl);
-  firstChapters(tl, { spread: mobile ? 0.2 : 0.3 }); // a tighter burst of mentions on a phone
+  const precision = mobile ? 0.08 : 0.15; // morph points per unit of outline: fewer on a phone,
+  const spread = mobile ? 0.2 : 0.3; // and a tighter burst of mentions
+  firstChapters(tl, { precision, spread });
+  const unhook = lastChapters(tl, track, precision);
   tl.add({ duration: 1 }, chapters.length * CHAPTER - 1); // the last chapter's full length
   signal.setAttribute('d', searchBar);
-  return () => root.classList.remove('motion');
+  return () => {
+    unhook();
+    root.classList.remove('motion');
+  };
 });
 
 // Positions are measured in pixels, so a new window width rebuilds the sequence (debounced). A
