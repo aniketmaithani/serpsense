@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from serpsense import __version__
+from serpsense.adapters.db.replay_export import Exported
 from serpsense.composition_replay import Replayed
 from serpsense.entrypoints import cli
 from serpsense.entrypoints.cli import app
@@ -198,3 +199,34 @@ def test_eval_groups_the_golden_mentions_and_writes_its_report(
 def test_eval_refuses_a_task_or_split_with_no_golden_set(args: list[str]) -> None:
     result = runner.invoke(app, ["eval", *args])
     assert result.exit_code == 2 and "No eval for" in result.stderr
+
+
+class Exporter:
+    """Answers the demo brands' recordings, and knows no other brand."""
+
+    def export(self, slug: str) -> Exported:
+        if slug == "nowhere":
+            raise LookupError("exactly one live brand must have this slug")
+        return Exported(text=f'{{"brand":"{slug}"}}\n', scans=2, answers=9, labels=40)
+
+
+def test_replay_export_writes_one_recording_per_brand(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_recording_export", lambda settings: Exporter())
+    out = tmp_path / "recordings"
+    result = runner.invoke(app, ["replay", "export", "--out", str(out)])
+    assert result.exit_code == 0
+    assert sorted(p.name for p in out.iterdir()) == [
+        "indrive.json",
+        "namma-yatri.json",
+        "ola.json",
+        "rapido.json",
+        "uber.json",
+    ]  # the demo's brands by default: a re-export is one command
+    assert (out / "ola.json").read_text(encoding="utf-8") == '{"brand":"ola"}\n'
+    assert "ola: 2 scans (9 answers), 40 labels." in result.stdout
+    one = ["replay", "export", "--brand", "nowhere", "--out", str(out)]
+    refused = runner.invoke(app, one)
+    assert refused.exit_code == 2 and "nowhere: exactly one live brand" in refused.stderr
