@@ -3,7 +3,7 @@
 {% block title %}{{ row.label }} · {{ story.brand_name }} · SerpSense{% endblock %}
 {% block main %}
 <p><a href="/brands/{{ story.brand_id }}">← {{ story.brand_name }}</a></p>
-<h1>{{ row.label }} <span class="badge">AI-generated</span></h1>
+<h1>{{ row.label }} <span class="ai-badge">AI-generated</span></h1>
 <section class="card">
   <p>{{ row.summary }}</p>
   <p class="muted">{{ row.mentions }} mention{{ "s" if row.mentions != 1 }} on {{ row.sources|map("words")|join(", ") }} ·
