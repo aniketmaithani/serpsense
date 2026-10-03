@@ -180,3 +180,16 @@ def test_monthly_budget_is_the_latest_in_force(conn: Connection, ledger: SqlSear
 def test_a_record_the_ledger_would_reject_is_refused_first(overrides: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         call(uuid.uuid4(), **overrides)
+
+
+def test_replay_reads_how_often_a_request_was_answered(
+    conn: Connection, ledger: SqlSearchLedger
+) -> None:
+    owner = add_user(conn)
+    assert ledger.times_answered(NEWS) == 0
+    ledger.record_call(call(owner))
+    ledger.record_call(call(owner, served_from=ServedFrom.SERPAPI_CACHE))
+    ledger.record_call(failed(owner, SerpErrorCode.HTTP_5XX))  # failures don't count
+    other = SearchRequest(engine=SerpEngine.GOOGLE_NEWS, params={"q": "Uber", "num": 10})
+    ledger.record_call(call(owner, request=other))
+    assert (ledger.times_answered(NEWS), ledger.times_answered(other)) == (2, 1)
