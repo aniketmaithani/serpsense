@@ -43,7 +43,21 @@ class CallRecord:
             raise ValueError("latency can't be negative")
 
 
-class SearchLedger(Protocol):
+class SearchUsage(Protocol):
+    """What the ledger knows about how many searches have been made."""
+
+    def live_calls(
+        self, *, since: datetime, user_id: uuid.UUID | None = None, scan_id: uuid.UUID | None = None
+    ) -> int:
+        """Billable calls (served live) since a time, for everyone, one user or one scan."""
+        ...
+
+    def monthly_budget(self, user_id: uuid.UUID, *, at: datetime) -> int | None:
+        """The user's search budget in force at a time, or None if none was ever set."""
+        ...
+
+
+class SearchLedger(SearchUsage, Protocol):
     def record_call(self, call: CallRecord) -> uuid.UUID:
         """Insert one `serp_calls` row; returns its id."""
         ...
@@ -58,14 +72,4 @@ class SearchLedger(Protocol):
         self, engine: SerpEngine, *, since: datetime, limit: int
     ) -> Sequence[SerpErrorCode | None]:
         """Attempts that reached SerpApi, newest first: an error code if failed, else None."""
-        ...
-
-    def live_calls(
-        self, *, since: datetime, user_id: uuid.UUID | None = None, scan_id: uuid.UUID | None = None
-    ) -> int:
-        """Billable calls (served live) since a time, for everyone, one user or one scan."""
-        ...
-
-    def monthly_budget(self, user_id: uuid.UUID, *, at: datetime) -> int | None:
-        """The user's search budget in force at a time, or None if none was ever set."""
         ...

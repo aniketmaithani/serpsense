@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
-from serpsense.ports.llm_client import Variables
+from serpsense.ports.llm_client import PromptUnavailable, Variables
 
 PROMPTS = Path(__file__).parent / "prompts"
 SEPARATOR = "\n=== user ===\n"
@@ -25,7 +25,7 @@ VERSION = re.compile(r"([a-z][a-z_]{0,47})/(v[1-9][0-9]{0,3})")
 ATTRIBUTE = re.compile(r"[a-z_]{1,32}")
 
 
-class PromptError(LookupError):
+class PromptError(PromptUnavailable):
     """A prompt version with no file, or a placeholder with no variable."""
 
 
