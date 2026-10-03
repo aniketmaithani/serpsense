@@ -174,8 +174,8 @@ Monthly search budget is a `user_search_budgets` row (default from config: 1,500
 | **Autocomplete** | on/off · prefix templates · languages | `{brand} `, `{brand} is `, `is {brand} ` · 6h |
 | **Google News** | on/off · languages · max articles · extra search terms | en + hi · 1 page · 3h |
 | **Google Trends** | on/off · region (`IN`, `IN-KA`…) · date range · source (web/news/YouTube) · data types | IN · 3 months · web · time + related · 24h |
-| **Google Play** | on/off · apps (`brand_apps`) · review sort · pages | newest · 1 page · 12h |
-| **Google Maps reviews** | on/off · locations (`brand_locations`, resolved once) · sort · pages per location | newest · 1 page · 12h |
+| **Google Play** | on/off · apps (`brand_apps`) · review sort (newest / most relevant) · review pages (0 = rating only) | newest · 1 page · 12h; the product page (rating and its "most relevant" reviews) is always read, so newest reviews are a second search per app |
+| **Google Maps reviews** | on/off · locations (`brand_locations`, resolved once) · sort (newest / most relevant) · pages per location | newest · 1 page · 12h |
 | **YouTube** | on/off · templates · upload-date filter · pages | off · 12h |
 
 **Competitors** are independent brands with their own settings and schedule. When you add one during onboarding it gets the **Lean** preset and a 12h schedule by default, so it costs less (the free-plan demo uses lighter custom settings, §22); the estimator shows the combined monthly total.
@@ -290,11 +290,11 @@ Every step can safely run twice: unique keys, `ON CONFLICT`, and "already done" 
 | Autocomplete | `google_autocomplete` | 1 per prefix × language | mentions `autocomplete` + positions |
 | News | `google_news` | 1 per language × search term | mentions `news` |
 | Trends | `google_trends` — **joint query** (brand + up to 4 competitors) for interest over time; related queries for the brand only | 1 per data type | `trends_observations` (one series per subject brand) + mentions `trends_query` |
-| Play | `google_play_product` | 1 per app × page | mentions `play_review` + `app_rating_observations` |
-| Maps | `google_maps` (resolve once) → `google_maps_reviews` | 1 per location × page | mentions `maps_review` |
+| Play | `google_play_product`: the product page, then `all_reviews` pages | 1 per app (rating) + 1 per review page | mentions `play_review` + `app_rating_observations` |
+| Maps | `google_maps` (resolve once) → `google_maps_reviews` | 1 per location × page (+1 the first time, to resolve) | mentions `maps_review` |
 | YouTube | `youtube` | 1 per template × page | mentions `youtube_video` |
 
-Standard preset ≈ **14 searches** per brand scan. Each competitor is its own brand with its own scans (Lean preset by default ≈ 8 searches).
+Standard preset (the defaults) ≈ **15 searches** per brand scan with one app and one place; Deep ≈ 24, within the 25-search per-scan limit. Each competitor is its own brand with its own scans (Lean preset by default ≈ 8 searches).
 
 ---
 
@@ -501,7 +501,7 @@ LOG_LEVEL=INFO
 1. Scheduled scans from Day 2 → about 12 snapshots of the demo brand by Oct 9 (every 12h; see the budget below).
 2. **Backfill from dates:** reviews, news and Trends carry dates, so one scan can rebuild a past timeline. Only autocomplete and the search page need repeated snapshots.
 3. **Demo brand: Ola** (ride-hailing) with its four competitors **Uber, Rapido, Namma Yatri and inDrive**. Present findings as "signals found in public search data", not accusations.
-4. **Budget:** the SerpApi key is on the **free plan: 250 searches/month** (10 spent recording the Ola fixtures on Oct 3). Ola runs custom settings every 12h: the search page (1 template, 1 page), autocomplete (1 prefix), English news, the Trends joint query for interest over time (so the comparison with all four competitors shows) and Play, ≈ 6 searches with the AI Overview follow-up, ≈ 72 by Oct 9; Trends related queries run once a day in the first scan. Each competitor runs custom settings every 24h: search page, news and Play, 3 searches, ≈ 72. That's ≈ 170 in all, leaving room for development. The demo deployment overrides the product defaults through `.env`: `DEFAULT_MONTHLY_SEARCH_BUDGET=200` and `SERPAPI_DAILY_GLOBAL_CAP=40`. The 1,500/month and 500/day defaults stay for paid plans. Repeated queries within an hour are served from SerpApi's cache for free, backfill from dates fills the past, and replay mode needs no searches. The quota check (Account API) skips a scan rather than overrun. Claude spend is tracked in `llm_calls`, capped by `user_llm_budgets` (default US$30/month).
+4. **Budget:** the SerpApi key is on the **free plan: 250 searches/month** (10 spent recording the Ola fixtures on Oct 3). Ola runs custom settings every 12h: the search page (1 template, 1 page) with the AI Overview follow-up, autocomplete (1 prefix), English news, the Trends joint query for interest over time (so the comparison with all four competitors shows) and Ola's related queries, and Play (the product page for the rating, then a page of newest reviews): at most 8 searches a scan, ≈ 96 for 12 scans by Oct 9. Each competitor runs custom settings every 24h: search page, news and its Play rating (no reviews), 3 searches, ≈ 72. That's ≈ 170 in all, leaving room for development. The demo deployment overrides the product defaults through `.env`: `DEFAULT_MONTHLY_SEARCH_BUDGET=200` and `SERPAPI_DAILY_GLOBAL_CAP=40`. The 1,500/month and 500/day defaults stay for paid plans. Repeated queries within an hour are served from SerpApi's cache for free, backfill from dates fills the past, and replay mode needs no searches. The quota check (Account API) skips a scan rather than overrun. Claude spend is tracked in `llm_calls`, capped by `user_llm_budgets` (default US$30/month).
 
 ---
 
