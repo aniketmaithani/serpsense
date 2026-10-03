@@ -223,3 +223,23 @@ class OutboxOutcome(StrEnum):
     RETRYABLE_ERROR = "retryable_error"
     PERMANENT_ERROR = "permanent_error"
     DROPPED = "dropped"
+
+
+class AuditAction(StrEnum):
+    """What an audit event records (`audit_events.action`, noun.verb_past; ADR-0009, 0013)."""
+
+    CODE_REQUESTED = "auth.code_requested"
+    LOGIN_SUCCEEDED = "auth.login_succeeded"
+    VERIFY_FAILED = "auth.verify_failed"
+    LOGGED_OUT = "auth.logged_out"
+    SESSIONS_REVOKED = "auth.sessions_revoked"
+    ACCOUNT_DELETED = "account.deleted"
+
+
+class AuditTarget(StrEnum):
+    """What an audit event is about (`audit_events.target_type`); deletion finds a user's
+    pre-login events through `otp_code`."""
+
+    OTP_CODE = "otp_code"
+    USER = "user"
+    SESSION = "session"

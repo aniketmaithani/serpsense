@@ -16,6 +16,7 @@ from typing import Protocol, Self
 
 from serpsense.ports.accounts import Accounts
 from serpsense.ports.alert_store import AlertStore
+from serpsense.ports.audit import AuditLog
 from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
@@ -27,6 +28,7 @@ from serpsense.ports.scan_store import ScanStore
 from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
 from serpsense.ports.score_store import ScoreStore
+from serpsense.ports.sessions import Sessions
 
 
 class UnitOfWork(Protocol):
@@ -57,6 +59,12 @@ class UnitOfWork(Protocol):
 
     @property
     def otp_codes(self) -> OtpCodes: ...
+
+    @property
+    def sessions(self) -> Sessions: ...
+
+    @property
+    def audit(self) -> AuditLog: ...
 
     @property
     def outbox(self) -> Outbox: ...

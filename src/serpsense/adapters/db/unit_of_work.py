@@ -8,6 +8,7 @@ from sqlalchemy import Connection, Engine, RootTransaction
 
 from serpsense.adapters.db.accounts import SqlAccounts
 from serpsense.adapters.db.alert_store import SqlAlertStore
+from serpsense.adapters.db.audit import SqlAuditLog
 from serpsense.adapters.db.brand_store import SqlBrandStore
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
@@ -18,9 +19,11 @@ from serpsense.adapters.db.scan_store import SqlScanStore
 from serpsense.adapters.db.scan_targets import SqlScanTargets
 from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.adapters.db.score_store import SqlScoreStore
+from serpsense.adapters.db.sessions import SqlSessions
 from serpsense.observability import get_logger
 from serpsense.ports.accounts import Accounts
 from serpsense.ports.alert_store import AlertStore
+from serpsense.ports.audit import AuditLog
 from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
@@ -32,6 +35,7 @@ from serpsense.ports.scan_store import ScanStore
 from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
 from serpsense.ports.score_store import ScoreStore
+from serpsense.ports.sessions import Sessions
 
 log = get_logger(__name__)
 
@@ -63,6 +67,8 @@ class SqlUnitOfWork:
     brands: BrandStore
     accounts: Accounts
     otp_codes: OtpCodes
+    sessions: Sessions
+    audit: AuditLog
     outbox: Outbox
     scores: ScoreStore
     alerts: AlertStore
@@ -89,6 +95,8 @@ class SqlUnitOfWork:
         self.brands = SqlBrandStore(self._conn)
         self.accounts = SqlAccounts(self._conn)
         self.otp_codes = SqlOtpCodes(self._conn)
+        self.sessions = SqlSessions(self._conn)
+        self.audit = SqlAuditLog(self._conn)
         self.outbox = SqlOutbox(self._conn)
         self.scores = SqlScoreStore(self._conn)
         self.alerts = SqlAlertStore(self._conn)
