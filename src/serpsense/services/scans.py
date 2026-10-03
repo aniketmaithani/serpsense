@@ -165,7 +165,7 @@ def _record_and_alert(
     """The alerts the scan raised with its scores; None when it was scored already."""
     if not scoring_run.record(uow, scan_id, scores, at=at):
         return None
-    return alerts.raise_alerts(uow.alerts, scan_id, at=at)
+    return alerts.raise_alerts(uow, scan_id, at=at)
 
 
 def _log_scored(scan_id: uuid.UUID, scores: ScanScores, raised: list[AlertRule]) -> None:

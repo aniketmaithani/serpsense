@@ -6,6 +6,7 @@ one, is `dead`. A retryable error waits before the next attempt: 1 minute, doubl
 hour.
 """
 
+import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from types import MappingProxyType
@@ -37,3 +38,8 @@ def next_attempt(at: datetime, retryable_errors: int) -> datetime:
         raise ValueError("a retry follows a retryable error")
     wait: timedelta = FIRST_WAIT * (1 << (retryable_errors - 1))
     return at + min(wait, LONGEST_WAIT)
+
+
+def alert_email_key(alert_id: uuid.UUID) -> str:
+    """An alert's email is written once (data-model §8)."""
+    return f"alert:{alert_id}:email"

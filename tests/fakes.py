@@ -262,6 +262,23 @@ class RecordingAlerts:
         return True
 
 
+class RecordingOutbox:
+    """Keeps the alert emails queued, once per alert; only inside a unit of work."""
+
+    def __init__(self, inside: Callable[[], bool] = lambda: True) -> None:
+        self.inside = inside
+        self.alert_emails: dict[uuid.UUID, dict[str, str]] = {}
+
+    def add_alert_email(
+        self, alert_id: uuid.UUID, *, data: Mapping[str, str], at: datetime
+    ) -> bool:
+        assert self.inside()
+        if alert_id in self.alert_emails:
+            return False
+        self.alert_emails[alert_id] = dict(data)
+        return True
+
+
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
@@ -281,6 +298,7 @@ class FakeUnitOfWork:
         self.targets = StaticTargets()
         self.scores = RecordingScores(lambda: self.open)
         self.alerts = RecordingAlerts(inside=lambda: self.open)
+        self.outbox = RecordingOutbox(lambda: self.open)
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
         self.open = False
