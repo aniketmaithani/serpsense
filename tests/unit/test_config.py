@@ -45,6 +45,7 @@ def test_settings_accept_production_when_all_guards_pass() -> None:
         ({"smtp_starttls": "false"}, "SMTP_STARTTLS"),
         ({"signup_mode": "open"}, "SIGNUP_MODE"),
         ({"base_url": "http://serpsense.ai"}, "https"),
+        ({"serpsense_mode": "replay"}, "SERPSENSE_MODE=replay"),
         (
             {"database_url": "postgresql+psycopg://serpsense:serpsense@postgres:5432/serpsense"},
             "development credentials",
