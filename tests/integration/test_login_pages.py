@@ -10,14 +10,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
 from serpsense.adapters.db.inbox import SqlInbox
+from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.search_ledger import SqlSearchLedger
 from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.composition import Container
 from serpsense.config import Settings
+from serpsense.domain.llm_capabilities import LlmPreset
 from serpsense.entrypoints.web.app import create_app
 from serpsense.services.accounts import AccountDeletion
+from serpsense.services.ai_settings import AiSettings
 from serpsense.services.auth import SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.scan_now import ScanNow, ScanNowLimits
@@ -55,6 +58,9 @@ def browser(
         ),
         stories=SqlStories(engine.connect),
         accounts=AccountDeletion(ports.unit_of_work, sign_in, clock),
+        ai_settings=AiSettings(
+            SqlLlmProfiles(engine, LlmPreset.BALANCED), clock, fallback=LlmPreset.BALANCED
+        ),
     )
     app = create_app(container)
     base = "https://testserver" if settings else "http://testserver"
