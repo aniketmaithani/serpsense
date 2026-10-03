@@ -46,7 +46,9 @@ OLA = DemoBrand(
     MappingProxyType(
         {
             "languages": ["en"],
-            "search_page": {"templates": ["{brand}"], "pages": 1, "ai_overview": True},
+            # Plain "Ola" finds Ola Electric's showrooms, a sister company the labeller rightly
+            # leaves out; "Ola cabs" finds the ride-hailing brand.
+            "search_page": {"templates": ["{brand} cabs"], "pages": 1, "ai_overview": True},
             "autocomplete": {"prefixes": ["{brand} "]},
             "news": {"extra_terms": []},
             "trends": {"related_queries": True},
