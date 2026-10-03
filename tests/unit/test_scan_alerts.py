@@ -28,6 +28,8 @@ def test_a_scored_scan_raises_its_alerts_as_it_finishes() -> None:
     assert [title for title, _ in run.uow.alerts.told.values()] == [
         "Ola: crisis level rose to high"
     ]
+    (email,) = run.uow.outbox.alert_emails.values()  # and its email, in the same unit of work
+    assert email["title"] == "Ola: crisis level rose to high"
     raised = [entry for entry in logs if entry["event"] == "alert.raised"]
     assert [entry["rule"] for entry in raised] == [AlertRule.LEVEL_INCREASE]
 
@@ -36,4 +38,4 @@ def test_a_scan_that_isnt_scored_raises_no_alert() -> None:
     run = scan(ScriptedSearch(), used=1500 - MOST + 1)  # skipped for its budget
     run.uow.alerts.given = OLA
     assert run.service.run(run.scan_id) is S.SKIPPED
-    assert run.uow.alerts.fired == {}
+    assert run.uow.alerts.fired == {} and run.uow.outbox.alert_emails == {}
