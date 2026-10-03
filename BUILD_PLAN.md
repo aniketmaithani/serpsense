@@ -270,7 +270,7 @@ Rules: ADR-0009. Highlights: HMAC-hashed codes, 10-min expiry, single use, 5 att
 2. **Claim:** `UPDATE scans SET status='running' WHERE id=:id AND status='queued' RETURNING` + transition row, in one transaction. Zero rows → exit without doing anything (a redelivered message, or another worker has it).
 3. **Resolve settings** → snapshot → **estimate** → check the user's budget and the SerpApi quota. If insufficient → `running → skipped` with a reason + notification.
 4. **Collect** with limited concurrency through the SerpApi client (cache → retry → circuit breaker → `serp_calls` row → redaction → `raw_responses`). Each surface records a `scan_surface_results` row.
-5. **Normalise** (adapter parsers → typed `Mention`): upsert `mentions` (unique key), insert `mention_observations`, app ratings and Trends observations.
+5. **Normalise** (adapter parsers → typed `Mention`): insert `mentions` first-seen (`ON CONFLICT DO NOTHING` on the unique key), insert `mention_observations`, app ratings and Trends observations.
 6. **Enrich (inline, same task):** label recent mentions (observed in the last 7 days) without an enrichment for the active `prompt_version`, then group into narratives. If the LLM fails, continue and finish `partial`; the next scan picks up the backlog.
 7. **Score** (pure domain functions) → `score_runs`, `surface_scores`, `crisis_components` for the active `scoring_version`; health/crisis/level are derived by `v_scan_scores`.
 8. **Compare with the last scan** (derived from observations) → **alert rules** (deterministic) → `alerts` + in-app `notifications` + `outbox_messages` in **one transaction** → the dispatcher sends emails.
