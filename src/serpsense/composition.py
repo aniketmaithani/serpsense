@@ -52,6 +52,7 @@ from serpsense.services.outbox import OutboxDispatcher
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
 from serpsense.services.scoring_run import score_backlog
 from serpsense.services.search import SearchLimits, SearchPorts, SearchService
+from serpsense.services.sessions import SessionGuard
 from serpsense.services.sweep import Sweeper
 
 __all__ = [
@@ -67,6 +68,7 @@ __all__ = [
     "build_container",
     "build_outbox",
     "build_seeder",
+    "build_session_guard",
     "build_settings",
     "build_sign_in",
     "build_worker",
@@ -228,6 +230,19 @@ def build_sign_in(settings: Settings, celery: Celery) -> SignIn:
         frozenset(settings.allowed_domain_list),
     )
     return SignIn(ports, keys, policy, session_days=settings.session_days)
+
+
+def build_session_guard(settings: Settings, celery: Celery) -> SessionGuard:
+    """Signed-in sessions (ADR-0009), with the CSRF key derived from SECRET_KEY."""
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    queue = CeleryJobQueue(celery)
+    csrf = derive_key(settings.secret_key.get_secret_value(), KeyPurpose.CSRF)
+    return SessionGuard(
+        lambda: SqlUnitOfWork(engine, queue),
+        SystemClock(),
+        csrf,
+        session_days=settings.session_days,
+    )
 
 
 def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
