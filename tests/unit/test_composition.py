@@ -14,6 +14,7 @@ from serpsense.composition import (
     build_container,
     build_outbox,
     build_seeder,
+    build_sign_in,
     build_worker,
 )
 from serpsense.config import ConfigError, Settings
@@ -74,3 +75,10 @@ def test_build_outbox_sends_through_the_configured_mailer_without_connecting() -
     assert (mailer._settings.host, mailer._settings.password) == ("smtp.example.com", "pw")
     console = make_settings(email_backend="console")
     assert isinstance(build_outbox(console, build_celery(console))._mailer, ConsoleMailer)
+
+
+def test_build_sign_in_wires_sign_in_without_connecting() -> None:
+    settings = make_settings(signup_mode="invite", allowed_domains="serpsense.in")
+    sign_in = build_sign_in(settings, build_celery(settings))
+    assert sign_in._policy.allows("a@serpsense.in") and not sign_in._policy.allows("a@x.in")
+    assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
