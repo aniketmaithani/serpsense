@@ -158,13 +158,15 @@ All have a brand FK (RESTRICT). `brand_locations` and `brand_apps` also have a `
 - **Only `status` can change after insert** (`trg_scans_identity_immutable`, reported as `ck_scans_identity_immutable`): observations and the Trends comparison rely on a scan's brand, slot and settings never changing. `brand_id`, `scheduled_for` and `settings_snapshot` never change, not even in a migration: billing ownership, same-brand observations and the Trends comparison were checked against them at insert time. Only a backfill of a column added later may disable the trigger, inside its own transaction (`ALTER TABLE scans DISABLE TRIGGER trg_scans_identity_immutable`, then `ENABLE`), and it says why in its docstring.
 - Replay scans have no requester (they are created by the seed/replay CLI), so `requested_by` is set only for manual scans.
 
-**Transitions** (`domain/scan_state.py`; anything else raises `IllegalTransition`):
+**Transitions** (`domain/scan_state.py`, each with the reasons it may be made for; anything else raises `IllegalTransition`):
 ```
-queued  → running                     (claim: UPDATE … WHERE status='queued' RETURNING)
-queued  → skipped                     (brand archived / account deleted)
-running → skipped                     (budget or SerpApi quota insufficient, checked after claim; brand archived mid-scan)
-running → succeeded | partial | failed (compare-and-set on status = 'running')
-running → failed                      (reason timed_out, by the maintenance sweep; same compare-and-set)
+(new)   → queued     scheduled | requested | replayed
+queued  → running    claimed            (claim: UPDATE … WHERE status='queued' RETURNING)
+queued  → skipped    brand_archived | account_deleted
+running → succeeded  completed          (finishes are compare-and-sets on status = 'running')
+running → partial    surfaces_failed | enrichment_failed (the LLM failed: deterministic scores only)
+running → failed     all_surfaces_failed | stage_failed | timed_out (the maintenance sweep)
+running → skipped    budget_exhausted | quota_insufficient (checked after claim) | brand_archived | account_deleted
 ```
 
 ### 🔒 `scan_status_transitions`
