@@ -4,14 +4,16 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection, delete, insert, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Connection, Engine, delete, insert, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from tests.integration.db_helpers import NOW, add_brand, add_user, table, violation
 
 pytestmark = pytest.mark.integration
 
 NOT_NULL_VIOLATION = "23502"
+LOCK_NOT_AVAILABLE = "55P03"
 
 USERS = table("users")
 BRANDS = table("brands")
@@ -164,3 +166,63 @@ def test_referenced_rows_cannot_be_deleted(conn: Connection, target: str, constr
     with pytest.raises(IntegrityError) as exc:
         conn.execute(statement)
     assert violation(exc).constraint_name == constraint
+
+
+def test_a_brand_has_at_most_four_competitors(conn: Connection) -> None:
+    owner = add_user(conn)
+    brand = add_brand(conn, owner, slug="ola")
+    rivals = [add_brand(conn, owner, slug=f"rival-{n}") for n in range(5)]
+    link(conn, rivals[0], brand)  # a link to the brand isn't one of its competitors
+    for rival in rivals[:4]:
+        link(conn, brand, rival)
+    with pytest.raises(IntegrityError) as exc, conn.begin_nested():
+        link(conn, brand, rivals[4])
+    assert violation(exc).constraint_name == "ck_brand_competitors_at_most_four"
+    again = pg_insert(COMPETITORS).values(brand_id=brand, competitor_brand_id=rivals[0])
+    conn.execute(again.on_conflict_do_nothing())  # re-linking an existing pair is a no-op
+
+
+def test_a_full_brand_can_swap_a_competitor_but_not_receive_one(conn: Connection) -> None:
+    owner = add_user(conn)
+    full, other = add_brand(conn, owner, slug="ola"), add_brand(conn, owner, slug="uber")
+    rivals = [add_brand(conn, owner, slug=f"rival-{n}") for n in range(5)]
+    for rival in rivals[:4]:
+        link(conn, full, rival)
+    swap = update(COMPETITORS).where(COMPETITORS.c.competitor_brand_id == rivals[0])
+    conn.execute(swap.values(brand_id=full, competitor_brand_id=rivals[4]))  # still four
+    link(conn, other, rivals[0])
+    with pytest.raises(IntegrityError) as exc:
+        conn.execute(
+            update(COMPETITORS).where(COMPETITORS.c.brand_id == other).values(brand_id=full)
+        )
+    assert violation(exc).constraint_name == "ck_brand_competitors_at_most_four"
+
+
+def test_concurrent_links_cannot_pass_four(migrated_engine: Engine) -> None:
+    with migrated_engine.begin() as setup:
+        owner = add_user(setup, f"{uuid.uuid4().hex}@example.com")
+        brand = add_brand(setup, owner, slug="ola")
+        rivals = [add_brand(setup, owner, slug=f"rival-{n}") for n in range(5)]
+        for rival in rivals[:3]:
+            link(setup, brand, rival)
+    try:
+        with migrated_engine.connect() as first, migrated_engine.connect() as second:
+            first_tx = first.begin()
+            link(first, brand, rivals[3])  # the fourth, not yet committed
+            second_tx = second.begin()
+            second.execute(text("SET LOCAL lock_timeout = '300ms'"))
+            with pytest.raises(OperationalError) as blocked:
+                link(second, brand, rivals[4])
+            assert violation(blocked).sqlstate == LOCK_NOT_AVAILABLE  # waits on the brand row
+            second_tx.rollback()
+            first_tx.commit()
+            retry_tx = second.begin()
+            with pytest.raises(IntegrityError) as exc:
+                link(second, brand, rivals[4])
+            assert violation(exc).constraint_name == "ck_brand_competitors_at_most_four"
+            retry_tx.rollback()
+    finally:
+        with migrated_engine.begin() as cleanup:
+            cleanup.execute(delete(COMPETITORS).where(COMPETITORS.c.brand_id == brand))
+            cleanup.execute(delete(BRANDS).where(BRANDS.c.id.in_([brand, *rivals])))
+            cleanup.execute(delete(USERS).where(USERS.c.id == owner))
