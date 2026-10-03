@@ -101,6 +101,12 @@ class SqlScanStore:
         )
         return list(self._conn.execute(query).scalars())
 
+    def replayed_at(self, brand_id: uuid.UUID) -> frozenset[datetime]:
+        query = select(SCANS.c.created_at).where(
+            SCANS.c.brand_id == brand_id, SCANS.c.trigger == ScanTrigger.REPLAY
+        )
+        return frozenset(self._conn.execute(query).scalars())
+
     def running_before(self, at: datetime) -> list[uuid.UUID]:
         claimed = (
             select(TRANSITIONS.c.scan_id)

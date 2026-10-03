@@ -14,6 +14,7 @@ from serpsense.domain.enums import (
     LlmTask,
     MentionSource,
     ScanStatus,
+    ScanTrigger,
     SerpEngine,
     ServedFrom,
     Surface,
@@ -106,6 +107,13 @@ class InMemoryScans:
             for i, s in self.scans.items()
             if self.status[i] is ScanStatus.QUEUED and s.created_at < at
         ]
+
+    def replayed_at(self, brand_id: uuid.UUID) -> frozenset[datetime]:
+        return frozenset(
+            s.created_at
+            for s in self.scans.values()
+            if s.brand_id == brand_id and s.trigger is ScanTrigger.REPLAY
+        )
 
     def running_before(self, at: datetime) -> Sequence[uuid.UUID]:
         return [
