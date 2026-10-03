@@ -47,6 +47,13 @@ class Outbox(Protocol):
         once to be dropped. None when nothing is due."""
         ...
 
+    def pending_for(self, user_id: uuid.UUID, email: str) -> list[uuid.UUID]:
+        """The pending emails to a user or their address, the code emails among them found
+        through the address's codes too (sent before the account existed, so naming no user):
+        the rows the deletion scrub pseudonymises. Locked until the unit of work ends: one being
+        sent is waited for, and is then no longer pending."""
+        ...
+
     def record(
         self,
         message_id: uuid.UUID,

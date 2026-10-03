@@ -76,6 +76,10 @@ class ScanStore(Protocol):
         """Scans still queued that were created before `at` (lost enqueues)."""
         ...
 
+    def queued_for_owner(self, owner_id: uuid.UUID) -> Sequence[uuid.UUID]:
+        """The queued scans of every brand the user owns."""
+        ...
+
     def running_before(self, at: datetime) -> Sequence[uuid.UUID]:
         """Scans still running that were claimed before `at` (stuck)."""
         ...
