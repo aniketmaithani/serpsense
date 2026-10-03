@@ -11,3 +11,8 @@ def day_start(at: datetime) -> datetime:
 
 def month_start(at: datetime) -> datetime:
     return day_start(at).replace(day=1)
+
+
+def searches_left(budget: int | None, *, default: int, used: int) -> int:
+    """A user's searches left this month: their budget, or the default when none was set."""
+    return (default if budget is None else budget) - used
