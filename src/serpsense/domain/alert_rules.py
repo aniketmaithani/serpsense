@@ -7,6 +7,9 @@ narrative the scan's grouping added to that now holds 5 or more mentions on 2 or
 (a story spreading). A brand that is still warming up (its crisis has no level yet) raises none,
 and the first level after the warm-up is where the brand starts, not a rise.
 
+The cooldown and what counts as spreading are the brand's tuning (`scoring/tuning.py`); the
+numbers here are the defaults.
+
 **Cooldown:** a rule that fired for the brand within 12 hours stays quiet (per narrative, for a
 spreading story), counted between the scans' creation times with 30 minutes' slack, so the next
 scan of a 12-hourly schedule isn't held back by the one before. A level that rises past the one
@@ -21,9 +24,9 @@ from types import MappingProxyType
 
 from serpsense.domain.enums import AlertRule, CrisisLevel, MentionSource, Surface
 from serpsense.domain.mention import SURFACE
+from serpsense.domain.scoring.tuning import DEFAULT_TUNING, CrisisTuning
 
-COOLDOWN, SLACK = timedelta(hours=12), timedelta(minutes=30)
-SPREAD_MENTIONS, SPREAD_SURFACES = 5, 2
+SLACK = timedelta(minutes=30)
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,7 @@ class AlertFacts:
     autocomplete: int  # the scan's new-negative-autocomplete crisis component, 0-100
     last: Mapping[AlertRule, Fired] = field(default_factory=lambda: MappingProxyType({}))
     stories: tuple[Story, ...] = ()
+    tuning: CrisisTuning = DEFAULT_TUNING  # the brand's
 
 
 def due(facts: AlertFacts) -> list[AlertRule]:
@@ -81,8 +85,8 @@ def spreading(facts: AlertFacts) -> list[Story]:
     return [
         story
         for story in facts.stories
-        if story.mentions >= SPREAD_MENTIONS
-        and len(story.surfaces) >= SPREAD_SURFACES
+        if story.mentions >= facts.tuning.spread_mentions
+        and len(story.surfaces) >= facts.tuning.spread_surfaces
         and (story.last is None or not _recent(facts, story.last))
     ]
 
@@ -105,4 +109,4 @@ def _within_cooldown(facts: AlertFacts, last: Fired) -> bool:
 
 
 def _recent(facts: AlertFacts, at: datetime) -> bool:
-    return facts.at - at < COOLDOWN - SLACK
+    return facts.at - at < facts.tuning.cooldown - SLACK
