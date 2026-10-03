@@ -352,7 +352,13 @@ class RecordingOutbox:
         self.otp_emails: dict[uuid.UUID, bytes] = {}
 
     def add_otp_email(
-        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+        self,
+        otp_code_id: uuid.UUID,
+        *,
+        sealed: bytes,
+        minutes: int,
+        at: datetime,
+        purpose: str = "otp",
     ) -> bool:
         assert self.inside()
         if otp_code_id in self.otp_emails:

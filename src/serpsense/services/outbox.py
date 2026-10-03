@@ -14,7 +14,7 @@ starts the next one.
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 
-from serpsense.domain.enums import OutboxOutcome, OutboxStatus
+from serpsense.domain.enums import CodeEmail, OutboxOutcome, OutboxStatus
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
 from serpsense.ports.mailer import Email, Mailer, MailFailed
@@ -43,8 +43,24 @@ def _otp(data: Mapping[str, str], secret: str | None) -> tuple[str, str]:
     return "Your SerpSense sign-in code", body
 
 
+def _delete_code(data: Mapping[str, str], secret: str | None) -> tuple[str, str]:
+    if secret is None:
+        raise KeyError("sealed")
+    body = (
+        f"Your code to delete your SerpSense account is {secret}\n\nThis code deletes your "
+        f"SerpSense account. It works once, for {data['minutes']} minutes. If you didn't ask "
+        "for it, ignore it, and sign out everywhere (Settings, Account): someone may be signed "
+        "in as you."
+    )
+    return "Your code to delete your SerpSense account", body
+
+
 Template = Callable[[Mapping[str, str], str | None], tuple[str, str]]
-TEMPLATES: Mapping[str, Template] = {"alert": _alert, "otp": _otp}
+TEMPLATES: Mapping[str, Template] = {
+    "alert": _alert,
+    CodeEmail.SIGN_IN: _otp,
+    CodeEmail.DELETE_ACCOUNT: _delete_code,
+}
 
 
 class RenderFailed(ValueError):

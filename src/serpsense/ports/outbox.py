@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from serpsense.domain.enums import OutboxKind, OutboxOutcome, OutboxStatus
+from serpsense.domain.enums import CodeEmail, OutboxKind, OutboxOutcome, OutboxStatus
 
 
 @dataclass(frozen=True)
@@ -34,10 +34,16 @@ class Outbox(Protocol):
         ...
 
     def add_otp_email(
-        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+        self,
+        otp_code_id: uuid.UUID,
+        *,
+        sealed: bytes,
+        minutes: int,
+        at: datetime,
+        purpose: CodeEmail = CodeEmail.SIGN_IN,
     ) -> bool:
-        """Queue a sign-in code's email to the address it was issued for, with the code sealed;
-        False when it was queued already."""
+        """Queue a code's email, worded for what it is for, to the address it was issued for,
+        with the code sealed; False when it was queued already."""
         ...
 
     def claim_due(self, at: datetime) -> DueEmail | None:
