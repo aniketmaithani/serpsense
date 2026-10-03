@@ -1,8 +1,10 @@
-"""Scoring reference data (docs/architecture/data-model.md §7). Append-only."""
+"""Score tables (docs/architecture/data-model.md §7). All append-only."""
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, SmallInteger, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base, pg_enum
@@ -15,6 +17,12 @@ COMPONENTS = ", ".join(f"'{c.value}'" for c in CrisisComponent)
 def _version_fk() -> Mapped[str]:
     return mapped_column(
         Text, ForeignKey("scoring_versions.version", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+def _run_fk() -> Mapped[uuid.UUID]:
+    return mapped_column(
+        UUID(as_uuid=True), ForeignKey("score_runs.scan_id", ondelete="RESTRICT"), primary_key=True
     )
 
 
@@ -63,3 +71,39 @@ class CrisisLevelThreshold(Base):
         pg_enum(CrisisLevel, "crisis_level"), primary_key=True
     )
     min_score: Mapped[int] = mapped_column(SmallInteger)
+
+
+class ScoreRun(Base):
+    """A scan scored under a version; health, crisis and level are derived (v_scan_scores)."""
+
+    __tablename__ = "score_runs"
+
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scans.id", ondelete="RESTRICT"), primary_key=True
+    )
+    version: Mapped[str] = mapped_column(
+        Text, ForeignKey("scoring_versions.version", ondelete="RESTRICT")
+    )
+    computed_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class SurfaceScore(Base):
+    """A surface that showed something about the brand; one that showed nothing has no row."""
+
+    __tablename__ = "surface_scores"
+    __table_args__ = (CheckConstraint("score BETWEEN 0 AND 100", name="score_range"),)
+
+    scan_id: Mapped[uuid.UUID] = _run_fk()
+    surface: Mapped[Surface] = mapped_column(pg_enum(Surface, "surface"), primary_key=True)
+    score: Mapped[int] = mapped_column(SmallInteger)
+
+
+class CrisisComponentValue(Base):
+    __tablename__ = "crisis_components"
+    __table_args__ = (CheckConstraint("value BETWEEN 0 AND 100", name="value_range"),)
+
+    scan_id: Mapped[uuid.UUID] = _run_fk()
+    component: Mapped[CrisisComponent] = mapped_column(
+        pg_enum(CrisisComponent, "crisis_component"), primary_key=True
+    )
+    value: Mapped[int] = mapped_column(SmallInteger)
