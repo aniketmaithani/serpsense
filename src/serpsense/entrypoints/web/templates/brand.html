@@ -65,7 +65,12 @@
 {% if brand.alerts %}
 <section class="card">
   <h2>Alerts</h2>
-  <ul>{% for a in brand.alerts %}<li>{{ a.at|when }} · {{ a.title }}</li>{% endfor %}</ul>
+  <ul class="alerts">
+  {% for a in brand.alerts %}
+    <li>{{ a.at|when }} · {{ a.title }}
+      {% if a.explanation %}<div class="reason">AI-generated: {{ a.explanation }}</div>{% endif %}</li>
+  {% endfor %}
+  </ul>
 </section>
 {% endif %}
 

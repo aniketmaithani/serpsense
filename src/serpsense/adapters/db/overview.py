@@ -89,9 +89,10 @@ LIMIT :limit
 )
 ALERTS = scoped(
     """
-SELECT a.rule, a.created_at, coalesce(n.title, 'Alert') AS title
+SELECT a.rule, a.created_at, coalesce(n.title, 'Alert') AS title, e.text AS explanation
 FROM alerts a JOIN scans s ON s.id = a.scan_id
 LEFT JOIN notifications n ON n.alert_id = a.id AND n.user_id = :user
+LEFT JOIN alert_explanations e ON e.alert_id = a.id
 WHERE s.brand_id IN ({owned} AND id = :brand)
 ORDER BY a.created_at DESC, a.id LIMIT :limit
 """
@@ -178,4 +179,4 @@ def _mention(row: Any) -> MentionRow:
 
 
 def _alert(row: Any) -> AlertRow:
-    return AlertRow(AlertRule(row.rule), row.created_at, row.title)
+    return AlertRow(AlertRule(row.rule), row.created_at, row.title, row.explanation)
