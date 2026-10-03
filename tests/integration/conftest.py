@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Connection, Engine, make_url, text
+from sqlalchemy import Connection, Engine, create_engine, make_url, text
 from testcontainers.postgres import PostgresContainer
 
 from serpsense.adapters.db.engine import create_db_engine
@@ -64,5 +64,13 @@ def committing_engine(postgres_url: str) -> Iterator[Engine]:
         patch.setenv("DATABASE_URL", url)
         command.upgrade(alembic_config(), "head")
     engine = create_db_engine(url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def impatient_engine(committing_engine: Engine) -> Iterator[Engine]:
+    """The committing database with a 200 ms lock timeout, for tests of a lock wait running out."""
+    engine = create_engine(committing_engine.url, connect_args={"options": "-c lock_timeout=200"})
     yield engine
     engine.dispose()
