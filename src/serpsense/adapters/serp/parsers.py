@@ -43,6 +43,35 @@ def parse_search_page(payload: Mapping[str, Any]) -> list[ParsedMention]:
     return _best_ranks(found, "search_page")
 
 
+def parse_ai_overview(payload: Mapping[str, Any]) -> list[ParsedMention]:
+    """Google's AI Overview, from a `google` page that shows it or a `google_ai_overview`
+    follow-up: its text blocks (paragraphs and list items) as one mention; the references are
+    its sources, not its text. An overview that only links to its follow-up has no text yet."""
+    overview = payload.get("ai_overview")
+    if not isinstance(overview, Mapping):
+        return []
+    blocks = [_block_text(block) for block in _items(overview, "text_blocks")]
+    found = _safely(
+        _text_mention, MentionSource.AI_OVERVIEW, _text(*blocks) or None, _language(payload), 1
+    )
+    return [found] if found is not None else []
+
+
+def ai_overview_token(payload: Mapping[str, Any]) -> str | None:
+    """The token for the `google_ai_overview` follow-up, when the page only links to it."""
+    overview = payload.get("ai_overview")
+    if not isinstance(overview, Mapping) or _items(overview, "text_blocks"):
+        return None
+    return _string(overview.get("page_token"))
+
+
+def _block_text(block: Mapping[str, Any]) -> str | None:
+    items = [
+        _string(item.get("snippet")) or _string(item.get("title")) for item in _items(block, "list")
+    ]
+    return _text(_string(block.get("snippet")), *items) or None
+
+
 def parse_autocomplete(payload: Mapping[str, Any]) -> list[ParsedMention]:
     """Suggestions from `google_autocomplete`, ranked in the order Google shows them."""
     language = _language(payload)
