@@ -17,6 +17,7 @@ from serpsense.services.scan_now import Requested
 router = APIRouter()
 SEE_OTHER = status.HTTP_303_SEE_OTHER
 SAID: Mapping[str, str] = {  # what the page says after a "Scan now", by its outcome
+    "added": "Brand added. Press Scan now for its first scan, or wait for its schedule.",
     Requested.QUEUED: "Scan queued: new results in a few minutes.",
     Requested.BUSY: "A scan of this brand is already queued or running.",
     Requested.TOO_SOON: "This brand was scanned in the last 15 minutes; try again shortly.",

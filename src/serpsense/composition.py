@@ -65,6 +65,7 @@ from serpsense.services.accounts import AccountDeletion
 from serpsense.services.ai_settings import AiSettings
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
+from serpsense.services.brands import BrandCreator
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
@@ -135,6 +136,7 @@ class Container:
     brand_settings: BrandSettings
     stories: Stories
     accounts: AccountDeletion
+    brands: BrandCreator
     ai_settings: AiSettings
     drafts: Drafter
 
@@ -169,6 +171,7 @@ def build_container(settings: Settings | None = None) -> Container:
         brand_settings=build_brand_settings(resolved, engine, celery),
         stories=SqlStories(engine.connect),
         accounts=build_account_deletion(resolved, celery, sign_in),
+        brands=BrandCreator(lambda: SqlUnitOfWork(engine, CeleryJobQueue(celery)), SystemClock()),
         ai_settings=AiSettings(
             SqlLlmProfiles(engine, resolved.default_llm_preset),
             SystemClock(),
