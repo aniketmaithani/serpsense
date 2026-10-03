@@ -9,7 +9,15 @@ from typing import Any, Self
 
 import structlog
 
-from serpsense.domain.enums import MentionSource, ScanStatus, SerpEngine, ServedFrom, Surface
+from serpsense.domain.enums import (
+    LlmTask,
+    MentionSource,
+    ScanStatus,
+    SerpEngine,
+    ServedFrom,
+    Surface,
+)
+from serpsense.domain.llm_capabilities import TaskSettings
 from serpsense.domain.llm_pricing import Hop, TokenUsage
 from serpsense.domain.mention import ParsedMention, best_ranked, text_key
 from serpsense.domain.observation import AppRating
@@ -161,6 +169,7 @@ class RecordingEnrichments:
     def __init__(self, pending: Sequence[PendingText] = ()) -> None:
         self.waiting = list(pending)
         self.labels: list[tuple[MentionLabel, str, uuid.UUID]] = []
+        self.asked_for: list[uuid.UUID] = []  # the brands whose pending texts were asked for
 
     def pending(
         self,
@@ -171,6 +180,7 @@ class RecordingEnrichments:
         seen_since: datetime,
         limit: int,
     ) -> Sequence[PendingText]:
+        self.asked_for.append(brand_id)
         done = {(lbl.mention_id, lbl.revision) for lbl, v, _ in self.labels if v == prompt_version}
         fits = [p for p in self.waiting if p.source in sources]
         return [p for p in fits if (p.mention_id, p.revision) not in done][:limit]
@@ -198,7 +208,8 @@ class RecordingJobs:
 
 
 class FakeUnitOfWork:
-    """Shares its stores across units of work; jobs reach `sent` only on a clean exit."""
+    """Shares its stores across units of work; jobs reach `sent` only on a clean exit, and
+    `open` says whether a unit of work is in progress (no external call may happen then)."""
 
     def __init__(self, scans: InMemoryScans, schedules: StaticSchedules) -> None:
         self.scans, self.schedules = scans, schedules
@@ -207,12 +218,13 @@ class FakeUnitOfWork:
         self.targets = StaticTargets()
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
+        self.open = False
 
     def __call__(self) -> Self:
         return self
 
     def __enter__(self) -> Self:
-        self.jobs = RecordingJobs()
+        self.jobs, self.open = RecordingJobs(), True
         return self
 
     def __exit__(
@@ -221,6 +233,7 @@ class FakeUnitOfWork:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        self.open = False
         if exc_type is None:
             self.sent.scans.extend(self.jobs.scans)
 
@@ -350,3 +363,15 @@ class Untouchable(Mapping[str, Any]):
 
     def __len__(self) -> int:
         raise AssertionError("the payload was read")
+
+
+class FixedProfiles:
+    """Every user's tasks run on the same settings, and the users asked about are kept."""
+
+    def __init__(self, settings: TaskSettings) -> None:
+        self.fixed = settings
+        self.asked: list[tuple[uuid.UUID, LlmTask]] = []
+
+    def settings(self, user_id: uuid.UUID, task: LlmTask) -> TaskSettings:
+        self.asked.append((user_id, task))
+        return self.fixed

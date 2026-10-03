@@ -60,6 +60,11 @@ class LlmCallFailed(Exception):
         self.latency_ms = latency_ms
 
 
+class PromptUnavailable(LookupError):
+    """A prompt version with no file, or a placeholder with no variable: a deploy error, not
+    the model's, which callers may contain like any other failed call."""
+
+
 class LLMClient(Protocol):
     def complete(self, request: LlmRequest) -> LlmResponse:
         """One model call; raises LlmCallFailed when no response came back."""
