@@ -1,19 +1,21 @@
 """Scans and their status history in Postgres (data-model §4)."""
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import cast
 
 from sqlalchemy import Connection, Table, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition
+from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
 from serpsense.domain.scan_state import IllegalTransition, Transition, TransitionReason
-from serpsense.ports.scan_store import NewScan
+from serpsense.ports.scan_store import NewScan, SurfaceResult
 
 SCANS = cast(Table, Scan.__table__)
 TRANSITIONS = cast(Table, ScanStatusTransition.__table__)
+SURFACES = cast(Table, ScanSurfaceResult.__table__)
 CREATION_REASON = {
     ScanTrigger.SCHEDULE: TransitionReason.SCHEDULED,
     ScanTrigger.MANUAL: TransitionReason.REQUESTED,
@@ -68,6 +70,21 @@ class SqlScanStore:
         if moved:
             _record(self._conn, scan_id, transition, at)
         return moved
+
+    def record_surfaces(self, scan_id: uuid.UUID, results: Sequence[SurfaceResult]) -> int:
+        if not results:
+            return 0
+        rows = [
+            {
+                "scan_id": scan_id,
+                "surface": r.surface,
+                "outcome": r.outcome,
+                "error_code": r.error_code,
+            }
+            for r in results
+        ]
+        statement = pg_insert(SURFACES).values(rows).on_conflict_do_nothing()
+        return len(self._conn.execute(statement.returning(SURFACES.c.surface)).all())
 
     def queued_before(self, at: datetime) -> list[uuid.UUID]:
         query = select(SCANS.c.id).where(
