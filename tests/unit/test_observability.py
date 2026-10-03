@@ -112,6 +112,8 @@ def test_http_client_loggers_are_capped_at_warning() -> None:
     configure_logging(level="DEBUG", json=True)
     assert logging.getLogger("urllib3").level == logging.WARNING
     assert logging.getLogger("httpx").level == logging.WARNING
+    for sdk in ("anthropic", "httpx2", "httpcore2"):  # request bodies and headers at DEBUG
+        assert logging.getLogger(sdk).level == logging.WARNING
 
 
 @pytest.mark.usefixtures("restore_logging")
