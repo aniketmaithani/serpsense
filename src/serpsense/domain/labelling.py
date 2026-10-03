@@ -17,6 +17,11 @@ LABELLERS: Mapping[MentionSource, LlmTask] = {
 }
 
 
+# The active prompt of each labelling task that has one (prompts/<task>/v<N>.md); a new version
+# labels again, and scoring prefers its labels (docs/scoring.md).
+PROMPTS: Mapping[LlmTask, str] = {LlmTask.LABEL_MENTIONS: "label_mentions/v1"}
+
+
 def sources_for(task: LlmTask) -> frozenset[MentionSource]:
     """The sources a labelling task labels; empty for a task that labels none."""
     return frozenset(source for source, labeller in LABELLERS.items() if labeller is task)
