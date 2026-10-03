@@ -21,6 +21,7 @@ pytestmark = pytest.mark.integration
 
 TRENDS = table("trends_observations")
 COMPETITORS = table("brand_competitors")
+BRANDS = table("brands")
 START = datetime(2026, 10, 1, tzinfo=UTC)
 HOUR = timedelta(hours=1)
 
@@ -84,12 +85,17 @@ def test_missing_scan_or_subject_reports_the_foreign_key(
 
 
 def test_a_comparison_has_at_most_five_lines(conn: Connection) -> None:
-    brand_id, rivals, scan_id = comparison(conn, rivals=5)
-    for subject in [brand_id, *rivals[:4]]:
+    """A brand has at most four competitors, but swapping one mid-scan must not add a line."""
+    brand_id, rivals, scan_id = comparison(conn, rivals=4)
+    for subject in [brand_id, *rivals]:
         observe(conn, scan_id, subject)
     observe(conn, scan_id, brand_id, observed_at=START + HOUR)  # more points on a line
+    owner = conn.execute(select(BRANDS.c.owner_id).where(BRANDS.c.id == brand_id)).scalar_one()
+    newcomer = add_brand(conn, owner, slug="newcomer")
+    conn.execute(delete(COMPETITORS).where(COMPETITORS.c.competitor_brand_id == rivals[0]))
+    conn.execute(insert(COMPETITORS).values(brand_id=brand_id, competitor_brand_id=newcomer))
     with pytest.raises(IntegrityError) as exc:
-        observe(conn, scan_id, rivals[4])
+        observe(conn, scan_id, newcomer)
     assert violation(exc).constraint_name == "ck_trends_observations_comparison_size"
 
 
