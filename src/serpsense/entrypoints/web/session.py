@@ -1,9 +1,10 @@
 """Who is asking, and whether a form really came from our page (ADR-0009).
 
-The session cookie holds a random token (HttpOnly, SameSite=Lax, Secure in production). A
-signed-in write carries the session's CSRF token, in a form field or the X-CSRF-Token header.
-The two sign-in forms come before any session, so they carry a double-submit token instead: a
-random value in a strict cookie that the form must echo.
+The session cookie holds a random token (HttpOnly, SameSite=Lax; in production Secure and named
+__Host-, so no subdomain can set or read it). A signed-in
+write carries the session's CSRF token, in a form field or the X-CSRF-Token header. The two sign-in
+forms come before any session, so they carry a double-submit token instead: a random value in a
+strict cookie that the form must echo.
 """
 
 import hmac
@@ -38,14 +39,18 @@ def network(request: Request) -> Network:
     return Network(_ip(host), request.headers.get("user-agent"))
 
 
+def cookie_name(request: Request, name: str) -> str:
+    return f"__Host-{name}" if container(request).settings.is_production else name
+
+
 def current_user(request: Request) -> CurrentUser | None:
-    return sessions(request).current(request.cookies.get(SESSION))
+    return sessions(request).current(request.cookies.get(cookie_name(request, SESSION)))
 
 
 def set_session(request: Request, response: Response, token: str) -> None:
     settings = container(request).settings
     response.set_cookie(
-        SESSION,
+        cookie_name(request, SESSION),
         token,
         max_age=settings.session_days * 24 * 3600,
         httponly=True,
@@ -54,8 +59,8 @@ def set_session(request: Request, response: Response, token: str) -> None:
     )
 
 
-def clear_session(response: Response) -> None:
-    response.delete_cookie(SESSION)
+def clear_session(request: Request, response: Response) -> None:
+    response.delete_cookie(cookie_name(request, SESSION))
 
 
 def require_csrf(request: Request, user: CurrentUser, submitted: str | None) -> None:
@@ -66,16 +71,21 @@ def require_csrf(request: Request, user: CurrentUser, submitted: str | None) -> 
 
 def form_token(request: Request) -> str:
     """The sign-in forms' double-submit token: the one this browser has, or a new one."""
-    return request.cookies.get(FORM) or secrets.token_urlsafe(32)
+    return request.cookies.get(cookie_name(request, FORM)) or secrets.token_urlsafe(32)
 
 
 def keep_form_token(request: Request, response: Response, token: str) -> None:
     secure = container(request).settings.is_production
-    response.set_cookie(FORM, token, httponly=True, secure=secure, samesite="strict")
+    name = cookie_name(request, FORM)
+    response.set_cookie(name, token, httponly=True, secure=secure, samesite="strict")
+
+
+def drop_form_token(request: Request, response: Response) -> None:
+    response.delete_cookie(cookie_name(request, FORM))
 
 
 def require_form_token(request: Request, submitted: str) -> None:
-    expected = request.cookies.get(FORM, "")
+    expected = request.cookies.get(cookie_name(request, FORM), "")
     if not expected or not hmac.compare_digest(
         expected.encode(), submitted.encode("utf-8", "replace")
     ):

@@ -2,7 +2,7 @@
 
 The verify page is rendered straight from the request-code form, so the email never travels in a
 URL (and so never in a log). Every answer to "send me a code" looks the same, and no sign-in page
-is cached.
+is cached. Signing in ends any session the browser already had.
 """
 
 from typing import Annotated
@@ -12,9 +12,9 @@ from fastapi.responses import RedirectResponse
 
 from serpsense.entrypoints.web.pages import page
 from serpsense.entrypoints.web.session import (
-    FORM,
     clear_session,
     current_user,
+    drop_form_token,
     form_token,
     keep_form_token,
     network,
@@ -54,13 +54,16 @@ def verify(
     request: Request, form_token: Field = "", email: Field = "", code: Field = ""
 ) -> Response:
     require_form_token(request, form_token)
+    previous = current_user(request)
     signed_in = sign_in(request).verify(email, code.strip(), network(request))
     if signed_in is None:
         error = "That code didn't work. Check it, or ask for a new one."
         return _form(request, "verify.html", status_code=400, email=email, error=error)
+    if previous is not None:
+        sessions(request).log_out(previous, network(request))
     response = RedirectResponse("/", SEE_OTHER)
     set_session(request, response, signed_in.token)
-    response.delete_cookie(FORM)
+    drop_form_token(request, response)
     return response
 
 
@@ -71,7 +74,7 @@ def log_out(request: Request, csrf_token: Field = "") -> Response:
         require_csrf(request, user, csrf_token)
         sessions(request).log_out(user, network(request))
     response = RedirectResponse("/login", SEE_OTHER)
-    clear_session(response)
+    clear_session(request, response)
     return response
 
 
