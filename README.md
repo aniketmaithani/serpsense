@@ -83,6 +83,9 @@ docker compose run --rm tools serpsense seed-demo --owner you@example.com
 Open http://localhost:8000; sign-in codes and alert emails arrive in Mailpit at
 http://localhost:8025.
 
+The hosted instance at https://serpsense.ai is invite-only. To run your own on one host with
+TLS, see [`docs/operations.md`](docs/operations.md#production).
+
 ## Live mode and spend
 
 Live mode calls SerpApi and the Anthropic API. Budgets keep spend bounded: a monthly search budget

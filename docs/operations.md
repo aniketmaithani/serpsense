@@ -101,3 +101,61 @@ Restore into a stopped stack (`docker compose stop web worker worker-outbox beat
 A user deletes their account from Settings → Account with a fresh code and their address typed
 out (ADR-0013). Their brands are archived, sessions ended, pending emails dropped, and their
 email, IP and user agent scrubbed from every table in the same transaction.
+
+## Production
+
+One host runs the whole stack from [`docker-compose.prod.yml`](../docker-compose.prod.yml):
+the services above without Mailpit, plus **Caddy** in front, which gets and renews the Let's
+Encrypt certificate and redirects `www` to the apex. Only Caddy publishes ports (80, 443). The
+app runs with `APP_ENV=production`, so it refuses unsafe settings at start (replay mode, the
+console mailer, open sign-up, a non-https `BASE_URL`, the development database password).
+The web app trusts `X-Forwarded-For` only from the network it shares with Caddy, so per-IP rate
+limits see client addresses. Caddy keeps no access log.
+
+serpsense.ai runs on a DigitalOcean droplet (Ubuntu 24.04, 2 vCPU / 4 GB, `blr1`, tagged
+`serpsense`) behind the `serpsense-web` cloud firewall (SSH, HTTP, HTTPS in). DNS is at GoDaddy:
+an `A` record for `@` pointing at the droplet and `www` as a `CNAME` to `@`; the Brevo DKIM and
+DMARC records sit alongside.
+
+### First setup
+
+1. Create an Ubuntu 24.04 droplet with your SSH key, and point the domain's `A` record at it.
+2. Provision it as root: `ssh root@HOST 'bash -s' < deploy/provision.sh`. This installs Docker,
+   2 GB of swap, ufw, fail2ban and unattended upgrades, allows SSH by key only, creates a `deploy`
+   user (in the `docker` group, no sudo) and the nightly backup.
+3. Write `/opt/serpsense/.env` (owner `deploy`, mode 600). It needs, beyond the keys:
+   `APP_ENV=production`, `DOMAIN`, `BASE_URL=https://DOMAIN`, `POSTGRES_PASSWORD`, fresh
+   `SECRET_KEY` and `OUTBOX_ENCRYPTION_KEYS` (`uv run serpsense gen-secrets`),
+   `SIGNUP_MODE=invite` with `ALLOWED_EMAILS` or `ALLOWED_DOMAINS`, and SMTP with
+   `SMTP_STARTTLS=true`. Copy only what the app reads; tokens for DigitalOcean or GoDaddy never
+   go on the host.
+4. Deploy: `scripts/deploy.sh deploy@DOMAIN`.
+
+DigitalOcean blocks outbound SMTP on ports 25, 465 and 587, so `SMTP_PORT` is **2525** (Brevo
+offers STARTTLS there). A blocked port shows up as `outbox.send_failed` with
+`error_code=smtp.timeout`; the outbox retries the message once the port is fixed.
+
+### Deploys and rollback
+
+```bash
+scripts/deploy.sh deploy@serpsense.ai            # ship HEAD: rsync, rebuild, migrate, restart
+scripts/deploy.sh deploy@serpsense.ai <older-sha> # roll back
+ssh deploy@serpsense.ai cat /opt/serpsense/REVISION   # what is running
+```
+
+Only committed files ship; the host's `.env` is never touched. Migrations only go forward: to
+roll back past one, run `alembic downgrade` with the newer code first, or restore a backup.
+
+On the host, every command from [Commands](#commands) works with
+`docker compose -f docker-compose.prod.yml` in `/opt/serpsense`. To let someone sign in, add
+their address to `ALLOWED_EMAILS` in `.env` and run
+`docker compose -f docker-compose.prod.yml up -d`.
+
+### Production backups
+
+`deploy/backup.sh` runs from cron at 02:30 UTC as `deploy`, writes
+`/var/backups/serpsense/serpsense-<UTC time>.dump` and keeps 14 days (log:
+`/var/backups/serpsense/backup.log`). Run it by hand before anything risky. The dumps are on the
+droplet's own disk, so a lost droplet loses them: enable DigitalOcean droplet backups, or copy
+dumps off the host. Restore as in [Backups](#backups), with
+`docker compose -f docker-compose.prod.yml` and the `.dump` file from that directory.

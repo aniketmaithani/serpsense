@@ -13,6 +13,7 @@ Judges must run the project locally from a fresh clone; the demo must show it ru
 - Configuration only via environment (`.env`, never committed; `.env.example` lists names).
 - **Amendment (2026-10-03):** a dedicated `worker-outbox` service consumes only the `outbox` queue, and `worker` consumes `scans` and `maintenance`. Long scans therefore can't delay OTP or alert emails. Each worker's healthcheck pings its own node.
 - `docker-compose.prod.yml` (P2) swaps Mailpit for a real SMTP provider and adds a TLS reverse proxy; single host only.
+- **Amendment (2026-10-04):** `docker-compose.prod.yml` uses Caddy as the TLS proxy (automatic Let's Encrypt certificates, no access log), and the web app trusts forwarded headers only from the network it shares with Caddy. Host setup, deploys and backups: `docs/operations.md#production`.
 
 ## Alternatives considered
 - **Bare-metal virtualenv + local services** — judges would need to install Postgres/Redis by hand.
