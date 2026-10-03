@@ -1,0 +1,36 @@
+{% extends "signed_in.html" %}
+{% block title %}Drafts · SerpSense{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Drafts</h1>
+    <p class="muted">Replies, holding statements and FAQ entries Claude drafted from your brands' stories, newest first. Nothing is ever sent or posted for you: read, edit and copy.</p>
+  </div>
+</header>
+{% for r in drafts %}
+{% set d = r.draft %}
+<section class="card">
+  <article class="draft">
+    <p class="muted"><a href="/brands/{{ r.brand_id }}">{{ r.brand_name }}</a> ·
+      <a href="/brands/{{ r.brand_id }}/narratives/{{ r.narrative_id }}">{{ r.story_label }}</a> ·
+      {{ d.kind.value|words }} · {{ d.preset.value|words }} · {{ d.created_at|when }} · <span class="ai-badge">AI-generated</span></p>
+    {% if d.text|has_contact %}<p class="notice" role="alert">This draft contains a link or contact details. Check them before copying: the model was told not to add any.</p>{% endif %}
+    <textarea readonly rows="5" aria-label="Draft text" id="draft-{{ d.draft_id }}">{{ d.text }}</textarea>
+    <button type="button" class="secondary small" data-copy="draft-{{ d.draft_id }}">Copy</button>
+    <details><summary>Responds to {{ d.cited|length }} mention{{ "s" if d.cited|length != 1 }}</summary>
+      <ul class="cited">
+      {% for m in d.cited %}
+        <li><span class="source">{{ m.source|words }}</span>
+          {% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(160) }}</a>{% else %}{{ m.text|truncate(160) }}{% endif %}</li>
+      {% endfor %}
+      </ul>
+    </details>
+  </article>
+</section>
+{% else %}
+<section class="card"><p>No drafts yet. On a brand's page, press <strong>Draft a reply</strong> on a story or a negative mention, or open a story for a holding statement or FAQ entry.</p></section>
+{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/copy.js"></script>
+{% endblock %}

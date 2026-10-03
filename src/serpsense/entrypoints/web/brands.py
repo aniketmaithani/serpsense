@@ -13,6 +13,7 @@ from serpsense.entrypoints.web.crisis_tuning import signals
 from serpsense.entrypoints.web.landing import landing_page
 from serpsense.entrypoints.web.pages import signed_in_page
 from serpsense.entrypoints.web.session import container, current_user, require_csrf
+from serpsense.entrypoints.web.stories import can_draft
 from serpsense.services.scan_now import Requested
 
 router = APIRouter()
@@ -50,7 +51,8 @@ def brand(request: Request, brand_id: str, scan: str = "", page: int = 1) -> Res
     notice = SAID.get(scan)
     stories = container(request).stories.of_brand(user.user_id, found.card.brand_id, limit=5)
     context = {"brand": found, "trend": trend, "notice": notice, "stories": stories}
-    return signed_in_page(request, user, "brand.html", signals=signals(found), **context)
+    context |= {"signals": signals(found), "drafting": can_draft(request)}
+    return signed_in_page(request, user, "brand.html", **context)
 
 
 @router.post("/brands/{brand_id}/scan")

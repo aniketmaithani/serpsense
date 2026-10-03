@@ -2,6 +2,10 @@
 {% set card = brand.card %}
 {% block title %}{{ card.name }} · SerpSense{% endblock %}
 {% macro score(value) %}{{ value if value is not none else "–" }}{% endmacro %}
+{% macro reply(story_id) %}<form method="post" action="/brands/{{ card.brand_id }}/narratives/{{ story_id }}/drafts" class="inline reply">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="review_reply"><input type="hidden" name="preset" value="standard">
+  <button type="submit" class="secondary small" title="Claude drafts a reply for a person to edit and copy; nothing is sent">Draft a reply</button>
+</form>{% endmacro %}
 {% macro sentiment(value) %}{% if value is none %}<span class="sent sent-pending">not labelled yet</span>{% elif value < 0 %}<span class="sent sent--1">negative</span>{% elif value > 0 %}<span class="sent sent-1">positive</span>{% else %}<span class="sent sent-0">neutral</span>{% endif %}{% endmacro %}
 {% block main %}
 <header class="page-head">
@@ -59,10 +63,12 @@
     <section class="card ai-card">
       <div class="card-head"><h2>Stories Claude found</h2><span class="ai-badge">AI-generated</span></div>
       {% if stories %}
+      {% if drafting %}<p class="muted">Claude can draft a reply, holding statement or FAQ entry from a story's evidence: use the buttons here, or open a story for every kind.</p>{% endif %}
       <ul class="stories">
       {% for s in stories %}
         <li><a href="/brands/{{ card.brand_id }}/narratives/{{ s.narrative_id }}">{{ s.label }}</a>
-          <span class="muted">· {{ s.mentions }} mention{{ "s" if s.mentions != 1 }} on {{ s.sources|map("words")|join(", ") }}</span></li>
+          <span class="muted">· {{ s.mentions }} mention{{ "s" if s.mentions != 1 }} on {{ s.sources|map("words")|join(", ") }}</span>
+          {% if drafting %}{{ reply(s.narrative_id) }}{% endif %}</li>
       {% endfor %}
       </ul>
       {% else %}
@@ -78,6 +84,7 @@
           <div class="mention-meta">{{ sentiment(m.sentiment) }}<span class="source">{{ m.source|words }}</span>{% if m.outlet %}<span>{{ m.outlet }}</span>{% endif %}</div>
           <div>{% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(300) }}</a>{% else %}{{ m.text|truncate(300) }}{% endif %}</div>
           {% if m.reason %}<div class="reason"><span class="ai-badge">AI-generated</span><span>{{ m.reason }}</span></div>{% elif m.sentiment is none %}<div class="reason muted">Not labelled yet.</div>{% endif %}
+          {% if drafting and m.story_id and m.sentiment is not none and m.sentiment < 0 %}{{ reply(m.story_id) }}{% endif %}
         </li>
       {% else %}
         <li class="muted">Nothing about the brand in the latest scan.</li>

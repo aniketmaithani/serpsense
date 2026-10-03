@@ -205,3 +205,8 @@ table.signals tfoot td { font-weight: 600; border-bottom: 0; }
 ul.rules { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.4rem; }
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 p.hint { font-size: 0.8rem; margin: 0.2rem 0 0.6rem; }
+
+/* Draft a reply buttons and copy buttons */
+button.small { padding: 0.3rem 0.7rem; font-size: 0.8rem; margin-top: 0.4rem; }
+form.reply { display: inline-block; margin-left: 0.5rem; }
+ul.stories form.reply button { margin-top: 0; }

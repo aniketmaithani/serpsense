@@ -11,7 +11,7 @@ from sqlalchemy import Connection, text
 from serpsense.adapters.db.overview import ACTIVE_PROMPTS
 from serpsense.adapters.db.scoping import scoped
 from serpsense.domain.enums import DraftKind, DraftPreset, MentionSource
-from serpsense.ports.drafts import DraftMaterial, DraftRow, NewDraft, SourceMention
+from serpsense.ports.drafts import DraftMaterial, DraftRow, NewDraft, RecentDraft, SourceMention
 
 STORY = scoped(
     """
@@ -42,6 +42,16 @@ DRAFTS = scoped(
 SELECT d.id, d.kind, d.preset, d.text, d.reasoning_summary, d.prompt_version, d.created_at
 FROM drafts d JOIN narratives n ON n.id = d.narrative_id
 WHERE d.narrative_id = :story AND n.brand_id = :brand AND n.brand_id IN ({owned})
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT :limit
+"""
+)
+RECENT = scoped(
+    """
+SELECT d.id, d.kind, d.preset, d.text, d.reasoning_summary, d.prompt_version, d.created_at,
+       b.id AS brand_id, b.name AS brand_name, n.id AS narrative_id, n.label
+FROM drafts d JOIN narratives n ON n.id = d.narrative_id JOIN brands b ON b.id = n.brand_id
+WHERE b.id IN ({owned})
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT :limit
 """
@@ -127,11 +137,29 @@ class SqlDraftStore:
     ) -> list[DraftRow]:
         known = {"user": user_id, "brand": brand_id, "story": narrative_id, "limit": limit}
         rows = list(self._conn.execute(DRAFTS, known))
-        cited: dict[uuid.UUID, list[SourceMention]] = defaultdict(list)
-        if rows:
-            for row in self._conn.execute(CITED, {"drafts": [r.id for r in rows]}):
-                cited[row.draft_id].append(_mention(row))
+        cited = self._cited([row.id for row in rows])
         return [_draft(row, cited[row.id]) for row in rows]
+
+    def recent(self, user_id: uuid.UUID, *, limit: int) -> list[RecentDraft]:
+        rows = list(self._conn.execute(RECENT, {"user": user_id, "limit": limit}))
+        cited = self._cited([row.id for row in rows])
+        return [
+            RecentDraft(
+                draft=_draft(row, cited[row.id]),
+                brand_id=row.brand_id,
+                brand_name=row.brand_name,
+                narrative_id=row.narrative_id,
+                story_label=row.label,
+            )
+            for row in rows
+        ]
+
+    def _cited(self, drafts: list[uuid.UUID]) -> dict[uuid.UUID, list[SourceMention]]:
+        cited: dict[uuid.UUID, list[SourceMention]] = defaultdict(list)
+        if drafts:
+            for row in self._conn.execute(CITED, {"drafts": drafts}):
+                cited[row.draft_id].append(_mention(row))
+        return cited
 
 
 def _mention(row: Any) -> SourceMention:

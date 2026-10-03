@@ -1,5 +1,6 @@
 """A story's page (BUILD_PLAN §13): one narrative the model grouped a brand's negative mentions
-into, with its mentions and the response drafts a person may copy, all labelled AI-generated.
+into, with its mentions and the response drafts a person may copy, all labelled AI-generated;
+and the drafts page, every draft of the user's newest first.
 Drafting is a CSRF-checked form that runs in the request (ADR-0008: the model never sends
 anything), offered only in live mode with an Anthropic key, and only at the presets the user's
 draft model can take. A draft carrying a link or contact details is flagged for checking. The
@@ -45,7 +46,7 @@ def story(request: Request, brand_id: str, narrative_id: str, draft: str = "") -
     drafter = container(request).drafts
     drafts = drafter.drafts(user.user_id, brand, narrative)
     context = {"story": found, "drafts": drafts, "notice": SAID.get(draft)}
-    context |= {"kinds": list(DraftKind), "drafting": _drafting(request)}
+    context |= {"kinds": list(DraftKind), "drafting": can_draft(request)}
     context |= {"presets": drafter.presets(user.user_id)}
     return signed_in_page(request, user, "story.html", **context)
 
@@ -66,7 +67,7 @@ def ask_for_a_draft(
     require_csrf(request, user, form.csrf_token)
     brand, narrative = _ids(brand_id, narrative_id)
     page = f"/brands/{brand}/narratives/{narrative}"
-    if not _drafting(request):
+    if not can_draft(request):
         return RedirectResponse(f"{page}?draft=unavailable", SEE_OTHER)
     drafter = container(request).drafts
     result = drafter.draft(user.user_id, brand, narrative, kind=form.kind, preset=form.preset)
@@ -75,7 +76,16 @@ def ask_for_a_draft(
     return RedirectResponse(f"{page}?draft={result.outcome.value}", SEE_OTHER)
 
 
-def _drafting(request: Request) -> bool:
+@router.get("/drafts")
+def all_drafts(request: Request) -> Response:
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", SEE_OTHER)
+    drafts = container(request).drafts.recent(user.user_id)
+    return signed_in_page(request, user, "drafts.html", drafts=drafts)
+
+
+def can_draft(request: Request) -> bool:
     """Whether a live model is configured to draft with: replay mode never drafts (ADR-0008)."""
     settings = container(request).settings
     return settings.serpsense_mode is RunMode.LIVE and settings.anthropic_api_key is not None

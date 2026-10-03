@@ -58,6 +58,17 @@ class DraftRow:
     cited: Sequence[SourceMention]
 
 
+@dataclass(frozen=True, kw_only=True)
+class RecentDraft:
+    """A draft with where it belongs, for the list of all of a user's drafts."""
+
+    draft: DraftRow
+    brand_id: uuid.UUID
+    brand_name: str
+    narrative_id: uuid.UUID
+    story_label: str  # model output, shown as AI-generated
+
+
 class DraftStore(Protocol):
     def material(
         self, user_id: uuid.UUID, brand_id: uuid.UUID, narrative_id: uuid.UUID, *, limit: int
@@ -78,4 +89,8 @@ class DraftStore(Protocol):
         self, user_id: uuid.UUID, brand_id: uuid.UUID, narrative_id: uuid.UUID, *, limit: int
     ) -> list[DraftRow]:
         """The narrative's newest drafts first; none unless it is of this brand of the user's."""
+        ...
+
+    def recent(self, user_id: uuid.UUID, *, limit: int) -> list[RecentDraft]:
+        """The user's newest drafts across their live brands, newest first."""
         ...
