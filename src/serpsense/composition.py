@@ -24,6 +24,8 @@ from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_factory import (
     DISPATCH_TASK,
+    EXPLAIN_TASK,
+    EXPLAIN_TIME_LIMIT_SECONDS,
     HEARTBEAT_TASK,
     OUTBOX_TASK,
     RUN_SCAN_TASK,
@@ -65,6 +67,7 @@ from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
 from serpsense.services.evals import Evaluator, MemoryLedger
+from serpsense.services.explanations import Explainer
 from serpsense.services.grouping import Grouper
 from serpsense.services.grouping_eval import GroupingEvaluator
 from serpsense.services.labelling import Labeller
@@ -79,6 +82,8 @@ from serpsense.services.sweep import Sweeper
 
 __all__ = [
     "DISPATCH_TASK",
+    "EXPLAIN_TASK",
+    "EXPLAIN_TIME_LIMIT_SECONDS",
     "HEARTBEAT_TASK",
     "OUTBOX_TASK",
     "RUN_SCAN_TASK",
@@ -198,6 +203,7 @@ class Worker:
     scans: ScanService
     dispatcher: Dispatcher
     sweeper: Sweeper
+    explainer: Explainer
 
 
 def build_worker(settings: Settings, celery: Celery) -> Worker:
@@ -212,7 +218,8 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
         return SqlUnitOfWork(engine, queue)
 
     scans = build_scans(settings, engine, unit_of_work, clock)
-    return Worker(scans, *_maintenance(settings, unit_of_work, clock))
+    dispatcher, sweeper = _maintenance(settings, unit_of_work, clock)
+    return Worker(scans, dispatcher, sweeper, _explainer(settings, engine, unit_of_work, clock))
 
 
 def build_scans(
@@ -240,6 +247,21 @@ def build_scans(
         monthly_searches=settings.default_monthly_search_budget,
     )
     return ScanService(ports, limits)
+
+
+def _explainer(
+    settings: Settings, engine: Engine, unit_of_work: UnitOfWorkFactory, clock: Clock
+) -> Explainer:
+    """Alert explanations on the scans' model source. Replay mode records none, so each one
+    fails at once and the alert, its notification and its email stand without words."""
+    gateway = LlmGateway(
+        _sources(settings, engine, clock).llm,
+        SqlLlmLedger(engine.begin),
+        clock,
+        monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
+    )
+    profiles = SqlLlmProfiles(engine, settings.default_llm_preset)
+    return Explainer(unit_of_work, gateway, profiles, clock)
 
 
 @dataclass(frozen=True)
