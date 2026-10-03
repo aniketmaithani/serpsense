@@ -6,7 +6,12 @@ from typing import Any
 import pytest
 from kombu.exceptions import OperationalError
 
-from serpsense.adapters.jobs.celery_factory import OUTBOX_TASK, RUN_SCAN_TASK, create_celery
+from serpsense.adapters.jobs.celery_factory import (
+    EXPLAIN_TASK,
+    OUTBOX_TASK,
+    RUN_SCAN_TASK,
+    create_celery,
+)
 from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.ports.job_queue import JobQueueUnavailable
 
@@ -49,3 +54,11 @@ def test_the_outbox_is_nudged_with_no_arguments() -> None:
 def test_the_scan_task_is_routed_to_the_scans_queue() -> None:
     celery = create_celery("redis://localhost:6379/0")
     assert celery.amqp.router.route({}, RUN_SCAN_TASK)["queue"].name == "scans"
+
+
+def test_an_alert_is_explained_on_the_scans_queue_by_its_id_alone() -> None:
+    broker, alert_id = Broker(), uuid.uuid4()
+    CeleryJobQueue(broker).explain_alert(alert_id)  # type: ignore[arg-type]  # a stand-in app
+    assert broker.sent == [(EXPLAIN_TASK, [str(alert_id)])]
+    celery = create_celery("redis://localhost:6379/0")
+    assert celery.amqp.router.route({}, EXPLAIN_TASK)["queue"].name == "scans"

@@ -8,6 +8,8 @@ from celery.signals import setup_logging
 
 from serpsense.adapters.jobs.celery_factory import (
     DISPATCH_TASK,
+    EXPLAIN_TASK,
+    EXPLAIN_TIME_LIMIT_SECONDS,
     HEARTBEAT_TASK,
     OUTBOX_TASK,
     RUN_SCAN_TASK,
@@ -71,6 +73,7 @@ def test_the_tasks_hand_their_work_to_the_worker(monkeypatch: pytest.MonkeyPatch
         scans=SimpleNamespace(run=run),
         dispatcher=SimpleNamespace(dispatch=lambda: calls.append("dispatched")),
         sweeper=SimpleNamespace(sweep=lambda: calls.append("swept")),
+        explainer=SimpleNamespace(explain=lambda alert_id: calls.append(("explained", alert_id))),
     )
     monkeypatch.setattr(module, "_worker", lambda: worker)
     outbox = SimpleNamespace(dispatch=lambda: calls.append("emailed"))
@@ -80,4 +83,9 @@ def test_the_tasks_hand_their_work_to_the_worker(monkeypatch: pytest.MonkeyPatch
     module.dispatch_due_scans()
     module.sweep_stuck_work()
     module.dispatch_outbox()
-    assert calls == [(scan_id, str(scan_id)), "dispatched", "swept", "emailed"]
+    alert_id = uuid.uuid4()
+    module.explain_alert(str(alert_id))
+    assert calls == [
+        (scan_id, str(scan_id)), "dispatched", "swept", "emailed", ("explained", alert_id),
+    ]  # fmt: skip
+    assert module.app.tasks[EXPLAIN_TASK].time_limit == EXPLAIN_TIME_LIMIT_SECONDS
