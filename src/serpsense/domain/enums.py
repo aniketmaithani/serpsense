@@ -198,3 +198,28 @@ class AlertRule(StrEnum):
     LEVEL_INCREASE = "level_increase"  # the crisis level went up
     NEW_NEGATIVE_AUTOCOMPLETE = "new_negative_autocomplete"  # people see it as they type
     NARRATIVE_SPREAD = "narrative_spread"  # a story reached 5+ mentions on 2+ surfaces
+
+
+class OutboxKind(StrEnum):
+    """What an outbox email is (`outbox_kind` Postgres enum; ADR-0010)."""
+
+    OTP_EMAIL = "otp_email"
+    ALERT_EMAIL = "alert_email"
+
+
+class OutboxStatus(StrEnum):
+    """Where an outbox email stands (`outbox_status`); derived from its attempts (data-model §8)."""
+
+    PENDING = "pending"
+    SENT = "sent"
+    DEAD = "dead"  # a permanent error, or 8 retryable ones
+    DROPPED = "dropped"  # not sent on purpose: an expired code, a deleted account
+
+
+class OutboxOutcome(StrEnum):
+    """How one send attempt went (`outbox_attempt_outcome`)."""
+
+    SENT = "sent"
+    RETRYABLE_ERROR = "retryable_error"
+    PERMANENT_ERROR = "permanent_error"
+    DROPPED = "dropped"
