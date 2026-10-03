@@ -9,12 +9,13 @@ parser can't produce a row Postgres would reject.
 import hashlib
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from serpsense.domain.enums import MentionSource
+from serpsense.domain.enums import MentionSource, Surface
 
 PROVIDER_ID_SOURCES = frozenset(
     {MentionSource.PLAY_REVIEW, MentionSource.MAPS_REVIEW, MentionSource.YOUTUBE_VIDEO}
@@ -22,6 +23,21 @@ PROVIDER_ID_SOURCES = frozenset(
 URL_SOURCES = frozenset({MentionSource.SERP_RESULT, MentionSource.TOP_STORY, MentionSource.NEWS})
 OUTLET_SOURCES = frozenset({MentionSource.NEWS, MentionSource.TOP_STORY})
 REVIEW_SOURCES = frozenset({MentionSource.PLAY_REVIEW, MentionSource.MAPS_REVIEW})
+# The surface each kind of mention is seen on (BUILD_PLAN §10, Collectors).
+SURFACE: Mapping[MentionSource, Surface] = MappingProxyType(
+    {
+        MentionSource.SERP_RESULT: Surface.SEARCH_PAGE,
+        MentionSource.TOP_STORY: Surface.SEARCH_PAGE,
+        MentionSource.PEOPLE_ALSO_ASK: Surface.SEARCH_PAGE,
+        MentionSource.AI_OVERVIEW: Surface.AI_OVERVIEW,
+        MentionSource.AUTOCOMPLETE: Surface.AUTOCOMPLETE,
+        MentionSource.NEWS: Surface.NEWS,
+        MentionSource.TRENDS_QUERY: Surface.TRENDS,
+        MentionSource.PLAY_REVIEW: Surface.PLAY,
+        MentionSource.MAPS_REVIEW: Surface.MAPS,
+        MentionSource.YOUTUBE_VIDEO: Surface.YOUTUBE,
+    }
+)
 MAX_TEXT, MAX_URL, MAX_OUTLET, MAX_PROVIDER_ID = 10_000, 2048, 200, 512
 MAX_POSITION = 32_767  # smallint
 # Parameters that only say where a click came from: on any site, and on Google's own hosts.

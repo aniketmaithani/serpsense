@@ -5,8 +5,9 @@ from typing import Any
 
 import pytest
 
-from serpsense.domain.enums import MentionSource
+from serpsense.domain.enums import MentionSource, Surface
 from serpsense.domain.mention import (
+    SURFACE,
     ParsedMention,
     best_ranked,
     canonical_url,
@@ -158,3 +159,18 @@ def test_each_identity_keeps_its_best_rank_whatever_the_order() -> None:
             (MentionSource.NEWS, 2, "Ola revises fares again"),
             (MentionSource.NEWS, None, "Ola revises fares"),
         ]
+
+
+def test_every_kind_of_mention_is_seen_on_one_surface() -> None:
+    assert dict(SURFACE) == {
+        MentionSource.SERP_RESULT: Surface.SEARCH_PAGE,
+        MentionSource.TOP_STORY: Surface.SEARCH_PAGE,
+        MentionSource.PEOPLE_ALSO_ASK: Surface.SEARCH_PAGE,
+        MentionSource.AI_OVERVIEW: Surface.AI_OVERVIEW,
+        MentionSource.AUTOCOMPLETE: Surface.AUTOCOMPLETE,
+        MentionSource.NEWS: Surface.NEWS,
+        MentionSource.TRENDS_QUERY: Surface.TRENDS,
+        MentionSource.PLAY_REVIEW: Surface.PLAY,
+        MentionSource.MAPS_REVIEW: Surface.MAPS,
+        MentionSource.YOUTUBE_VIDEO: Surface.YOUTUBE,
+    }
