@@ -192,5 +192,5 @@ def replay_export(
         (out / f"{slug}.json").write_text(exported.text, encoding="utf-8")
         typer.echo(
             f"{slug}: {exported.scans} scans ({exported.answers} answers),"
-            f" {exported.labels} labels."
+            f" {exported.labels} labels, {exported.narratives} stories."
         )

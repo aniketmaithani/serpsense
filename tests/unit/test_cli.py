@@ -207,7 +207,7 @@ class Exporter:
     def export(self, slug: str) -> Exported:
         if slug == "nowhere":
             raise LookupError("exactly one live brand must have this slug")
-        return Exported(text=f'{{"brand":"{slug}"}}\n', scans=2, answers=9, labels=40)
+        return Exported(text=f'{{"brand":"{slug}"}}\n', scans=2, answers=9, labels=40, narratives=3)
 
 
 def test_replay_export_writes_one_recording_per_brand(
@@ -226,7 +226,7 @@ def test_replay_export_writes_one_recording_per_brand(
         "uber.json",
     ]  # the demo's brands by default: a re-export is one command
     assert (out / "ola.json").read_text(encoding="utf-8") == '{"brand":"ola"}\n'
-    assert "ola: 2 scans (9 answers), 40 labels." in result.stdout
+    assert "ola: 2 scans (9 answers), 40 labels, 3 stories." in result.stdout
     one = ["replay", "export", "--brand", "nowhere", "--out", str(out)]
     refused = runner.invoke(app, one)
     assert refused.exit_code == 2 and "nowhere: exactly one live brand" in refused.stderr
