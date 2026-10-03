@@ -8,6 +8,7 @@ from celery import Celery
 from sqlalchemy import Engine
 
 from serpsense.adapters.cache.health import RedisHealthCheck
+from serpsense.adapters.cache.null_cache import NullResponseCache
 from serpsense.adapters.cache.rate_limiter import RedisRateLimiter
 from serpsense.adapters.cache.response_cache import RedisResponseCache
 from serpsense.adapters.crypto.fernet_box import FernetBox
@@ -31,20 +32,26 @@ from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.adapters.llm.anthropic_client import AnthropicClient
 from serpsense.adapters.llm.profiles import PresetProfiles
 from serpsense.adapters.llm.prompts import PromptLibrary
+from serpsense.adapters.llm.replay import ReplayLlm
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
+from serpsense.adapters.replay.recording import load as load_recordings
 from serpsense.adapters.serp.client import SerpApiSearchProvider
 from serpsense.adapters.serp.collectors import COLLECTORS
+from serpsense.adapters.serp.replay import ReplaySearchProvider
 from serpsense.adapters.system_clock import SystemClock
-from serpsense.config import AppEnv, ConfigError, EmailBackend, Settings, SignupMode
+from serpsense.config import AppEnv, ConfigError, EmailBackend, RunMode, Settings, SignupMode
 from serpsense.domain.auth import SignupPolicy
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
 from serpsense.ports.health import HealthCheck
+from serpsense.ports.llm_client import LLMClient
 from serpsense.ports.mailer import Mailer
 from serpsense.ports.overview import Overview
+from serpsense.ports.response_cache import ResponseCache
+from serpsense.ports.search_provider import SearchProvider
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.collection import CollectorRunner
@@ -135,11 +142,9 @@ class Worker:
 
 
 def build_worker(settings: Settings, celery: Celery) -> Worker:
-    """Creates the engine and clients; nothing connects until a task runs. Raises ConfigError
-    without the SerpApi and Anthropic keys, which every scan needs."""
-    serpapi_key, anthropic_key = settings.serpapi_api_key, settings.anthropic_api_key
-    if serpapi_key is None or anthropic_key is None:
-        raise ConfigError("SERPAPI_API_KEY and ANTHROPIC_API_KEY are needed to run scans")
+    """Creates the engine and clients; nothing connects until a task runs. Live mode raises
+    ConfigError without the SerpApi and Anthropic keys, which every live scan needs; replay
+    mode needs neither, answering from the recordings the package ships."""
     engine = create_db_engine(settings.database_url.get_secret_value())
     clock: Clock = SystemClock()
     queue = CeleryJobQueue(celery)
@@ -147,16 +152,16 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
     def unit_of_work() -> SqlUnitOfWork:
         return SqlUnitOfWork(engine, queue)
 
-    search = _search(settings, engine, serpapi_key.get_secret_value(), clock)
+    sources = _sources(settings, engine, clock)
     gateway = LlmGateway(
-        AnthropicClient(anthropic_key.get_secret_value(), PromptLibrary()),
+        sources.llm,
         SqlLlmLedger(engine.begin),
         clock,
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
     )
     ports = ScanPorts(
         unit_of_work,
-        CollectorRunner(COLLECTORS, search, clock),
+        CollectorRunner(COLLECTORS, _search(settings, engine, sources, clock), clock),
         Labeller(unit_of_work, gateway, clock),
         SqlSearchLedger(engine.begin),
         PresetProfiles(settings.default_llm_preset),
@@ -166,13 +171,34 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
     return Worker(ScanService(ports, limits), *_maintenance(settings, unit_of_work, clock))
 
 
-def _search(settings: Settings, engine: Engine, api_key: str, clock: Clock) -> SearchService:
-    ports = SearchPorts(
-        SerpApiSearchProvider(api_key=api_key, clock=clock),
-        SqlSearchLedger(engine.begin),
+@dataclass(frozen=True)
+class _Sources:
+    """Where scans get their search answers and labels: SerpApi and Claude, or a recording."""
+
+    search: SearchProvider
+    cache: ResponseCache
+    llm: LLMClient
+
+
+def _sources(settings: Settings, engine: Engine, clock: Clock) -> _Sources:
+    if settings.serpsense_mode is RunMode.REPLAY:
+        recordings = load_recordings()
+        answered = SqlSearchLedger(engine.begin).times_answered
+        return _Sources(
+            ReplaySearchProvider(recordings, answered), NullResponseCache(), ReplayLlm(recordings)
+        )
+    serpapi_key, anthropic_key = settings.serpapi_api_key, settings.anthropic_api_key
+    if serpapi_key is None or anthropic_key is None:
+        raise ConfigError("SERPAPI_API_KEY and ANTHROPIC_API_KEY are needed to run scans")
+    return _Sources(
+        SerpApiSearchProvider(api_key=serpapi_key.get_secret_value(), clock=clock),
         RedisResponseCache(settings.redis_url.get_secret_value()),
-        clock,
+        AnthropicClient(anthropic_key.get_secret_value(), PromptLibrary()),
     )
+
+
+def _search(settings: Settings, engine: Engine, sources: _Sources, clock: Clock) -> SearchService:
+    ports = SearchPorts(sources.search, SqlSearchLedger(engine.begin), sources.cache, clock)
     limits = SearchLimits(
         monthly_default=settings.default_monthly_search_budget,
         global_daily=settings.serpapi_daily_global_cap,
@@ -279,6 +305,7 @@ def build_seeder(settings: Settings, celery: Celery) -> Callable[[str], Seeded]:
         return SqlUnitOfWork(engine, queue)
 
     def seed(owner_email: str) -> Seeded:
-        return seed_demo(unit_of_work, SystemClock(), owner_email=owner_email)
+        replay = settings.serpsense_mode is RunMode.REPLAY
+        return seed_demo(unit_of_work, SystemClock(), owner_email=owner_email, replay=replay)
 
     return seed

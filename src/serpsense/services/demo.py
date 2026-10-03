@@ -6,12 +6,14 @@ AI Overview, one autocomplete prefix, English news, the Trends comparison with a
 competitors plus Ola's related queries, and its Play rating with a page of newest reviews. Each
 competitor is scanned every 24 hours with 3: its search page, news and Play rating. Seeding again
 changes nothing, unless the brands' settings or schedules were edited since: those are put back to
-the demo's as new versions.
+the demo's as new versions. In replay mode every brand is scanned hourly instead, the shortest
+schedule there is, so the recorded scans play out while someone watches; replayed searches cost
+nothing.
 """
 
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -89,13 +91,19 @@ class Seeded:
     competitor_ids: tuple[uuid.UUID, ...]
 
 
-def seed_demo(unit_of_work: UnitOfWorkFactory, clock: Clock, *, owner_email: str) -> Seeded:
+REPLAY_EVERY = Schedule(60)
+
+
+def seed_demo(
+    unit_of_work: UnitOfWorkFactory, clock: Clock, *, owner_email: str, replay: bool = False
+) -> Seeded:
     """Ola and its competitors under the owner with this email (created if new), in one unit
-    of work."""
+    of work; hourly for replay mode."""
+    demos = [replace(demo, every=REPLAY_EVERY) if replay else demo for demo in (OLA, *RIVALS)]
     with unit_of_work() as uow:
         owner = uow.accounts.user_for(owner_email, at=clock.now())
-        ola = _brand(uow, owner, OLA, clock)
-        rivals = tuple(_brand(uow, owner, rival, clock) for rival in RIVALS)
+        ola, *rest = (_brand(uow, owner, demo, clock) for demo in demos)
+        rivals = tuple(rest)
         for rival in rivals:
             uow.brands.link_competitor(ola, rival)
     log.info("demo.seeded", user_id=str(owner), brand_id=str(ola))
