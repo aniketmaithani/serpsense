@@ -62,7 +62,13 @@ class AnthropicClient:
 def _params(request: LlmRequest, system: str, user: str) -> dict[str, Any]:
     shape = request.shape
     output: dict[str, Any] = {
-        "format": {"type": "json_schema", "schema": dict(request.output_schema)}
+        # Structured outputs take a subset of JSON Schema: the SDK's transform moves limits
+        # such as maximum and maxLength into descriptions and closes every object. The gateway
+        # still validates the answer against the full model.
+        "format": {
+            "type": "json_schema",
+            "schema": anthropic.transform_schema(dict(request.output_schema)),
+        }
     }
     if shape.effort is not None:
         output["effort"] = shape.effort.value  # Opus's default is medium: always sent

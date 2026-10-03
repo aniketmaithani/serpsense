@@ -114,10 +114,7 @@ def test_opus_goes_through_the_fallback_endpoint_with_effort_and_a_cached_prefix
     assert sent.headers["anthropic-beta"] == FALLBACK_BETA
     body = api.body
     assert (body["fallbacks"], body["model"], body["max_tokens"]) == ("default", OPUS, 8000)
-    assert body["output_config"] == {
-        "format": {"type": "json_schema", "schema": SCHEMA},
-        "effort": "low",
-    }
+    assert body["output_config"]["effort"] == "low"
     assert body["thinking"] == {"type": "adaptive", "display": "summarized"}
     assert body["system"][0]["cache_control"] == {"type": "ephemeral"}  # escaping: #70's tests
     assert body["messages"][0]["content"].startswith('<mention id="m1" source="play_review">')
@@ -263,3 +260,23 @@ def test_iterations_that_name_no_model_or_no_attempt(
     answer = message(model="claude-opus-4-8")  # a fallback answered: not the requested model
     answer["usage"] = {**answer["usage"], "iterations": iterations}
     assert client(prompts, Api(answer)).complete(request()).hops == hops
+
+
+def test_output_schemas_are_sent_in_the_subset_structured_outputs_accept(
+    prompts: PromptLibrary,
+) -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "severity": {"type": "integer", "minimum": 0, "maximum": 100},
+            "reason": {"type": "string", "maxLength": 200},
+        },
+        "required": ["severity", "reason"],
+    }
+    api = Api()
+    client(prompts, api).complete(request(output_schema=schema))
+    sent = api.body["output_config"]["format"]["schema"]
+    assert sent["additionalProperties"] is False
+    assert "maximum" not in sent["properties"]["severity"]
+    assert "maxLength" not in sent["properties"]["reason"]
+    assert "100" in sent["properties"]["severity"]["description"]  # the limit becomes a hint
