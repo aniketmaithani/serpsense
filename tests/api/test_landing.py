@@ -29,6 +29,7 @@ def test_an_anonymous_visitor_gets_the_landing_page() -> None:
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
     assert page.headers["cache-control"] == "no-store"  # `/` differs once you're signed in
     assert HEADLINE in page.text and "Not affiliated with SerpApi, LLC." in page.text
+    assert "Created by Aniket Maithani." in page.text
     assert "VoltBox" in page.text and "SoundNest" in page.text  # fictional brands only
     assert "script-src 'self'" in page.headers["content-security-policy"]
     scripts = SCRIPT.findall(page.text)
