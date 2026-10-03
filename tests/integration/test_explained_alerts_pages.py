@@ -36,6 +36,7 @@ def test_an_explained_alert_says_so_on_the_brand_page_and_in_notifications(
         add(conn, table("alert_explanations"), alert_id=explained, text=f"{SAID} {HOSTILE}",
             prompt_version="explain_crisis/v1", llm_call_id=call, created_at=NOW)  # fmt: skip
     for page in (client.get(f"/brands/{ola}").text, client.get("/notifications").text):
-        labelled = re.search(r"AI-generated\)?: " + re.escape(SAID), page)
+        badge = r"AI-generated(?:\)?: |</span><span>)"  # inline text, or the brand page's badge
+        labelled = re.search(badge + re.escape(SAID), page)
         assert page.count(SAID) == 1 and labelled  # the explained alert only, labelled
         assert HOSTILE not in page and "&lt;script&gt;" in page
