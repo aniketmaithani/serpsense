@@ -217,16 +217,18 @@ running → failed                      (reason timed_out, by the maintenance sw
 | published_at | timestamptz null | from provider when available |
 | created_at | timestamptz | |
 
-`uq_mentions_brand_id_source_identity_key`. **Content is first-seen:** mentions are written with `INSERT … ON CONFLICT DO NOTHING`, so a later edit of the same review never overwrites the text that was labelled. The table is mutable (not append-only) only so a redaction scrub can rewrite content; the observations below are the history.
+`uq_mentions_brand_id_source_identity_key`. **Content is first-seen:** mentions are written with `INSERT … ON CONFLICT DO NOTHING`, so a later edit of the same review never overwrites the text that was labelled. The table is mutable (not append-only) only so a redaction scrub can rewrite content; its identity — brand, source, identity key, cited location or app, creation time — never changes (see Observations). The observations below are the history.
 
 ### Trends comparison (deliberate design)
 Google Trends interest is relative within a single query, so each scan runs **one joint query** (the scan's brand + up to 4 competitors) and stores every series. The rows belong to the **scan** (and so to the scanning brand's owner); `subject_brand_id` says which line of the comparison a row is. Constraint trigger `trg_trends_observations_subject_in_comparison`: the subject must be the scan's brand or one of its `brand_competitors`. A competitor's own scans run their own joint query; series from different scans are never mixed.
 
 ### 🔒 Observations
+**Same brand:** an observation's mention or app must belong to the scan's brand — trigger `trg_<table>_same_brand` (generic function `serpsense_same_brand_as_scan(ref_table, ref_column, constraint)`), reported as `ck_<table>_same_brand`. It relies on identities that never change: a scan's brand (`trg_scans_identity_immutable`); a mention's brand, source, identity key, cited location or app and creation time (`trg_mentions_identity_immutable` → `ck_mentions_identity_immutable`); an app's brand, store and app id (`ck_brand_apps_identity_immutable`) and a location's brand and query (`ck_brand_locations_identity_immutable`; a case-only edit of the citext query and a re-resolved `resolved_data_id` are allowed) — the last three via the generic `serpsense_forbid_identity_change(constraint, columns…)`, which compares each column as its own type. Editing what an app or location *is* would rewrite its history, so a different app or place is a new row.
+
 | Table | Columns | Key |
 |---|---|---|
-| `mention_observations` | `mention_id`, `scan_id`, `position smallint null`, `star_rating smallint null` | pk (mention_id, scan_id) |
-| `app_rating_observations` | `brand_app_id`, `scan_id`, `rating_hundredths smallint`, `review_count integer` | pk (brand_app_id, scan_id) |
+| `mention_observations` | `mention_id`, `scan_id`, `position smallint null` (≥ 1): the **best (lowest) rank** the mention had across all of the scan's calls for its source — one collector owns each source and aggregates before inserting, so the value never depends on insert order; `star_rating smallint null` (1–5; reviews only, a service rule) | pk (mention_id, scan_id); `ix_mention_observations_scan_id` |
+| `app_rating_observations` | `brand_app_id`, `scan_id`, `rating_hundredths smallint` (100–500, i.e. 1.00–5.00 stars, rounded with `Decimal`), `review_count integer` (≥ 0); no row while the store shows no rating yet | pk (brand_app_id, scan_id); `ix_app_rating_observations_scan_id` |
 | `trends_observations` | `scan_id`, `subject_brand_id`, `observed_on date`, `interest smallint` | pk (scan_id, subject_brand_id, observed_on) |
 
 ---
