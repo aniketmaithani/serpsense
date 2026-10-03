@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sign in · SerpSense{% endblock %}</title>
+  <link rel="stylesheet" href="/static/landing/tokens.css">
+  <link rel="stylesheet" href="/static/landing/signin.css">
+</head>
+<body class="signin">
+<header class="s-bar">
+  <a class="s-brand" href="/">SerpSense</a>
+  <a class="s-back" href="/">Back to the landing page</a>
+</header>
+<main class="split">
+  <aside class="pitch">
+    <svg class="orbit" viewBox="0 0 640 360" aria-hidden="true">
+      <g class="spokes">
+        <path d="M320 180L320 62"/><path d="M320 180L484 106"/><path d="M320 180L525 206"/><path d="M320 180L411 286"/>
+        <path d="M320 180L229 286"/><path d="M320 180L115 206"/><path d="M320 180L156 106"/>
+      </g>
+      <path class="ring" pathLength="1" d="M110 180A210 118 0 1 1 530 180A210 118 0 1 1 110 180Z"/>
+      <g class="nodes">
+        <g class="t-n"><circle cx="320" cy="62" r="7"/><text x="320" y="44" text-anchor="middle">Results</text></g>
+        <g class="t-x"><circle class="halo" cx="484" cy="106" r="7"/><circle cx="484" cy="106" r="7"/><text x="498" y="89">Autocomplete</text></g>
+        <g class="t-n"><circle cx="525" cy="206" r="7"/><text x="542" y="215">AI Overview</text></g>
+        <g class="t-x"><circle class="halo" cx="411" cy="286" r="7"/><circle cx="411" cy="286" r="7"/><text x="419" y="319">News</text></g>
+        <g class="t-n"><circle cx="229" cy="286" r="7"/><text x="221" y="319" text-anchor="end">Trends</text></g>
+        <g class="t-x"><circle class="halo" cx="115" cy="206" r="7"/><circle cx="115" cy="206" r="7"/><text x="98" y="215" text-anchor="end">Play reviews</text></g>
+        <g class="t-p"><circle cx="156" cy="106" r="7"/><text x="142" y="89" text-anchor="end">Maps reviews</text></g>
+      </g>
+      <g class="query"><rect x="250" y="162" width="140" height="36" rx="18"/><circle cx="273" cy="180" r="6"/><text x="288" y="186">VoltBox</text></g>
+    </svg>
+    <p class="kicker">SerpSense</p>
+    <p class="line">Your brand's reputation is whatever Google shows people.</p>
+    <p class="muted">Seven Google surfaces in one scan, and an alert when a story starts.</p>
+  </aside>
+  <section class="s-card">
+    {% block card %}{% endblock %}
+  </section>
+</main>
+<footer class="s-foot">Built with SerpApi for the SerpApi India Hackathon 2026. Not affiliated with SerpApi, LLC.</footer>
+</body>
+</html>
