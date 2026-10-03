@@ -22,6 +22,7 @@ from serpsense.ports.alert_store import AlertStore
 from serpsense.ports.audit import AuditLog
 from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
+from serpsense.ports.explanations import ExplanationStore
 from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.narrative_store import NarrativeStore
@@ -87,6 +88,9 @@ class UnitOfWork(Protocol):
 
     @property
     def alerts(self) -> AlertStore: ...
+
+    @property
+    def explanations(self) -> ExplanationStore: ...
 
     @property
     def jobs(self) -> JobQueue:
