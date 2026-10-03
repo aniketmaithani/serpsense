@@ -41,7 +41,14 @@ def payload() -> dict[str, Any]:
                 "avatar": "https://play-lh.example/avatar.png",
                 "rating": 1.0,
                 "snippet": "Driver cancelled twice",
-                "response": {"title": "Ola", "snippet": "Sorry to hear that"},
+                "response": {"title": "Ola", "snippet": "Hi Priya, sorry to hear that."},
+            }
+        ],
+        "short_videos": [
+            {
+                "title": "Ola ride",
+                "link": "https://www.facebook.com/priya.k.1990/videos/123",
+                "profile_name": "Priya K",
             }
         ],
         "maps": {
@@ -116,16 +123,26 @@ def test_author_identity_is_removed_and_content_kept() -> None:
             "id": "r1",
             "rating": 1.0,
             "snippet": "Driver cancelled twice",
-            "response": {"title": "Ola", "snippet": "Sorry to hear that"},  # the developer's reply
-        }
+        }  # the developer's reply greets the reviewer by name, so it goes too
     ]
     assert result["maps"] == {"reviews": [{"rating": 2}]}
     assert result["video_results"] == [{"title": "Ola review", "video_id": "v1"}]
     assert "channel_results" not in result and "developer_contact" not in result
+    assert "short_videos" not in result  # creators' names and profile links
     reviews = result["place_results"]["user_reviews"]["most_relevant"]
     assert reviews == [{"rating": 4, "description": "Quick service"}]
     assert result["organic_results_with_author"] == [{"title": "Blog post"}]
     assert result["organic_results"][0]["title"] == "Ola"  # titles outside reviews stay
+
+
+def test_no_reviewer_or_creator_name_survives_anywhere() -> None:
+    text = json.dumps(redact(payload(), api_key=KEY))
+    assert "Priya" not in text and "priya" not in text
+
+
+def test_a_creator_name_is_removed_wherever_it_appears() -> None:
+    result = redact({"inline": [{"title": "Clip", "profile_name": "Priya K"}]}, api_key=KEY)
+    assert result == {"inline": [{"title": "Clip"}]}
 
 
 def test_input_is_untouched_and_redaction_is_idempotent() -> None:

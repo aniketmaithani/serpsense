@@ -4,8 +4,10 @@ At any depth it removes:
 - the key: any `api_key` field, and any key or string containing `api_key=` or the key itself;
 - every URL in `search_metadata` (endpoints and archived HTML of the search);
 - author identity, as the recorded responses show it: news authors, YouTube channels, Play
-  and Maps reviewers (`title`/`avatar`, `user`, `username`, `contributor_id`) and the Play
-  developer's contact details.
+  and Maps reviewers (`title`/`avatar`, `user`, `username`, `contributor_id`), the developer's
+  reply to a review (it greets the reviewer by name), short-video creators (`short_videos`, whose
+  links lead to personal profiles, and any `profile_name`) and the Play developer's contact
+  details.
 
 Removing a field (not masking it) keeps the result valid for the no-key database CHECK.
 """
@@ -25,14 +27,17 @@ IDENTITY_FIELDS = frozenset(
         "channel_results",
         "contributor_id",
         "developer_contact",
+        "profile_name",
+        "short_videos",
         "user",
         "username",
     }
 )
 # Lists of reviews: Play/Maps `reviews` and the Maps place page's `most_relevant`.
 REVIEW_LISTS = frozenset({"reviews", "most_relevant"})
-# Inside a review, `title` is the reviewer's name (Play) and `avatar`/`link` lead to them.
-REVIEWER_FIELDS = frozenset({"title", "avatar", "link"})
+# Inside a review, `title` is the reviewer's name (Play), `avatar`/`link` lead to them, and the
+# developer's `response` addresses them by name.
+REVIEWER_FIELDS = frozenset({"title", "avatar", "link", "response"})
 
 
 def redact(payload: Mapping[str, Any], *, api_key: str) -> dict[str, Any]:
