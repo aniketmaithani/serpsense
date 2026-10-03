@@ -112,8 +112,9 @@ class ScanService:
     def _affordable(self, user_id: uuid.UUID, searches: int, at: datetime) -> bool:
         budget = self._ports.usage.monthly_budget(user_id, at=at)
         used = self._ports.usage.live_calls(since=usage.month_start(at), user_id=user_id)
-        left = (self._limits.monthly_searches if budget is None else budget) - used
-        return searches <= left
+        return searches <= usage.searches_left(
+            budget, default=self._limits.monthly_searches, used=used
+        )
 
     def _label(self, target: ScanTarget, aim: Target) -> bool:
         """Whether every batch was labelled; labelling that can't run is logged, not raised."""

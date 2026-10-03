@@ -8,7 +8,7 @@ plan's (§6.1, §6.2) and are the Standard preset.
 
 import re
 import string
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -160,8 +160,8 @@ PRESETS: Mapping[Preset, Mapping[str, Any]] = {
 }
 
 
-def resolve(*layers: Mapping[str, Any]) -> SearchSettings:
-    """Later layers win, merged per surface: system defaults, user defaults, brand, override."""
+def merge(*layers: Mapping[str, Any]) -> dict[str, Any]:
+    """Later layers win, merged per surface (one level down), as settings layers are."""
     merged: dict[str, Any] = {}
     for layer in layers:
         for key, value in layer.items():
@@ -169,7 +169,21 @@ def resolve(*layers: Mapping[str, Any]) -> SearchSettings:
                 merged[key] = {**merged[key], **value}
             else:
                 merged[key] = value
-    return SearchSettings.model_validate(merged)
+    return merged
+
+
+def resolve(*layers: Mapping[str, Any]) -> SearchSettings:
+    """Later layers win, merged per surface: system defaults, user defaults, brand, override."""
+    return SearchSettings.model_validate(merge(*layers))
+
+
+def for_brand(
+    user_defaults: Mapping[str, Any], brand_settings: Mapping[str, Any], languages: Sequence[str]
+) -> SearchSettings:
+    """A brand's settings: the owner's defaults, the brand's layer, and the brand's own
+    languages (`brand_languages`) over both when it has any."""
+    own = {"languages": tuple(languages)} if languages else {}
+    return resolve(user_defaults, brand_settings, own)
 
 
 def preset(name: Preset, *overrides: Mapping[str, Any]) -> SearchSettings:

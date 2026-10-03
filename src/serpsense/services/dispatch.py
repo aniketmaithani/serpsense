@@ -11,14 +11,13 @@ schedule or settings can't hold up the rest, and its job is sent after the commi
 from collections import Counter
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
 
 from pydantic import ValidationError
 
 from serpsense.domain.enums import ScanTrigger
 from serpsense.domain.estimator import estimate
 from serpsense.domain.schedule import InvalidSchedule, Schedule
-from serpsense.domain.settings.search import resolve
+from serpsense.domain.settings.search import for_brand
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
 from serpsense.ports.scan_store import NewScan
@@ -57,7 +56,7 @@ class Dispatcher:
             schedule = Schedule(
                 brand.interval_minutes, brand.timezone, brand.quiet_start, brand.quiet_end
             )
-            settings = resolve(brand.user_defaults, brand.brand_settings, _languages(brand))
+            settings = for_brand(brand.user_defaults, brand.brand_settings, brand.languages)
         except (InvalidSchedule, ValidationError) as exc:
             error = type(exc).__name__
             log.warning("dispatch.brand_rejected", brand_id=str(brand.brand_id), error=error)
@@ -83,8 +82,3 @@ class Dispatcher:
             uow.jobs.run_scan(scan_id)
         log.info("scan.queued", scan_id=str(scan_id), brand_id=str(brand.brand_id))
         return Outcome.CREATED
-
-
-def _languages(brand: ScheduledBrand) -> dict[str, Any]:
-    """The brand's own languages, when it has any, override the documents'."""
-    return {"languages": brand.languages} if brand.languages else {}
