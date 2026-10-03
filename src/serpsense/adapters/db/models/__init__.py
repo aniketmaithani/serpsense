@@ -26,9 +26,12 @@ from serpsense.adapters.db.models.observations import (
 )
 from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.adapters.db.models.scores import (
+    CrisisComponentValue,
     CrisisLevelThreshold,
+    ScoreRun,
     ScoringVersion,
     ScoringWeight,
+    SurfaceScore,
 )
 from serpsense.adapters.db.models.search import RawResponse, SerpCall
 from serpsense.adapters.db.models.settings import (
@@ -49,6 +52,7 @@ __all__ = [
     "BrandScheduleVersion",
     "BrandSearchSettingsVersion",
     "BrandWatchTerm",
+    "CrisisComponentValue",
     "CrisisLevelThreshold",
     "Enrichment",
     "LlmCall",
@@ -63,9 +67,11 @@ __all__ = [
     "Scan",
     "ScanStatusTransition",
     "ScanSurfaceResult",
+    "ScoreRun",
     "ScoringVersion",
     "ScoringWeight",
     "SerpCall",
+    "SurfaceScore",
     "TrendsObservation",
     "User",
     "UserLlmBudget",
