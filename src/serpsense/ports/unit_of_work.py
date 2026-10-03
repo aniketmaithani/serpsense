@@ -21,6 +21,7 @@ from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.observation_store import ObservationStore
+from serpsense.ports.outbox import Outbox
 from serpsense.ports.scan_store import ScanStore
 from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
@@ -52,6 +53,9 @@ class UnitOfWork(Protocol):
 
     @property
     def accounts(self) -> Accounts: ...
+
+    @property
+    def outbox(self) -> Outbox: ...
 
     @property
     def scores(self) -> ScoreStore: ...
