@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     def allowed_domain_list(self) -> tuple[str, ...]:
         return tuple(d.lower() for d in _split_csv(self.allowed_domains))
 
+    @property
+    def outbox_key_list(self) -> tuple[str, ...]:
+        """OUTBOX_ENCRYPTION_KEYS, newest first (validated at load)."""
+        return _split_csv(self.outbox_encryption_keys.get_secret_value())
+
     def secret_values(self) -> tuple[str, ...]:
         """All configured secret strings, for log scrubbing."""
         secrets = (
