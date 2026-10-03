@@ -1,0 +1,32 @@
+{% extends "signed_in.html" %}
+{% block title %}Add a brand · SerpSense{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Add a brand</h1>
+    <p class="muted">SerpSense watches what Google shows about it, and Claude labels and groups what it finds.</p>
+  </div>
+</header>
+{% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
+<section class="card">
+  <form method="post" action="/brands/new" class="settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="name">Brand name</label>
+    <input id="name" name="name" value="{{ form.name }}" maxlength="120" required placeholder="e.g. VoltBox">
+    <label for="play_app">Google Play app id <span class="muted">(optional)</span></label>
+    <input id="play_app" name="play_app" value="{{ form.play_app }}" placeholder="com.example.app">
+    <label for="competitors">Competitors <span class="muted">(up to {{ most }}, one per line; each becomes a brand of its own)</span></label>
+    <textarea id="competitors" name="competitors" rows="4">{{ form.competitors }}</textarea>
+    <label for="preset">Preset</label>
+    <select id="preset" name="preset">
+      {% for p in presets %}<option value="{{ p.value }}"{% if p == form.preset %} selected{% endif %}>{{ p.value|capitalize }}</option>{% endfor %}
+    </select>
+    <label for="interval_minutes">Scan</label>
+    <select id="interval_minutes" name="interval_minutes">
+      <option value=""{% if form.interval_minutes is none %} selected{% endif %}>Manually (Scan now)</option>
+      {% for m in intervals %}<option value="{{ m }}"{% if m == form.interval_minutes %} selected{% endif %}>every {{ m // 60 }} h</option>{% endfor %}
+    </select>
+    <button type="submit">Add the brand</button>
+  </form>
+</section>
+{% endblock %}
