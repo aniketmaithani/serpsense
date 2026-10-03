@@ -314,7 +314,7 @@ Health, crisis score and crisis level are derived in `v_scan_scores` (with each 
 
 ## 8. Alerts, notifications, outbox
 
-Migration 0022 (alerts and in-app notifications); the outbox comes with the email dispatcher.
+Migration 0022 (alerts and in-app notifications) and 0023 (the email outbox).
 
 ### 🔒 `alerts`
 | Column | Type | Notes |
@@ -343,15 +343,15 @@ Migration 0022 (alerts and in-app notifications); the outbox comes with the emai
 | template | text | |
 | 📄 template_data | jsonb null | non-sensitive fields |
 | sensitive_data_encrypted | bytea null | MultiFernet; **nulled after send, drop or expiry** |
-| dedupe_key | text | `uq_outbox_messages_dedupe_key` (`otp:{otp_code_id}`, `alert:{alert_id}:email`) |
+| dedupe_key | text | `uq_outbox_messages_dedupe_key` (`otp:{otp_code_id}`, `alert:{alert_id}:email`); non-blank, ≤ 200 |
 | status | enum (`pending`, `sent`, `dead`, `dropped`) | named exception (see conventions) |
 | next_attempt_at | timestamptz | `ix_outbox_messages_pending` partial on status = 'pending' |
 | created_at | timestamptz | |
 
-`ck_outbox_messages_kind_refs`: `otp_email` ⇒ `otp_code_id` not null; `alert_email` ⇒ `alert_id` not null.
+`ck_outbox_messages_kind_refs`: an `otp_email` names its code and an `alert_email` its alert, and neither names the other. `ck_outbox_messages_sensitive_only_pending`: the encrypted payload exists only while the message is `pending`. `ck_outbox_messages_recipient_plain`: the recipient is one bare address (no display name or list for SMTP to fan out to). `ck_outbox_messages_alert_email_has_user`: an alert email names its user. `ix_outbox_messages_user_id` serves the account-deletion scrub.
 
 ### 🔒 `outbox_attempts`
-`id`, `outbox_message_id` fk, `attempted_at`, `outcome` enum (`sent`, `retryable_error`, `permanent_error`, `dropped`), `error_code null`.
+`id`, `outbox_message_id` fk, `attempted_at` (`ix_outbox_attempts_outbox_message_id_attempted_at`), `outcome` enum `outbox_attempt_outcome` (`sent`, `retryable_error`, `permanent_error`, `dropped`), `error_code null` (`^[a-z][a-z0-9_.]{0,63}$`, set exactly for the two error outcomes: `ck_outbox_attempts_error_code_iff_error`).
 
 **Status derivation rule** (what the consistency test checks): no attempts or only `retryable_error` attempts fewer than 8 → `pending`; last outcome `sent` → `sent`; last outcome `dropped` (OTP expired, account deleted) → `dropped`; last outcome `permanent_error`, or 8 `retryable_error` attempts → `dead`.
 
