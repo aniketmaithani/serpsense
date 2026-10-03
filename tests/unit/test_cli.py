@@ -12,15 +12,19 @@ from typer.testing import CliRunner
 from serpsense import __version__
 from serpsense.adapters.db.replay_export import Exported
 from serpsense.composition_replay import Replayed
+from serpsense.domain.enums import LlmTask
 from serpsense.entrypoints import cli
 from serpsense.entrypoints.cli import app
 from serpsense.ports.accounts import InvalidEmail
+from serpsense.ports.llm_client import LlmCallFailed, LlmRequest
 from serpsense.services.demo import Seeded
 from serpsense.services.evals import EvalResult, Evaluator, GoldenBrand, GoldenItem, Split
 from serpsense.services.replay import Played
 from tests.factories import make_settings
 from tests.unit.test_evals import answering, evaluator, item
 from tests.unit.test_grouping_eval import BRAND, grouping_evaluator, mention, placing
+from tests.unit.test_output_evals import DRAFT, EXPLAIN, FAQ, SAID
+from tests.unit.test_output_evals import evaluator as output_evaluator
 
 pytestmark = pytest.mark.unit
 
@@ -195,7 +199,9 @@ def test_eval_groups_the_golden_mentions_and_writes_its_report(
     assert "| Recall | 100.0% |" in written.read_text()
 
 
-@pytest.mark.parametrize("args", [["draft_response"], ["label_mentions", "--split", "train"]])
+@pytest.mark.parametrize(
+    "args", [["classify_autocomplete"], ["label_mentions", "--split", "train"]]
+)
 def test_eval_refuses_a_task_or_split_with_no_golden_set(args: list[str]) -> None:
     result = runner.invoke(app, ["eval", *args])
     assert result.exit_code == 2 and "No eval for" in result.stderr
@@ -230,3 +236,42 @@ def test_replay_export_writes_one_recording_per_brand(
     one = ["replay", "export", "--brand", "nowhere", "--out", str(out)]
     refused = runner.invoke(app, one)
     assert refused.exit_code == 2 and "nowhere: exactly one live brand" in refused.stderr
+
+
+def test_eval_scores_the_explanation_and_draft_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "explain_crisis.jsonl").write_text(EXPLAIN.model_dump_json() + "\n")
+    (tmp_path / "draft_response.jsonl").write_text(DRAFT.model_dump_json() + "\n")
+
+    def answer(request: LlmRequest) -> str:
+        if request.task is LlmTask.EXPLAIN_CRISIS:
+            return json.dumps({"explanation": SAID})
+        return json.dumps({"text": FAQ, "cited": ["m1"]})
+
+    run, _ = output_evaluator(answer)
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_output_evaluator", lambda settings: (run, "claude-opus-5-5"))
+    args = ["--golden", str(tmp_path), "--reports", str(tmp_path / "reports")]
+    for task in ("explain_crisis", "draft_response"):
+        result = runner.invoke(app, ["eval", task, *args])
+        assert result.exit_code == 0 and "Scored 1 of 1 items" in result.stdout
+    written = sorted(p.name for p in (tmp_path / "reports").iterdir())
+    assert [name.split("-", 3)[-1] for name in written] == [
+        "draft_response.md", "explain_crisis.md",
+    ]  # fmt: skip
+
+
+def test_an_output_eval_without_a_key_or_with_unanswered_cases_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "explain_crisis.jsonl").write_text(EXPLAIN.model_dump_json() + "\n")
+    args = ["eval", "explain_crisis", "--golden", str(tmp_path), "--reports", str(tmp_path)]
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    no_key = runner.invoke(app, args)
+    assert no_key.exit_code == 2 and "ANTHROPIC_API_KEY" in no_key.stderr
+    timeout = LlmCallFailed("llm.timeout", retryable=True, latency_ms=5)
+    run, _ = output_evaluator(lambda request: timeout)
+    monkeypatch.setattr(cli, "build_output_evaluator", lambda settings: (run, "claude-opus-5-5"))
+    unanswered = runner.invoke(app, args)
+    assert unanswered.exit_code == 1 and "Scored 0 of 1 items" in unanswered.stdout
