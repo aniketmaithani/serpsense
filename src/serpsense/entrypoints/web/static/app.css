@@ -193,7 +193,8 @@ article.draft .reasoning { white-space: pre-line; color: var(--muted); font-size
   .bar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-right: 0; border-bottom: 1px solid var(--line); }
   nav { flex-direction: row; flex-wrap: wrap; flex: none; }
   nav form.inline { margin-top: 0; }
-  .model-chip { display: none; }
+  .bar nav { flex: 1 1 100%; }
+  nav a.model-chip { display: none; }
   .kpis { grid-template-columns: 1fr; }
   main { padding: 1.25rem 1rem 3rem; }
   .site-foot { padding-inline: 1rem; }
