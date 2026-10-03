@@ -1,15 +1,20 @@
 """In-memory fakes behind the ports, for service tests (AGENTS §9: no network, no database)."""
 
 import uuid
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
-from types import TracebackType
-from typing import Self
+from types import MappingProxyType, TracebackType
+from typing import Any, Self
 
-from serpsense.domain.enums import MentionSource, ScanStatus, Surface
+import structlog
+
+from serpsense.domain.enums import MentionSource, ScanStatus, SerpEngine, ServedFrom, Surface
 from serpsense.domain.llm_pricing import Hop, TokenUsage
+from serpsense.domain.mention import ParsedMention, text_key
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
+from serpsense.ports.collector import Lead, Reading, Target
 from serpsense.ports.enrichment_store import MentionLabel, PendingText
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
 from serpsense.ports.llm_ledger import LlmCallRecord
@@ -18,6 +23,8 @@ from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan, SurfaceResult
 from serpsense.ports.scan_targets import ScanTarget
 from serpsense.ports.scheduled_brands import ScheduledBrand
+from serpsense.ports.search_provider import SearchRequest
+from serpsense.services.search import SearchResult
 
 
 class FixedClock:
@@ -26,6 +33,16 @@ class FixedClock:
 
     def now(self) -> datetime:
         return self.at
+
+
+class TickingClock:
+    """Each reading of the time is the next one given; the last one stays."""
+
+    def __init__(self, *times: datetime) -> None:
+        self.times = list(times)
+
+    def now(self) -> datetime:
+        return self.times.pop(0) if len(self.times) > 1 else self.times[0]
 
 
 class InMemoryScans:
@@ -232,3 +249,94 @@ class MemoryLedger:
 
     def spent_since(self, user_id: uuid.UUID, since: datetime) -> int:
         return self.spent
+
+
+def ask(query: str) -> SearchRequest:
+    return SearchRequest(SerpEngine.GOOGLE, {"q": query})
+
+
+class ScriptedSearch:
+    """Answers each query with its script entry (a payload, or an error to raise), and keeps who
+    each search was billed to and the log context it ran in."""
+
+    def __init__(self, script: Mapping[str, object] | None = None) -> None:
+        self.script, self.asked = dict(script or {}), list[str]()
+        self.billed: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        self.context: list[dict[str, Any]] = []
+
+    def search(
+        self, request: SearchRequest, *, user_id: uuid.UUID, scan_id: uuid.UUID | None = None
+    ) -> SearchResult:
+        query = str(request.params["q"])
+        self.asked.append(query)
+        self.billed.append((user_id, scan_id))
+        self.context.append(structlog.contextvars.get_contextvars())
+        answer = self.script.get(query, {})
+        if isinstance(answer, Exception):
+            raise answer
+        assert isinstance(answer, Mapping)
+        return SearchResult(uuid.uuid4(), answer, ServedFrom.LIVE)
+
+
+STUB_SOURCE = MappingProxyType(
+    {
+        Surface.NEWS: MentionSource.NEWS,
+        Surface.AUTOCOMPLETE: MentionSource.AUTOCOMPLETE,
+        Surface.SEARCH_PAGE: MentionSource.PEOPLE_ALSO_ASK,
+        Surface.AI_OVERVIEW: MentionSource.AI_OVERVIEW,
+    }
+)
+
+
+class StubCollector:
+    """A collector for `surface` asking for `queries`, whose leads may `also` show other
+    surfaces, and which `enables` more surfaces still (for follow-ups its leads don't name). An
+    answer can name the `next` page, an AI `overview` to ask for, what it `shows` (surfaces it
+    has mentions for, by default its lead's) and what it has `not_shown`."""
+
+    def __init__(
+        self,
+        surface: Surface,
+        *queries: str,
+        pages: int = 1,
+        also: frozenset[Surface] = frozenset(),
+        enables: frozenset[Surface] = frozenset(),
+    ) -> None:
+        self.surface, self.queries, self.pages, self.also = surface, queries, pages, also
+        self.enables = enables
+
+    def enabled(self, target: Target) -> frozenset[Surface]:
+        return frozenset({self.surface, *self.also, *self.enables})
+
+    def leads(self, target: Target) -> list[Lead]:
+        return [Lead(self.surface, ask(q), self.also, pages=self.pages) for q in self.queries]
+
+    def read(self, lead: Lead, payload: Mapping[str, Any]) -> Reading:
+        shows = payload.get("shows", [lead.surface])
+        query = str(lead.request.params["q"])
+        mentions = tuple(
+            ParsedMention(STUB_SOURCE[s], text_key(f"{query} {s}"), f"{query} {s}") for s in shows
+        )
+        follow_ups = []
+        if "next" in payload:
+            following = ask(payload["next"])  # only a first page shows `also`
+            follow_ups.append(
+                replace(lead, request=following, page=lead.page + 1, also=frozenset())
+            )
+        if "overview" in payload:
+            follow_ups.append(Lead(Surface.AI_OVERVIEW, ask(payload["overview"])))
+        not_shown = frozenset(payload.get("not_shown", ()))
+        return Reading(mentions=mentions, not_shown=not_shown, follow_ups=tuple(follow_ups))
+
+
+class Untouchable(Mapping[str, Any]):
+    """A payload that fails if anything reads it."""
+
+    def __getitem__(self, key: str) -> Any:
+        raise AssertionError("the payload was read")
+
+    def __iter__(self) -> Iterator[str]:
+        raise AssertionError("the payload was read")
+
+    def __len__(self) -> int:
+        raise AssertionError("the payload was read")
