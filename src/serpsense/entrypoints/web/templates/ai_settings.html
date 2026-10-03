@@ -3,7 +3,7 @@
 {% block main %}
 <h1>AI settings</h1>
 {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
-<p class="muted">Which Claude model does each job, and how hard it thinks. A task left to the preset follows it; changing only its effort keeps the preset's model. "High thinking" spends more on a better answer. The model only labels, groups, explains and drafts: it never sends anything.</p>
+<p class="muted">Which AI model does each job, and how hard it thinks. A task left to the preset follows it; changing only its effort keeps the preset's model. "High thinking" spends more on a better answer. The model only labels, groups, explains and drafts: it never sends anything.</p>
 <form method="post" action="/settings/ai" class="settings">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <fieldset><legend>Preset</legend>
