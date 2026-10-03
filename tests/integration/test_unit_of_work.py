@@ -25,6 +25,12 @@ class RecordingQueue:
     def __init__(self, engine: Engine, *, available: bool = True) -> None:
         self.engine, self.available = engine, available
         self.sent: list[uuid.UUID] = []
+        self.nudges = 0
+
+    def dispatch_outbox(self) -> None:
+        if not self.available:
+            raise JobQueueUnavailable
+        self.nudges += 1
 
     def run_scan(self, scan_id: uuid.UUID) -> None:
         if not self.available:
@@ -107,3 +113,23 @@ def test_sessions_bound_lock_waits_and_idle_transactions(committing_engine: Engi
             )
         ).one()
     assert tuple(settings) == ("15s", "1min")
+
+
+def test_the_outbox_is_nudged_once_after_commit_and_never_on_rollback(
+    committing_engine: Engine,
+) -> None:
+    queue = RecordingQueue(committing_engine)
+    uow = SqlUnitOfWork(committing_engine, queue)
+    with uow:
+        uow.jobs.dispatch_outbox()
+        uow.jobs.dispatch_outbox()
+        assert queue.nudges == 0  # not before the commit
+    assert queue.nudges == 1
+    with pytest.raises(LookupError), uow:
+        uow.jobs.dispatch_outbox()
+        raise LookupError
+    assert queue.nudges == 1
+    down = SqlUnitOfWork(committing_engine, RecordingQueue(committing_engine, available=False))
+    with capture_logs() as logs, down:
+        down.jobs.dispatch_outbox()  # Beat sends the email within 15 seconds anyway
+    assert "job.enqueue_failed" in [entry["event"] for entry in logs]

@@ -10,7 +10,7 @@ import uuid
 from celery import Celery
 from kombu.exceptions import OperationalError
 
-from serpsense.adapters.jobs.celery_factory import RUN_SCAN_TASK
+from serpsense.adapters.jobs.celery_factory import OUTBOX_INTERVAL, OUTBOX_TASK, RUN_SCAN_TASK
 from serpsense.ports.job_queue import JobQueueUnavailable
 
 
@@ -19,7 +19,14 @@ class CeleryJobQueue:
         self._app = app
 
     def run_scan(self, scan_id: uuid.UUID) -> None:
+        self._send(RUN_SCAN_TASK, [str(scan_id)])
+
+    def dispatch_outbox(self) -> None:
+        # A nudge left waiting past Beat's next run is pointless; let it expire.
+        self._send(OUTBOX_TASK, [], expires=OUTBOX_INTERVAL.total_seconds())
+
+    def _send(self, task: str, args: list[str], expires: float | None = None) -> None:
         try:
-            self._app.send_task(RUN_SCAN_TASK, args=[str(scan_id)])
+            self._app.send_task(task, args=args, expires=expires)
         except (OperationalError, OSError) as exc:  # the broker or its socket
             raise JobQueueUnavailable(type(exc).__name__) from exc
