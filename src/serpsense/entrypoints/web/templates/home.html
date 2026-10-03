@@ -1,25 +1,38 @@
 {% extends "signed_in.html" %}
 {% block title %}Your brands · SerpSense{% endblock %}
+{% macro score(value) %}{{ value if value is not none else "–" }}{% endmacro %}
 {% block main %}
-<h1>Your brands</h1>
-<p class="muted">How each brand looks to someone who Googles it: health is how good, crisis how fast it is turning bad.</p>
+<header class="page-head">
+  <div>
+    <h1>Your brands</h1>
+    <p class="muted">How each brand looks to someone who Googles it: health is how good, crisis how fast it is turning bad.</p>
+  </div>
+</header>
 {% if not cards %}
 <section class="card"><p>No brands yet.</p></section>
 {% else %}
-<table class="cards">
-  <thead><tr><th>Brand</th><th>Health</th><th>Crisis</th><th>Last scan</th></tr></thead>
-  <tbody>
+<div class="brand-grid">
   {% for card in cards %}
-    <tr>
-      <td><a href="/brands/{{ card.brand_id }}">{{ card.name }}</a>
-        {% if card.competitor_of %}<span class="badge">competitor of {{ card.competitor_of|join(", ") }}</span>{% endif %}</td>
-      <td class="num">{{ card.health if card.health is not none else "–" }}</td>
-      <td class="num">{{ card.crisis if card.crisis is not none else "–" }}
-        {% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% elif card.crisis is not none %}<span class="muted">warming up</span>{% endif %}</td>
-      <td>{{ card.last_scan_at|when }}{% if card.last_status %} · {{ card.last_status|words }}{% endif %}</td>
-    </tr>
+  <a class="brand-card" href="/brands/{{ card.brand_id }}">
+    <div>
+      <div class="name">{{ card.name }}</div>
+      {% if card.competitor_of %}<span class="badge">competitor of {{ card.competitor_of|join(", ") }}</span>{% endif %}
+    </div>
+    <div class="pair">
+      <div>
+        <div class="kpi-label">Health</div>
+        <div class="num">{{ score(card.health) }}</div>
+        {% if card.health is not none %}<meter min="0" max="100" low="40" high="70" optimum="100" value="{{ card.health }}"></meter>{% endif %}
+      </div>
+      <div>
+        <div class="kpi-label">Crisis</div>
+        <div class="num">{{ score(card.crisis) }}</div>
+        {% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% elif card.crisis is not none %}<span class="muted">warming up</span>{% endif %}
+      </div>
+    </div>
+    <div class="foot">Last scan {{ card.last_scan_at|when }}{% if card.last_status %} · {{ card.last_status|words }}{% endif %}</div>
+  </a>
   {% endfor %}
-  </tbody>
-</table>
+</div>
 {% endif %}
 {% endblock %}
