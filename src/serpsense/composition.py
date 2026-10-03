@@ -114,6 +114,7 @@ class Container:
     inbox: Inbox
     brand_settings: BrandSettings
     stories: Stories
+    accounts: AccountDeletion
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -131,19 +132,21 @@ def build_container(settings: Settings | None = None) -> Container:
     resolved = build_settings(settings)
     engine = create_db_engine(resolved.database_url.get_secret_value())
     celery = build_celery(resolved)
+    sign_in = build_sign_in(resolved, celery)
     return Container(
         settings=resolved,
         health_checks=(
             PostgresHealthCheck(engine),
             RedisHealthCheck(resolved.redis_url.get_secret_value()),
         ),
-        sign_in=build_sign_in(resolved, celery),
+        sign_in=sign_in,
         sessions=build_session_guard(resolved, celery),
         overview=SqlOverview(engine.connect),
         scan_now=build_scan_now(resolved, engine, celery),
         inbox=SqlInbox(engine, SystemClock()),
         brand_settings=build_brand_settings(resolved, engine, celery),
         stories=SqlStories(engine.connect),
+        accounts=build_account_deletion(resolved, celery, sign_in),
     )
 
 
