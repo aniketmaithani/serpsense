@@ -162,6 +162,9 @@ form.settings legend { color: var(--muted); font-size: 0.8rem; text-transform: u
 form.settings label { margin: 0.4rem 0; font-weight: 400; }
 form.settings input[type="number"] { width: 5rem; }
 form.presets button { margin-right: 0.5rem; }
+nav.tabs { flex-direction: row; flex-wrap: wrap; flex: none; gap: 0.4rem; margin: 0 0 1.25rem; }
+nav.tabs a { border: 1px solid var(--line); border-radius: 1rem; padding: 0.4rem 0.9rem; font-size: 0.9rem; }
+nav.tabs a[aria-current="page"] { border-color: var(--accent); }
 .estimate .big { font-size: 2.4rem; font-weight: 700; color: var(--accent); }
 .notice { margin: 0 0 1.25rem; padding: 0.7rem 1rem; border: 1px solid rgb(79 140 255 / 0.35); border-radius: 0.5rem; background: var(--accent-soft); color: var(--ink); }
 .danger-zone { border-color: rgb(248 113 113 / 0.45); }
