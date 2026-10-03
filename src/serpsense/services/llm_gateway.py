@@ -6,7 +6,9 @@ model that served it and recorded before anything uses the output. The model lab
 explains and drafts; nothing it returns is acted on without a deterministic rule or a person.
 Prompts, variables and completions are never logged: a call is referred to by its id and
 prompt version. The budget is checked before each call, so concurrent calls can overshoot it by
-at most one call each, a bound that suits a monthly cap.
+at most one call each, a bound that suits a monthly cap. A call that timed out may still have run
+and been billed, so it is recorded at its worst case, max_tokens at the model's output price, and
+counts against the budget like one that answered.
 """
 
 import uuid
@@ -38,6 +40,7 @@ T = TypeVar("T", bound=BaseModel)
 NO_TOKENS = TokenUsage(input=0, output=0, cache_read=0, cache_write=0)
 DEAREST = "dearest_known"
 FINISHED = frozenset({"end_turn", "stop_sequence"})
+TIMED_OUT = "llm.timeout"
 STOPPED = {
     "refusal": LlmCallOutcome.REFUSED,
     "max_tokens": LlmCallOutcome.TRUNCATED,
@@ -57,6 +60,7 @@ class Call:
     refusal_fallback: bool = True
     timeout_seconds: float = 60.0
     reasoning_summary: bool = False
+    max_retries: int | None = None  # None: the client's default
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,7 @@ class _Ended:
     response: LlmResponse | None
     outcome: LlmCallOutcome
     latency_ms: int
+    assumed_cost_micros: int = 0  # for a call with no response that may have been billed
 
 
 class LlmBudgetExhausted(Exception):
@@ -115,7 +120,9 @@ class LlmGateway:
         try:
             response = self._client.complete(request)
         except LlmCallFailed as exc:
-            self._record(call, shape, now, _Ended(None, LlmCallOutcome.FAILED, exc.latency_ms))
+            worst = _worst_case(shape) if exc.code == TIMED_OUT else 0
+            ended = _Ended(None, LlmCallOutcome.FAILED, exc.latency_ms, worst)
+            self._record(call, shape, now, ended)
             raise
         outcome, parsed = _classify(response, output)
         call_id = self._record(call, shape, now, _Ended(response, outcome, response.latency_ms))
@@ -143,7 +150,7 @@ class LlmGateway:
             prompt_version=call.prompt_version,
             request_settings=_settings(call, shape),
             usage=usage,
-            cost_micros=_cost(response.hops if response else ()),
+            cost_micros=_cost(response.hops) if response else ended.assumed_cost_micros,
             currency=CURRENCY,
             stop_reason=response.stop_reason if response else None,
             outcome=outcome,
@@ -175,6 +182,7 @@ def _request(call: Call, shape: RequestShape, output: type[BaseModel]) -> LlmReq
         refusal_fallback=call.refusal_fallback,
         timeout_seconds=call.timeout_seconds,
         reasoning_summary=call.reasoning_summary,
+        max_retries=call.max_retries,
     )
 
 
@@ -201,6 +209,12 @@ def _cost(hops: tuple[Hop, ...]) -> int:
     return total
 
 
+def _worst_case(shape: RequestShape) -> int:
+    """What a timed-out call could have cost: all its output tokens, at the model's price."""
+    return _cost((Hop(shape.model, TokenUsage(input=0, output=shape.max_tokens, cache_read=0,
+                                               cache_write=0)),))  # fmt: skip
+
+
 def _settings(call: Call, shape: RequestShape) -> dict[str, Any]:
     return {
         "model": shape.model,
@@ -212,4 +226,5 @@ def _settings(call: Call, shape: RequestShape) -> dict[str, Any]:
         "refusal_fallback": call.refusal_fallback,
         "reasoning_summary": call.reasoning_summary,
         "timeout_seconds": call.timeout_seconds,
+        "max_retries": call.max_retries,
     }

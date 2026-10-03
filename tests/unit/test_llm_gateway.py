@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -18,7 +19,7 @@ from serpsense.domain.llm_capabilities import (
     TaskSettings,
     UnsupportedSetting,
 )
-from serpsense.domain.llm_pricing import Hop, TokenUsage
+from serpsense.domain.llm_pricing import Hop, TokenUsage, cost_micros
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
 from serpsense.ports.llm_ledger import LlmCallRecord
 from serpsense.services.llm_gateway import (
@@ -143,7 +144,7 @@ def test_an_unusable_answer_is_recorded_and_rejected(
 
 def test_a_failed_call_is_recorded_at_no_cost_and_raised() -> None:
     ledger = Ledger()
-    failure = LlmCallFailed("llm.timeout", retryable=True, latency_ms=60_000)
+    failure = LlmCallFailed("llm.network", retryable=True, latency_ms=600)
     with pytest.raises(LlmCallFailed):
         gateway(Scripted(failure), ledger).run(CALL, Labels)
     (record,) = ledger.calls
@@ -151,8 +152,19 @@ def test_a_failed_call_is_recorded_at_no_cost_and_raised() -> None:
         LlmCallOutcome.FAILED,
         None,
         0,
-        60_000,
+        600,
     )
+
+
+def test_a_timed_out_call_counts_at_its_worst_case() -> None:
+    ledger = Ledger()
+    failure = LlmCallFailed("llm.timeout", retryable=True, latency_ms=60_000)
+    with pytest.raises(LlmCallFailed):
+        gateway(Scripted(failure), ledger).run(replace(CALL, max_retries=0), Labels)
+    (record,) = ledger.calls
+    worst = cost_micros(CALL.settings.model, TokenUsage(0, CALL.settings.max_tokens, 0, 0))
+    assert (record.outcome, record.cost_micros) == (LlmCallOutcome.FAILED, worst)
+    assert worst > 0 and record.request_settings["max_retries"] == 0
 
 
 def test_a_spent_budget_stops_the_call_before_it_is_made() -> None:
