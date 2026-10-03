@@ -6,7 +6,7 @@ import secrets
 import typer
 
 from serpsense import __version__
-from serpsense.composition import build_celery, build_seeder, build_settings
+from serpsense.composition import build_celery, build_scorer, build_seeder, build_settings
 from serpsense.ports.accounts import InvalidEmail
 
 app = typer.Typer(help="SerpSense command-line tools.", no_args_is_help=True)
@@ -41,3 +41,11 @@ def seed_demo(
     rivals = len(seeded.competitor_ids)
     typer.echo(f"Seeded Ola ({seeded.brand_id}) and {rivals} competitors.")
     typer.echo("The dispatcher queues their first scans within five minutes.")
+
+
+@app.command("score-backlog")
+def score_backlog() -> None:
+    """Score the finished scans that have no scores yet (they raise no alerts)."""
+    settings = build_settings()
+    scored = build_scorer(settings, build_celery(settings))()
+    typer.echo(f"Scored {scored} scans.")

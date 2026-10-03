@@ -23,7 +23,7 @@ from serpsense.adapters.db.models.mentions import Mention, MentionRevision
 from serpsense.adapters.db.models.observations import AppRatingObservation, MentionObservation
 from serpsense.adapters.db.models.scans import Scan, ScanSurfaceResult
 from serpsense.adapters.db.models.scores import CrisisComponentValue, ScoreRun, SurfaceScore
-from serpsense.domain.enums import LlmTask, MentionSource, Surface, SurfaceOutcome
+from serpsense.domain.enums import LlmTask, MentionSource, ScanStatus, Surface, SurfaceOutcome
 from serpsense.domain.labelling import LABELLERS
 from serpsense.domain.mention import SURFACE
 from serpsense.domain.scoring.crisis import USUAL_SCANS
@@ -78,6 +78,15 @@ class SqlScoreStore:
             earlier=_earlier([created for _, created in earlier], labelled, firsts),
             collected_before=_before(firsts, at),
         )
+
+    def unscored(self) -> list[uuid.UUID]:
+        scored = select(RUNS.c.scan_id).where(RUNS.c.scan_id == SCANS.c.id).exists()
+        query = (
+            select(SCANS.c.id)
+            .where(SCANS.c.status.in_([ScanStatus.SUCCEEDED, ScanStatus.PARTIAL]), ~scored)
+            .order_by(SCANS.c.created_at, SCANS.c.id)
+        )
+        return list(self._conn.execute(query).scalars())
 
     def record(self, scan_id: uuid.UUID, scores: ScanScores, *, version: str, at: datetime) -> bool:
         run = insert(RUNS).values(scan_id=scan_id, version=version, computed_at=at)
