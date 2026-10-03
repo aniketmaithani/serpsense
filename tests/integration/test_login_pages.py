@@ -123,7 +123,8 @@ def test_signing_in_and_out_through_the_pages(committing_engine: Engine) -> None
     assert client.post("/logout", data={"csrf_token": "forged"}).status_code == 403
     out = client.post("/logout", data={"csrf_token": token(home.text)})
     assert out.status_code == 303 and out.headers["location"] == "/login"
-    assert client.get("/").headers["location"] == "/login"
+    assert client.get("/notifications").headers["location"] == "/login"  # signed out
+    assert "Not affiliated with SerpApi" in client.get("/").text  # the public landing page
 
 
 def test_a_malformed_address_is_said_so(committing_engine: Engine) -> None:
@@ -146,7 +147,7 @@ def test_signing_in_again_ends_the_session_the_browser_had(committing_engine: En
         client.post("/verify", data={"form_token": form, "email": email, "code": code})
     assert old is not None and client.cookies["serpsense_session"] != old
     client.cookies.set("serpsense_session", old)
-    assert client.get("/").headers["location"] == "/login"  # the old session is over
+    assert client.get("/notifications").headers["location"] == "/login"  # that session is over
 
 
 def test_production_cookies_are_secure_and_host_only(committing_engine: Engine) -> None:

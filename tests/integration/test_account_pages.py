@@ -23,7 +23,7 @@ def signed_in(engine: Engine, clock: FixedClock, email: str) -> TestClient:
     client.post("/login", data={"form_token": form, "email": email})
     code = code_for(engine, email)
     verified = client.post("/verify", data={"form_token": form, "email": email, "code": code})
-    assert verified.status_code == 303 and client.get("/").status_code == 200
+    assert verified.status_code == 303 and "Your brands" in client.get("/").text  # signed in
     return client
 
 
@@ -77,7 +77,7 @@ def test_signing_out_everywhere_ends_every_session(committing_engine: Engine) ->
     )
     out = here.post(f"{ACCOUNT}/sign-out-everywhere", data={"csrf_token": csrf})
     assert out.status_code == 303 and out.headers["location"] == "/login"
-    assert there.get("/").headers["location"] == "/login"
+    assert there.get("/notifications").headers["location"] == "/login"
 
 
 def test_a_deletion_held_up_by_an_email_being_sent_says_try_again(

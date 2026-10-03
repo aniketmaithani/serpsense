@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SerpSense · your reputation is what Google shows people</title>
+  <meta name="description" content="SerpSense watches how a brand looks to anyone who Googles it, with SerpApi, and alerts and drafts a response when a crisis starts.">
+  <link rel="preload" href="/static/fonts/space-grotesk-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/landing/landing.css">
+</head>
+<body class="landing">
+<header class="l-bar">
+  <a class="l-brand" href="/">SerpSense</a>
+  <a class="l-signin" href="/login">Sign in</a>
+</header>
+<main>
+  <section class="track" id="track">
+    <div class="stage" id="stage">
+      <div class="chapters">
+        <article class="chapter" id="hero">
+          <h1 class="headline">Your brand's reputation is whatever Google shows people.</h1>
+          <p class="sub">SerpSense watches it for you.</p>
+          <div class="still still-search"><span class="glass"></span><span>VoltBox</span></div>
+          <p class="cue">Scroll</p>
+        </article>
+        <article class="chapter" id="surfaces">
+          <h2>Customers, investors and candidates don't read your press releases. They read this.</h2>
+          <ul class="still chips">
+            {% for name in surfaces %}<li>{{ name }}</li>{% endfor %}
+          </ul>
+        </article>
+        <article class="chapter" id="collect">
+          <h2>Seven SerpApi engines. One scan. Every surface a person sees.</h2>
+          <table class="still engines">
+            {% for engine, surface, searches in engines %}
+            <tr><td class="mono">{{ engine }}</td><td>{{ surface }}</td><td class="num">{{ searches }}</td></tr>
+            {% endfor %}
+          </table>
+        </article>
+        <article class="chapter" id="normalise">
+          <h2>Every result, suggestion, article and review becomes one typed mention.</h2>
+          <div class="still grid">{% for _ in tones %}<i></i>{% endfor %}</div>
+        </article>
+        <article class="chapter" id="enrich">
+          <h2>Claude labels sentiment, topic and severity. Author names are stripped first.</h2>
+          <div class="still grid">{% for tone in tones %}<i class="t-{{ tone }}"></i>{% endfor %}</div>
+        </article>
+        <article class="chapter" id="narratives">
+          <h2>Scattered complaints become stories you can act on.</h2>
+          <ul class="still stories">
+            {% for label, count, spread in stories %}
+            <li><strong>{{ label }}</strong> <span class="muted">{{ count }} mentions · {{ spread }}</span></li>
+            {% endfor %}
+          </ul>
+        </article>
+        <article class="chapter" id="score">
+          <h2>Deterministic, versioned scoring. No black box.</h2>
+          <div class="still scores">
+            <p><span class="label">Health</span> <span class="big">41</span></p>
+            <p><span class="label">Crisis</span> <span class="big neg">74</span> <span class="level">high</span></p>
+            <ul class="weights">
+              {% for surface, weight in weights %}<li><span>{{ surface }}</span> <b class="w{{ weight }}"></b> {{ weight }}%</li>{% endfor %}
+            </ul>
+          </div>
+        </article>
+        <article class="chapter" id="alert">
+          <h2>Alerted when it starts, not when it trends.</h2>
+          <div class="still alert">
+            <ol class="suggest"><li>voltbox is good</li><li class="new">voltbox is overheating</li><li>voltbox is worth it</li></ol>
+            <p><strong>Crisis level rose to high.</strong> Battery swelling: 9 mentions on 3 surfaces, 6 new since the last scan.</p>
+            <p class="muted">SoundNest: not affected, so this is brand-specific.</p>
+          </div>
+        </article>
+        <article class="chapter" id="draft">
+          <h2>A response draft, backed by evidence you can check.</h2>
+          <div class="still doc">
+            <span class="badge">AI-generated</span>
+            <p>We're aware of reports of VoltBox earbuds overheating while charging <span class="cite">1</span> <span class="cite">2</span>. Please stop using the charging case and reply to us for a free replacement while we investigate <span class="cite">3</span>.</p>
+            <p class="buttons"><span>Draft</span><span>High thinking</span><span>Max</span></p>
+          </div>
+        </article>
+        <article class="chapter" id="replay">
+          <h2>Replay how a crisis spread, scan by scan.</h2>
+          <div class="still timeline">{% for n in range(1, 13) %}<i{% if n > 8 %} class="hot"{% endif %}>{{ n }}</i>{% endfor %}</div>
+        </article>
+        <article class="chapter" id="built-right">
+          <h2>Production-grade, not a demo script.</h2>
+          <ul class="still facts">{% for fact in facts %}<li>{{ fact }}</li>{% endfor %}</ul>
+        </article>
+        <article class="chapter" id="cta">
+          <h2>See it for yourself.</h2>
+          <p class="still actions">
+            <a class="button" href="https://github.com/aniketmaithani/serpsense">View on GitHub</a>
+            <a class="secondary" href="#quickstart">Run it in replay mode</a>
+          </p>
+          <pre class="quickstart" id="quickstart"><code>git clone https://github.com/aniketmaithani/serpsense && cd serpsense
+sed 's/^SERPSENSE_MODE=live/SERPSENSE_MODE=replay/' .env.example > .env
+docker compose run --rm --no-deps tools serpsense gen-secrets >> .env
+docker compose up --build -d
+docker compose run --rm tools serpsense seed-demo --owner you@example.com</code></pre>
+          <p class="muted quickstart-note">Then sign in at <code>localhost:8000</code> as that address; the code arrives in Mailpit at <code>localhost:8025</code>. No API keys needed.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="l-foot">Built with SerpApi for the SerpApi India Hackathon 2026. Not affiliated with SerpApi, LLC.</footer>
+</body>
+</html>
