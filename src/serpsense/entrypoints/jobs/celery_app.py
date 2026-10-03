@@ -14,15 +14,18 @@ from structlog.contextvars import bound_contextvars
 from serpsense.composition import (
     DISPATCH_TASK,
     HEARTBEAT_TASK,
+    OUTBOX_TASK,
     RUN_SCAN_TASK,
     SCAN_TIME_LIMIT_SECONDS,
     SWEEP_TASK,
     Worker,
     build_celery,
+    build_outbox,
     build_settings,
     build_worker,
 )
 from serpsense.observability import get_logger
+from serpsense.services.outbox import OutboxDispatcher
 
 log = get_logger(__name__)
 
@@ -67,3 +70,15 @@ def dispatch_due_scans() -> None:
 @app.task(name=SWEEP_TASK)
 def sweep_stuck_work() -> None:
     _worker().sweeper.sweep()
+
+
+@cache
+def _outbox() -> OutboxDispatcher:
+    """Built on an outbox worker process's first task; it needs no SerpApi or Anthropic key."""
+    return build_outbox(_settings, app)
+
+
+@app.task(name=OUTBOX_TASK)
+def dispatch_outbox() -> None:
+    """Send the due emails; Beat runs it every 15 seconds."""
+    _outbox().dispatch()

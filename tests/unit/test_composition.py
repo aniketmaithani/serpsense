@@ -4,12 +4,15 @@ from datetime import timedelta
 import pytest
 
 from serpsense.adapters.llm.profiles import PresetProfiles
+from serpsense.adapters.mail.console import ConsoleMailer
+from serpsense.adapters.mail.smtp import SmtpMailer
 from serpsense.composition import (
     COLLECTION_TIME,
     SCAN_TIME_LIMIT_SECONDS,
     STUCK_AFTER,
     build_celery,
     build_container,
+    build_outbox,
     build_seeder,
     build_worker,
 )
@@ -61,3 +64,13 @@ def test_until_profiles_can_be_edited_every_user_gets_the_configured_preset() ->
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
     assert callable(build_seeder(settings, build_celery(settings)))
+
+
+def test_build_outbox_sends_through_the_configured_mailer_without_connecting() -> None:
+    smtp = make_settings(smtp_host="smtp.example.com", smtp_user="u", smtp_password="pw")
+    dispatcher = build_outbox(smtp, build_celery(smtp))
+    mailer = dispatcher._mailer  # the wiring is what this test checks
+    assert isinstance(mailer, SmtpMailer)
+    assert (mailer._settings.host, mailer._settings.password) == ("smtp.example.com", "pw")
+    console = make_settings(email_backend="console")
+    assert isinstance(build_outbox(console, build_celery(console))._mailer, ConsoleMailer)

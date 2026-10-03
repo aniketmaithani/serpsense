@@ -9,6 +9,7 @@ from celery.signals import setup_logging
 from serpsense.adapters.jobs.celery_factory import (
     DISPATCH_TASK,
     HEARTBEAT_TASK,
+    OUTBOX_TASK,
     RUN_SCAN_TASK,
     SCAN_TIME_LIMIT_SECONDS,
     SWEEP_TASK,
@@ -51,7 +52,8 @@ def test_every_scheduled_task_is_registered_and_the_scan_task_has_the_scan_time_
 ) -> None:
     module = entrypoint(monkeypatch)
     scheduled = {entry["task"] for entry in module.app.conf.beat_schedule.values()}
-    assert scheduled == {HEARTBEAT_TASK, DISPATCH_TASK, SWEEP_TASK} <= set(module.app.tasks)
+    expected = {HEARTBEAT_TASK, DISPATCH_TASK, SWEEP_TASK, OUTBOX_TASK}
+    assert scheduled == expected <= set(module.app.tasks)
     scan_task = module.app.tasks[RUN_SCAN_TASK]
     assert (scan_task.time_limit, scan_task.soft_time_limit) == (SCAN_TIME_LIMIT_SECONDS, None)
     assert module.app.conf.task_soft_time_limit is None  # nor does any other task get one
@@ -71,8 +73,11 @@ def test_the_tasks_hand_their_work_to_the_worker(monkeypatch: pytest.MonkeyPatch
         sweeper=SimpleNamespace(sweep=lambda: calls.append("swept")),
     )
     monkeypatch.setattr(module, "_worker", lambda: worker)
+    outbox = SimpleNamespace(dispatch=lambda: calls.append("emailed"))
+    monkeypatch.setattr(module, "_outbox", lambda: outbox)
     scan_id = uuid.uuid4()
     module.run_scan(str(scan_id))
     module.dispatch_due_scans()
     module.sweep_stuck_work()
-    assert calls == [(scan_id, str(scan_id)), "dispatched", "swept"]
+    module.dispatch_outbox()
+    assert calls == [(scan_id, str(scan_id)), "dispatched", "swept", "emailed"]

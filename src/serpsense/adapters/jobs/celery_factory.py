@@ -26,6 +26,8 @@ RUN_SCAN_TASK = "serpsense.scans.run"
 DISPATCH_TASK = "serpsense.maintenance.dispatch_due_scans"
 SWEEP_TASK = "serpsense.maintenance.sweep_stuck_work"
 DISPATCH_INTERVAL = SWEEP_INTERVAL = timedelta(minutes=5)  # BUILD_PLAN §10
+OUTBOX_TASK = "serpsense.outbox.dispatch"
+OUTBOX_INTERVAL = timedelta(seconds=15)  # ADR-0010
 BEAT_SCHEDULE_FILE = "/tmp/celerybeat-schedule"  # noqa: S108 - container-local scratch file
 
 # Tasks are routed by name prefix, so a task can't silently land on the wrong queue.
@@ -65,6 +67,12 @@ def create_celery(broker_url: str) -> Celery:
             "heartbeat": {"task": HEARTBEAT_TASK, "schedule": HEARTBEAT_INTERVAL},
             "dispatch_due_scans": {"task": DISPATCH_TASK, "schedule": DISPATCH_INTERVAL},
             "sweep_stuck_work": {"task": SWEEP_TASK, "schedule": SWEEP_INTERVAL},
+            "dispatch_outbox": {
+                "task": OUTBOX_TASK,
+                "schedule": OUTBOX_INTERVAL,
+                # A run that waited past the next one is dropped, so they don't pile up.
+                "options": {"expires": OUTBOX_INTERVAL.total_seconds()},
+            },
         },
     )
     return celery
