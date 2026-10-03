@@ -29,6 +29,7 @@ from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.services.dispatch import Dispatcher
+from serpsense.services.explanations import Explainer
 from serpsense.services.scan_now import ScanNow
 from serpsense.services.scans import ScanService
 from serpsense.services.sweep import Sweeper
@@ -56,6 +57,7 @@ def test_build_worker_wires_the_scan_pipeline_without_connecting() -> None:
     worker = build_worker(settings, build_celery(settings))
     assert isinstance(worker.scans, ScanService)
     assert isinstance(worker.dispatcher, Dispatcher) and isinstance(worker.sweeper, Sweeper)
+    assert isinstance(worker.explainer, Explainer)
     assert COLLECTION_TIME < timedelta(seconds=SCAN_TIME_LIMIT_SECONDS) < STUCK_AFTER
 
 

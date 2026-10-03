@@ -38,6 +38,7 @@ def test_each_rule_that_fires_raises_an_alert_a_notification_and_an_email_once()
     assert set(emails) == set(uow.alerts.told)  # one email per alert ...
     for alert_id, (title, body) in uow.alerts.told.items():  # ... saying what the app says
         assert emails[alert_id] == {"title": title, "body": body}
+    assert sorted(uow.sent.explanations) == sorted(uow.alerts.told)  # asked for after commit
     with uow:
         assert raise_alerts(uow, scan_id, at=AT) == []  # a re-run of the finish raises nothing
     assert (len(uow.alerts.told), len(emails)) == (2, 2)

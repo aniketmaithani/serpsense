@@ -25,7 +25,13 @@ class RecordingQueue:
     def __init__(self, engine: Engine, *, available: bool = True) -> None:
         self.engine, self.available = engine, available
         self.sent: list[uuid.UUID] = []
+        self.explain: list[uuid.UUID] = []
         self.nudges = 0
+
+    def explain_alert(self, alert_id: uuid.UUID) -> None:
+        if not self.available:
+            raise JobQueueUnavailable
+        self.explain.append(alert_id)
 
     def dispatch_outbox(self) -> None:
         if not self.available:
@@ -151,3 +157,24 @@ def test_a_lock_wait_that_runs_out_is_busy_and_sends_nothing(
     assert queue.nudges == 0  # rolled back: nothing sent
     with uow:  # the holder is done: the same unit of work opens and locks
         assert uow.accounts.lock(user_id) is not None
+
+
+def test_alerts_are_explained_after_commit_and_never_on_rollback(
+    committing_engine: Engine,
+) -> None:
+    queue, alert = RecordingQueue(committing_engine), uuid.uuid4()
+    uow = SqlUnitOfWork(committing_engine, queue)
+    with uow:
+        uow.jobs.explain_alert(alert)
+        assert queue.explain == []  # not before the commit
+    assert queue.explain == [alert]
+    with pytest.raises(LookupError), uow:
+        uow.jobs.explain_alert(uuid.uuid4())
+        raise LookupError
+    assert queue.explain == [alert]
+    down = SqlUnitOfWork(committing_engine, RecordingQueue(committing_engine, available=False))
+    with capture_logs() as logs, down:
+        down.jobs.explain_alert(alert)  # the alert and its email stand without it
+    assert {"event": "job.enqueue_failed", "job": "explain_alert", "alert_id": str(alert)} in [
+        {k: v for k, v in entry.items() if k != "log_level"} for entry in logs
+    ]
