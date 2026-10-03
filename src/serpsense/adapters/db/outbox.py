@@ -65,6 +65,19 @@ FOR UPDATE OF m SKIP LOCKED
 )
 
 
+PENDING_FOR = text(
+    """
+SELECT id FROM outbox_messages
+WHERE status = 'pending'
+  AND (user_id = :user
+       OR otp_code_id IN (SELECT id FROM otp_codes WHERE email = CAST(:email AS citext))
+       OR recipient_email = CAST(:email AS citext))
+ORDER BY id
+FOR UPDATE
+"""
+)
+
+
 class SqlOutbox:
     """Works on the caller's connection and never commits: the unit of work does."""
 
@@ -95,6 +108,10 @@ class SqlOutbox:
         kind = OutboxKind(row.kind)
         sealed = row.sensitive_data_encrypted
         return DueEmail(row.id, kind, row.recipient_email, row.template, data, sealed, row.stale)
+
+    def pending_for(self, user_id: uuid.UUID, email: str) -> list[uuid.UUID]:
+        rows = self._conn.execute(PENDING_FOR, {"user": user_id, "email": email})
+        return list(rows.scalars())
 
     def record(
         self,
