@@ -20,6 +20,9 @@ def test_an_address_is_trimmed_and_kept_as_typed() -> None:
         "no-domain@localhost",
         "a b@example.com",
         "nul\x00@example.com",
+        "a@x.in, b@y.in",  # a list SMTP would fan out to
+        "Owner <a@x.in>",
+        "a;b@x.in",
         "x" * 250 + "@a.in",  # longer than 254
         "deleted+0b6f@serpsense.invalid",  # a deleted account's pseudonym
         "DELETED+0b6f@SERPSENSE.INVALID",
