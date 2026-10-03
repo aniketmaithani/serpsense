@@ -31,11 +31,47 @@ search page 2500, autocomplete 2000, AI Overview 1500, news 1500, Play 1500, Map
 missing surface's weight is spread over the others. Trends and YouTube don't count towards
 health.
 
+## Crisis
+
+A crisis is a **change**, so every component compares this scan with the brand's **usual**,
+or counts only what is new. A brand that always has some negative reviews and articles is not
+in crisis because of them. The usual of a count is the median (the lower middle value) of the
+brand's newest eight earlier scans, and never below 2, so a quiet brand isn't alarmed by its
+second complaint. A mention is **new** in the scan that first saw it, and a surface's mentions
+count as new only once that surface has been collected before with the same queries (adding a
+search prefix or a language makes the baseline, not a crisis). The surfaces are the health
+surfaces: search page, autocomplete, AI Overview, news, Play and Maps.
+
+**Warm-up.** On a brand's first scans everything it shows is new, so its crisis has **no level**,
+and raises no alert, until it has 3 earlier succeeded scans. A newly added competitor therefore
+never sends a "Competitor: …" alert on its first scan. The components are still recorded.
+
+Each component is 0–100 and weighted in basis points; a missing component counts as 0.
+
+| Component | Weight | Value |
+|---|---|---|
+| Velocity | 3000 | Negative mentions new in this scan against their usual: 0 at or below it, 100 at four times it. |
+| Spread | 2500 | The share of the surfaces that showed something whose new negative mentions exceed that surface's own usual. |
+| New negative autocomplete | 2000 | A negative suggestion first seen for the brand in this scan: 100, 90 or 80 in the top three places, 70 below. A suggestion that drops out and comes back is not new. |
+| Rising negative Trends query | 1500 | A negative rising query first seen for the brand: 60 for one, plus 20 for each more, capped at 100. |
+| Press in 48 hours | 1000 | Negative articles new in this scan and published in the last 48 hours: half the sum of their severities, capped at 100. |
+
+Crisis = Σ weight × value ÷ 10 000. Levels: **low** below 40, **medium** from 40 to 69,
+**high** from 70. Compare levels by their rank, never as strings, since "low" sorts after
+"high". Velocity, spread and press alone reach at most 65, so with the plan's weights a crisis
+reaches **high** only with a search-visible signal (a new negative suggestion or a rising
+negative query). That is intended: what someone sees when they Google the brand is what this
+product watches.
+
 ## Choices the plan left open
 
 BUILD_PLAN §11 names the inputs but not every number. These are this version's choices:
 
 - **Unranked results** weigh like rank 10.
 - **Autocomplete:** the extra penalty for the top three places.
+- **The usual:** the median of eight scans with a floor of 2; four times the usual means velocity 100.
+- **Change, not level:** crisis counts only new mentions, and spread compares each surface with its own usual.
+- **Press:** uses severity.
+- **New negative suggestions:** the scale for them.
 
 Changing any of these is a new scoring version, recorded with each score run.
