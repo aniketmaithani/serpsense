@@ -70,3 +70,14 @@ def test_a_signed_in_visitor_still_gets_their_brands() -> None:
     page = client.get("/")
     assert page.status_code == 200 and "<h1>Your brands</h1>" in page.text
     assert HEADLINE not in page.text and page.headers["cache-control"] == "no-store"
+
+
+def test_the_sequence_loads_as_modules_from_our_own_origin() -> None:
+    client = TestClient(create_app(make_container(make_settings())))
+    page = client.get("/").text
+    assert '<script type="module" src="/static/landing/landing.js"></script>' in page
+    assert 'class="scene" aria-hidden="true"' in page  # decorative: the copy is the content
+    for script in ("landing/landing.js", "landing/chapters-a.js", "vendor/anime/anime.esm.min.js"):
+        response = client.get(f"/static/{script}")
+        assert response.status_code == 200 and "javascript" in response.headers["content-type"]
+    assert "../vendor/anime/anime.esm.min.js" in client.get("/static/landing/landing.js").text
