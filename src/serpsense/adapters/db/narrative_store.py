@@ -1,22 +1,28 @@
 """Narratives and their mentions in Postgres (data-model §6).
 
 A mention's label is its current one (`adapters/db/labels.py`), the same the scores read, and
-its text its latest revision's.
+its text its latest revision's; its current narrative is its latest assignment.
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import cast
 
 from sqlalchemy import Connection, Table, func, or_, select, text
-from sqlalchemy.dialects.postgresql import distinct_on
+from sqlalchemy.dialects.postgresql import distinct_on, insert
 
 from serpsense.adapters.db import labels
-from serpsense.adapters.db.models.llm import NarrativeAssignment
+from serpsense.adapters.db.models.llm import Narrative, NarrativeAssignment
 from serpsense.domain.enums import LlmCallOutcome, LlmTask, MentionSource, Topic
-from serpsense.ports.narrative_store import UngroupedMention
+from serpsense.ports.narrative_store import (
+    Assignment,
+    NewNarrative,
+    OpenNarrative,
+    UngroupedMention,
+)
 
+NARRATIVES = cast(Table, Narrative.__table__)
 ASSIGNMENTS = cast(Table, NarrativeAssignment.__table__)
 ENRICHMENTS, MENTIONS, REVISIONS = labels.ENRICHMENTS, labels.MENTIONS, labels.REVISIONS
 LAST_GROUPING = text(
@@ -26,6 +32,22 @@ FROM llm_calls c JOIN scans s ON s.id = c.scan_id
 WHERE s.brand_id = :brand AND c.task = 'group_narratives'
 ORDER BY c.created_at DESC, c.id
 LIMIT 1
+"""
+)
+OPEN = text(
+    """
+WITH current AS (
+    SELECT DISTINCT ON (a.mention_id) a.mention_id, a.narrative_id, a.created_at
+    FROM narrative_assignments a JOIN narratives n ON n.id = a.narrative_id
+    WHERE n.brand_id = :brand
+    ORDER BY a.mention_id, a.created_at DESC
+)
+SELECT n.id, n.label, n.summary, count(*) AS mentions
+FROM narratives n JOIN current c ON c.narrative_id = n.id
+GROUP BY n.id
+HAVING max(c.created_at) >= :since
+ORDER BY max(c.created_at) DESC, n.id
+LIMIT :limit
 """
 )
 
@@ -103,3 +125,47 @@ class SqlNarrativeStore:
         row = self._conn.execute(LAST_GROUPING, {"brand": brand_id}).first()
         succeeded = row is not None and row.outcome == LlmCallOutcome.SUCCEEDED
         return row.created_at if row is not None and succeeded else None
+
+    def open(
+        self, brand_id: uuid.UUID, *, active_since: datetime, limit: int
+    ) -> list[OpenNarrative]:
+        values = {"brand": brand_id, "since": active_since, "limit": limit}
+        return [OpenNarrative(*row) for row in self._conn.execute(OPEN, values)]
+
+    def record(
+        self,
+        narratives: Sequence[NewNarrative],
+        assignments: Sequence[Assignment],
+        *,
+        prompt_version: str,
+        llm_call_id: uuid.UUID,
+        at: datetime,
+    ) -> int:
+        mentions = [a.mention_id for a in assignments]
+        placed = select(ASSIGNMENTS.c.mention_id).where(ASSIGNMENTS.c.mention_id.in_(mentions))
+        taken = set(self._conn.execute(placed).scalars()) if mentions else set()
+        fresh = [a for a in assignments if a.mention_id not in taken]
+        joined = {a.narrative_id for a in fresh}
+        stories = [n for n in narratives if n.narrative_id in joined]
+        made = {"prompt_version": prompt_version, "llm_call_id": llm_call_id, "created_at": at}
+        if stories:
+            rows = [
+                {
+                    "id": n.narrative_id,
+                    "brand_id": n.brand_id,
+                    "label": n.label,
+                    "summary": n.summary,
+                }
+                | made
+                for n in stories
+            ]
+            self._conn.execute(insert(NARRATIVES).values(rows))
+        if not fresh:
+            return 0
+        values = [
+            {"id": uuid.uuid4(), "mention_id": a.mention_id, "narrative_id": a.narrative_id} | made
+            for a in fresh
+        ]
+        # Only one scan of a brand is active, so nothing places these mentions meanwhile.
+        statement = insert(ASSIGNMENTS).values(values).on_conflict_do_nothing()
+        return len(self._conn.execute(statement.returning(ASSIGNMENTS.c.id)).all())
