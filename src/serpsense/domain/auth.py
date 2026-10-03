@@ -8,6 +8,7 @@ time. Emails are compared without case, as the database does (citext).
 import hashlib
 import hmac
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 CODE_DIGITS = 6
@@ -62,3 +63,18 @@ def clean_user_agent(raw: str | None) -> str | None:
     """A user agent as it is kept: printable characters only, at most 256 of them."""
     cleaned = "".join(ch for ch in raw or "" if ch.isprintable())[:MAX_USER_AGENT]
     return cleaned or None
+
+
+@dataclass(frozen=True)
+class SignupPolicy:
+    """Who may get a code: anyone, or in invite mode only the listed addresses and domains
+    (ADR-0009; production runs invite mode)."""
+
+    invite_only: bool
+    emails: frozenset[str] = frozenset()
+    domains: frozenset[str] = frozenset()
+
+    def allows(self, email: str) -> bool:
+        address = email.lower()
+        domain = address.rpartition("@")[2]
+        return not self.invite_only or address in self.emails or domain in self.domains
