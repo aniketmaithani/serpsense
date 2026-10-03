@@ -1,15 +1,18 @@
 """In-memory fakes behind the ports, for service tests (AGENTS §9: no network, no database)."""
 
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import datetime
 from types import TracebackType
 from typing import Self
 
 from serpsense.domain.enums import MentionSource, ScanStatus
+from serpsense.domain.llm_pricing import Hop, TokenUsage
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
 from serpsense.ports.enrichment_store import MentionLabel, PendingText
+from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
+from serpsense.ports.llm_ledger import LlmCallRecord
 from serpsense.ports.mention_store import Recorded, Sighting
 from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan
@@ -132,8 +135,10 @@ class RecordingEnrichments:
         llm_call_id: uuid.UUID,
         at: datetime,
     ) -> int:
-        self.labels.extend((label, prompt_version, llm_call_id) for label in labels)
-        return len(labels)
+        done = {(lbl.mention_id, lbl.revision, v) for lbl, v, _ in self.labels}
+        new = [lbl for lbl in labels if (lbl.mention_id, lbl.revision, prompt_version) not in done]
+        self.labels.extend((label, prompt_version, llm_call_id) for label in new)
+        return len(new)  # a label already there stays, as in the table
 
 
 class RecordingJobs:
@@ -169,3 +174,39 @@ class FakeUnitOfWork:
     ) -> None:
         if exc_type is None:
             self.sent.scans.extend(self.jobs.scans)
+
+
+Answerer = Callable[[LlmRequest], "str | LlmCallFailed"]
+
+
+class ScriptedLlm:
+    """Answers each request with the structured output a function gives (or raises it)."""
+
+    def __init__(self, answer: Answerer, model: str = "claude-opus-5-5") -> None:
+        self.answer, self.model = answer, model
+        self.requests: list[LlmRequest] = []
+
+    def complete(self, request: LlmRequest) -> LlmResponse:
+        self.requests.append(request)
+        output = self.answer(request)
+        if isinstance(output, LlmCallFailed):
+            raise output
+        usage = TokenUsage(input=1000, output=200, cache_read=0, cache_write=0)
+        return LlmResponse(self.model, "end_turn", output, (Hop(self.model, usage),), 900)
+
+
+class MemoryLedger:
+    """Keeps calls; `spent_after` sets the spend once a call is recorded (a budget used up)."""
+
+    def __init__(self, spent: int = 0, spent_after: int | None = None) -> None:
+        self.spent, self.spent_after = spent, spent_after
+        self.calls: list[LlmCallRecord] = []
+
+    def record(self, call: LlmCallRecord) -> uuid.UUID:
+        self.calls.append(call)
+        if self.spent_after is not None:
+            self.spent = self.spent_after
+        return uuid.UUID(int=len(self.calls))
+
+    def spent_since(self, user_id: uuid.UUID, since: datetime) -> int:
+        return self.spent
