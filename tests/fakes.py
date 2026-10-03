@@ -30,6 +30,12 @@ from serpsense.ports.enrichment_store import MentionLabel, PendingText
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
 from serpsense.ports.llm_ledger import LlmCallRecord
 from serpsense.ports.mention_store import Recorded, Sighting
+from serpsense.ports.narrative_store import (
+    Assignment,
+    NewNarrative,
+    OpenNarrative,
+    UngroupedMention,
+)
 from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan, SurfaceResult
 from serpsense.ports.scan_targets import ScanTarget
@@ -213,6 +219,62 @@ class RecordingEnrichments:
         return len(new)  # a label already there stays, as in the table
 
 
+class RecordingNarratives:
+    """Hands out preset waiting mentions and open narratives (those it was given, after the ones
+    it started, latest first), and keeps what each grouping call stored; a stored call is the
+    brand's last successful one, so it sets `considered`."""
+
+    def __init__(
+        self, waiting: Sequence[UngroupedMention] = (), stories: Sequence[OpenNarrative] = ()
+    ) -> None:
+        self.waiting, self.stories = list(waiting), list(stories)
+        self.started: list[tuple[NewNarrative, str, uuid.UUID]] = []
+        self.placed: list[tuple[Assignment, str, uuid.UUID]] = []
+        self.considered: datetime | None = None
+        self.prompts: list[dict[LlmTask, str]] = []
+
+    def ungrouped(
+        self,
+        brand_id: uuid.UUID,
+        *,
+        first_seen_since: datetime,
+        prompts: Mapping[LlmTask, str],
+        limit: int,
+    ) -> Sequence[UngroupedMention]:
+        self.prompts.append(dict(prompts))
+        done = {assignment.mention_id for assignment, _, _ in self.placed}
+        return [m for m in self.waiting if m.mention_id not in done][:limit]
+
+    def considered_until(self, brand_id: uuid.UUID) -> datetime | None:
+        return self.considered
+
+    def open(
+        self, brand_id: uuid.UUID, *, active_since: datetime, limit: int
+    ) -> Sequence[OpenNarrative]:
+        def held(narrative_id: uuid.UUID) -> int:
+            return sum(a.narrative_id == narrative_id for a, _, _ in self.placed)
+
+        started = [
+            OpenNarrative(n.narrative_id, n.label, n.summary, held(n.narrative_id))
+            for n, _, _ in reversed(self.started)
+        ]
+        return [*started, *self.stories][:limit]
+
+    def record(
+        self,
+        narratives: Sequence[NewNarrative],
+        assignments: Sequence[Assignment],
+        *,
+        prompt_version: str,
+        llm_call_id: uuid.UUID,
+        at: datetime,
+    ) -> int:
+        self.started.extend((narrative, prompt_version, llm_call_id) for narrative in narratives)
+        self.placed.extend((assignment, prompt_version, llm_call_id) for assignment in assignments)
+        self.considered = at
+        return len(assignments)
+
+
 class RecordingScores:
     """Hands out preset scoring inputs (nothing seen, by default) and keeps the scores given;
     both only inside a unit of work."""
@@ -320,6 +382,7 @@ class FakeUnitOfWork:
         self.scans, self.schedules = scans, schedules
         self.mentions, self.observations = RecordingMentions(), RecordingObservations()
         self.enrichments = RecordingEnrichments()
+        self.narratives = RecordingNarratives()
         self.targets = StaticTargets()
         self.scores = RecordingScores(lambda: self.open)
         self.alerts = RecordingAlerts(inside=lambda: self.open)
