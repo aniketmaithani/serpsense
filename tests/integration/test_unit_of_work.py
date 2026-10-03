@@ -11,8 +11,8 @@ from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.domain.enums import ScanTrigger
 from serpsense.ports.job_queue import JobQueueUnavailable
 from serpsense.ports.scan_store import NewScan
-from serpsense.ports.unit_of_work import UnitOfWork
-from tests.integration.db_helpers import NOW, add_owned_brand, table
+from serpsense.ports.unit_of_work import Busy, UnitOfWork
+from tests.integration.db_helpers import NOW, add_owned_brand, add_user, table
 
 pytestmark = pytest.mark.integration
 
@@ -133,3 +133,21 @@ def test_the_outbox_is_nudged_once_after_commit_and_never_on_rollback(
     with capture_logs() as logs, down:
         down.jobs.dispatch_outbox()  # Beat sends the email within 15 seconds anyway
     assert "job.enqueue_failed" in [entry["event"] for entry in logs]
+
+
+def test_a_lock_wait_that_runs_out_is_busy_and_sends_nothing(
+    committing_engine: Engine, impatient_engine: Engine
+) -> None:
+    users = table("users")
+    with committing_engine.begin() as conn:
+        user_id = add_user(conn, f"{uuid.uuid4().hex[:10]}@example.com")
+    queue = RecordingQueue(impatient_engine)
+    uow = SqlUnitOfWork(impatient_engine, queue)
+    with committing_engine.connect() as holder, holder.begin():
+        holder.execute(select(users.c.id).where(users.c.id == user_id).with_for_update())
+        with pytest.raises(Busy), uow:
+            uow.jobs.dispatch_outbox()
+            uow.accounts.lock(user_id)  # waits 200 ms for the holder, then gives up
+    assert queue.nudges == 0  # rolled back: nothing sent
+    with uow:  # the holder is done: the same unit of work opens and locks
+        assert uow.accounts.lock(user_id) is not None
