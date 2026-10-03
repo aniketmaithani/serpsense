@@ -10,7 +10,8 @@ clusters follow once a response showing them is recorded.
 
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any, TypeGuard
 
 from serpsense.domain.enums import MentionSource
 from serpsense.domain.mention import (
@@ -22,9 +23,12 @@ from serpsense.domain.mention import (
     text_key,
     url_key,
 )
+from serpsense.domain.observation import AppRating, TrendsPoint
 from serpsense.observability import get_logger
 
 log = get_logger(__name__)
+
+RELATED_LIST = 25  # Google Trends shows at most 25 rising and 25 top related queries
 
 
 def parse_search_page(payload: Mapping[str, Any]) -> list[ParsedMention]:
@@ -60,6 +64,104 @@ def parse_news(payload: Mapping[str, Any]) -> list[ParsedMention]:
         ),
         "news",
     )
+
+
+def parse_trends_related(payload: Mapping[str, Any]) -> list[ParsedMention]:
+    """Related queries from `google_trends` RELATED_QUERIES. Rising ones (the early warning) rank
+    1-25 and top ones 26-50, so a rank says which list a query came from whatever its length."""
+    related = payload.get("related_queries")
+    related = related if isinstance(related, Mapping) else {}
+    rising = _ranked(related, "rising")[:RELATED_LIST]
+    top = [(RELATED_LIST + rank, item) for rank, item in _ranked(related, "top")]
+    language = _language(payload)
+    return _best_ranks(
+        (
+            _safely(_text_mention, MentionSource.TRENDS_QUERY, item.get("query"), language, rank)
+            for rank, item in [*rising, *top]
+        ),
+        "trends",
+    )
+
+
+def parse_trends_timeseries(payload: Mapping[str, Any]) -> list[TrendsPoint]:
+    """Interest over time from `google_trends` TIMESERIES, one point per query per time."""
+    over_time = payload.get("interest_over_time")
+    over_time = over_time if isinstance(over_time, Mapping) else {}
+    points: list[TrendsPoint] = []
+    for moment in _items(over_time, "timeline_data"):
+        at = _unix_time(moment.get("timestamp"))
+        partial = moment.get("partial_data") is True
+        for value in _items(moment, "values"):
+            point = _safely_point(value, at, partial)
+            if point is not None:
+                points.append(point)
+    return points
+
+
+def parse_play_product(payload: Mapping[str, Any]) -> tuple[AppRating | None, list[ParsedMention]]:
+    """The app's rating and its reviews from a `google_play_product` page."""
+    language = _language(payload)
+    reviews = _best_ranks(
+        (_safely(_review, item, language, rank) for rank, item in _ranked(payload, "reviews")),
+        "play",
+    )
+    return _app_rating(payload.get("product_info")), reviews
+
+
+def _safely_point(
+    value: Mapping[str, Any], at: datetime | None, partial: bool
+) -> TrendsPoint | None:
+    query, index = _string(value.get("query")), value.get("query_index")
+    interest = value.get("extracted_value")
+    if at is None or query is None or not _is_int(index) or not _is_int(interest):
+        return None
+    try:
+        return TrendsPoint(query, index, at, interest, partial)
+    except ValueError:
+        return None
+
+
+def _is_int(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _review(item: Mapping[str, Any], language: str | None, rank: int) -> ParsedMention | None:
+    review_id, text = _string(item.get("id")), _string(item.get("snippet"))
+    if review_id is None or text is None:
+        return None
+    stars = item.get("rating")
+    return ParsedMention(
+        source=MentionSource.PLAY_REVIEW,
+        identity_key=review_id,
+        text=_text(text),
+        language_code=language,
+        published_at=_timestamp(item.get("iso_date")),
+        position=rank,
+        star_rating=int(stars) if isinstance(stars, int | float) and 1 <= stars <= 5 else None,
+    )
+
+
+def _app_rating(info: object) -> AppRating | None:
+    """None while the store shows no rating yet (data-model §5: no row then)."""
+    if not isinstance(info, Mapping):
+        return None
+    rating, count = info.get("rating"), info.get("reviews")
+    if not isinstance(rating, int | float) or not isinstance(count, int) or isinstance(count, bool):
+        return None
+    try:
+        hundredths = int((Decimal(str(rating)) * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        return AppRating(rating_hundredths=hundredths, review_count=count)
+    except (ValueError, InvalidOperation):
+        return None
+
+
+def _unix_time(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.isdigit():
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def _safely(build: Callable[..., ParsedMention | None], *args: Any) -> ParsedMention | None:
