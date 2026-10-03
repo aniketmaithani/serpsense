@@ -16,6 +16,7 @@ from serpsense.composition import (
     build_celery,
     build_evaluator,
     build_grouping_evaluator,
+    build_output_evaluator,
     build_scorer,
     build_seeder,
     build_settings,
@@ -27,6 +28,8 @@ from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.demo import DEMO_BRANDS
 from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
 from serpsense.services.grouping_eval import GoldenMention, GroupingBrand, grouping_report
+from serpsense.services.output_evals import DraftCase, ExplainCase, OutputResult
+from serpsense.services.output_report import output_report
 from serpsense.services.replay import Played
 
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
@@ -117,7 +120,7 @@ class Ran:
 
 @app.command("eval")
 def run_eval(
-    task: str = typer.Argument(..., help="The task to score: label_mentions or group_narratives."),
+    task: str = typer.Argument(..., help="label_mentions, group_narratives, explain_crisis, …"),
     split: str = typer.Option("test", help="Golden split: test, dev or all."),
     cap_cents: int = typer.Option(300, min=0, help="Stop before spending more, in US cents."),
     golden: Annotated[Path, typer.Option(help="Where the golden sets are.")] = GOLDEN,
@@ -129,7 +132,8 @@ def run_eval(
         typer.echo(f"No eval for {task} on split {split}.", err=True)
         raise typer.Exit(2)
     lines = (golden / f"{task}.jsonl").read_text().splitlines()
-    brand = (golden / f"{task}.brand.json").read_text()
+    sidecar = golden / f"{task}.brand.json"  # a set that describes one brand has one
+    brand = sidecar.read_text() if sidecar.exists() else ""
     today = datetime.now(UTC).date().isoformat()
     try:
         ran = EVALS[LlmTask(task)](lines, brand, split, cap_cents * 10_000, today)
@@ -166,8 +170,32 @@ def _group_narratives(lines: list[str], brand: str, split: str, cap: int, today:
     return Ran(text, result.answered, len(chosen), result.cost_micros)
 
 
+def _explain_crisis(lines: list[str], brand: str, split: str, cap: int, today: str) -> Ran:
+    cases = [ExplainCase.model_validate_json(line) for line in lines if line.strip()]
+    evaluator, model = build_output_evaluator(build_settings())
+    chosen = [case for case in cases if split in ("all", case.split)]
+    return _ran(evaluator.explanations(chosen, cap_micros=cap), today, model, split)
+
+
+def _draft_response(lines: list[str], brand: str, split: str, cap: int, today: str) -> Ran:
+    cases = [DraftCase.model_validate_json(line) for line in lines if line.strip()]
+    evaluator, model = build_output_evaluator(build_settings())
+    chosen = [case for case in cases if split in ("all", case.split)]
+    return _ran(evaluator.drafts(chosen, cap_micros=cap), today, model, split)
+
+
+def _ran(result: OutputResult, today: str, model: str, split: str) -> Ran:
+    text = output_report(result, on=today, model=model, split=split)
+    return Ran(text, result.passed["answered"], result.items, result.cost_micros)
+
+
 EVALS: Mapping[LlmTask, Callable[[list[str], str, str, int, str], Ran]] = MappingProxyType(
-    {LlmTask.LABEL_MENTIONS: _label_mentions, LlmTask.GROUP_NARRATIVES: _group_narratives}
+    {
+        LlmTask.LABEL_MENTIONS: _label_mentions,
+        LlmTask.GROUP_NARRATIVES: _group_narratives,
+        LlmTask.EXPLAIN_CRISIS: _explain_crisis,
+        LlmTask.DRAFT_RESPONSE: _draft_response,
+    }
 )
 
 
