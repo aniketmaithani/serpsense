@@ -69,6 +69,7 @@ _NOISY_LOGGERS = (
     "httpx",
     "httpx2",
     "httpcore",
+    "httpcore2",
     "anthropic",
     "celery.utils.functional",
 )
