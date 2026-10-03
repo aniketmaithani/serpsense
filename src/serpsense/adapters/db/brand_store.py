@@ -64,6 +64,15 @@ class SqlBrandStore:
         self._version(SCHEDULES, brand_id, at, version)
         return True
 
+    def stop_schedule(self, brand_id: uuid.UUID, *, at: datetime) -> bool:
+        columns = SCHEDULES.c.interval_minutes, SCHEDULES.c.timezone
+        latest = self._latest(SCHEDULES, brand_id, *columns)
+        if latest is None or latest[0] is None:
+            return False
+        version = {"interval_minutes": None, "timezone": latest[1]}
+        self._version(SCHEDULES, brand_id, at, version | {"quiet_start": None, "quiet_end": None})
+        return True
+
     def set_search_settings(
         self, brand_id: uuid.UUID, document: Mapping[str, Any], *, at: datetime
     ) -> bool:
