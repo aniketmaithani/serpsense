@@ -51,12 +51,12 @@ class SqlBrandStore:
         pair = {"brand_id": brand_id, "competitor_brand_id": competitor_id}
         return self._insert(COMPETITORS, pair)
 
-    def set_schedule(self, brand_id: uuid.UUID, schedule: Schedule, *, at: datetime) -> bool:
+    def set_schedule(self, brand_id: uuid.UUID, schedule: Schedule | None, *, at: datetime) -> bool:
         version = {
-            "interval_minutes": schedule.interval_minutes,
-            "timezone": schedule.timezone,
-            "quiet_start": schedule.quiet_start,
-            "quiet_end": schedule.quiet_end,
+            "interval_minutes": schedule.interval_minutes if schedule else None,
+            "timezone": schedule.timezone if schedule else Schedule.timezone,
+            "quiet_start": schedule.quiet_start if schedule else None,
+            "quiet_end": schedule.quiet_end if schedule else None,
         }
         columns = [SCHEDULES.c[name] for name in version]
         if self._latest(SCHEDULES, brand_id, *columns) == tuple(version.values()):

@@ -94,6 +94,7 @@ __all__ = [
     "build_grouping_evaluator",
     "build_outbox",
     "build_scan_now",
+    "build_scans",
     "build_seeder",
     "build_session_guard",
     "build_settings",
@@ -210,6 +211,13 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
     def unit_of_work() -> SqlUnitOfWork:
         return SqlUnitOfWork(engine, queue)
 
+    scans = build_scans(settings, engine, unit_of_work, clock)
+    return Worker(scans, *_maintenance(settings, unit_of_work, clock))
+
+
+def build_scans(
+    settings: Settings, engine: Engine, unit_of_work: UnitOfWorkFactory, clock: Clock
+) -> ScanService:
     sources = _sources(settings, engine, clock)
     gateway = LlmGateway(
         sources.llm,
@@ -231,7 +239,7 @@ def build_worker(settings: Settings, celery: Celery) -> Worker:
         enrich_time=ENRICH_TIME,
         monthly_searches=settings.default_monthly_search_budget,
     )
-    return Worker(ScanService(ports, limits), *_maintenance(settings, unit_of_work, clock))
+    return ScanService(ports, limits)
 
 
 @dataclass(frozen=True)

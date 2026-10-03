@@ -52,8 +52,9 @@ class BrandStore(Protocol):
         four competitors (the database refuses otherwise)."""
         ...
 
-    def set_schedule(self, brand_id: uuid.UUID, schedule: Schedule, *, at: datetime) -> bool:
-        """A new schedule version, unless the latest is the same; True when one was written."""
+    def set_schedule(self, brand_id: uuid.UUID, schedule: Schedule | None, *, at: datetime) -> bool:
+        """A new schedule version, unless the latest is the same; True when one was written.
+        None means scanned only on request (no interval)."""
         ...
 
     def stop_schedule(self, brand_id: uuid.UUID, *, at: datetime) -> bool:
