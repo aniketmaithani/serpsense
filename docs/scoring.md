@@ -38,9 +38,9 @@ or counts only what is new. A brand that always has some negative reviews and ar
 in crisis because of them. The usual of a count is the median (the lower middle value) of the
 brand's newest eight earlier scans, and never below 2, so a quiet brand isn't alarmed by its
 second complaint. A mention is **new** in the scan that first saw it, and a surface's mentions
-count as new only once that surface has been collected before with the same queries (adding a
-search prefix or a language makes the baseline, not a crisis). The surfaces are the health
-surfaces: search page, autocomplete, AI Overview, news, Play and Maps.
+count as new only once that surface has been collected before: its first collection is the
+baseline, not a crisis. The surfaces are the health surfaces: search page, autocomplete, AI
+Overview, news, Play and Maps.
 
 **Warm-up.** On a brand's first scans everything it shows is new, so its crisis has **no level**,
 and raises no alert, until it has 3 earlier scored scans (succeeded or partial). A newly added competitor therefore
@@ -63,6 +63,23 @@ reaches **high** only with a search-visible signal (a new negative suggestion or
 negative query). That is intended: what someone sees when they Google the brand is what this
 product watches.
 
+## Where the inputs come from
+
+`domain/scoring/scan.py` scores one scan; the score store (`adapters/db/score_store.py`) reads
+its inputs from what the brand's scans recorded:
+
+- **Labels.** A mention counts once its latest revision is labelled by its own labelling task
+  (`label_mentions`, `classify_autocomplete` or `assess_ai_overview`; `domain/labelling.py`).
+  The task's active prompt's label comes first; until a new prompt version has labelled the
+  mention, its newest earlier label stands, so a new version doesn't reset the brand's usual. A
+  mention without a label, or labelled as not about the brand, is left out, so a surface whose
+  task has no prompt yet (autocomplete, AI Overview) scores none.
+- **New.** A mention is new in the brand's earliest scan that observed it, scored or not.
+- **Collected before.** A surface was collected before a scan when an earlier scan of the brand
+  has a `succeeded` result for it.
+- **Play.** The mean of the scan's app ratings, and the scan's labelled reviews, newest
+  published first.
+
 ## Choices the plan left open
 
 BUILD_PLAN §11 names the inputs but not every number. These are this version's choices:
@@ -71,6 +88,12 @@ BUILD_PLAN §11 names the inputs but not every number. These are this version's 
 - **Autocomplete:** the extra penalty for the top three places.
 - **The usual:** the median of eight scans with a floor of 2; four times the usual means velocity 100.
 - **Change, not level:** crisis counts only new mentions, and spread compares each surface with its own usual.
+- **Baseline per surface, not per query:** adding a search prefix or a language to a surface
+  already collected makes its new results count as new, so a settings change can raise the
+  crisis once.
+- **Labelled late:** a mention's first sighting stays the scan that first saw it. If that scan's
+  labelling didn't finish (a model outage, or the per-run cap), the mention is labelled later
+  but is never new: the crisis components miss it, and health counts it from the next scan.
 - **Press:** uses severity.
 - **New negative suggestions:** the scale for them.
 
