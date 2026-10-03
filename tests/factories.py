@@ -6,6 +6,7 @@ from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.system_clock import SystemClock
 from serpsense.composition import (
     Container,
+    build_brand_settings,
     build_celery,
     build_scan_now,
     build_session_guard,
@@ -44,4 +45,5 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
         overview=SqlOverview(engine.connect),
         scan_now=build_scan_now(settings, engine, celery),
         inbox=SqlInbox(engine, SystemClock()),
+        brand_settings=build_brand_settings(settings, engine, celery),
     )
