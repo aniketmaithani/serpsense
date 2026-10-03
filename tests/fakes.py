@@ -11,7 +11,7 @@ import structlog
 
 from serpsense.domain.enums import MentionSource, ScanStatus, SerpEngine, ServedFrom, Surface
 from serpsense.domain.llm_pricing import Hop, TokenUsage
-from serpsense.domain.mention import ParsedMention, text_key
+from serpsense.domain.mention import ParsedMention, best_ranked, text_key
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
 from serpsense.ports.collector import Lead, Reading, Target
@@ -120,13 +120,23 @@ class StaticSchedules:
 
 
 class RecordingMentions:
+    """Keeps sightings and counts as the store does: a mention is new the first time it is seen,
+    and observed once per scan, at its best rank."""
+
     def __init__(self) -> None:
         self.sightings: list[Sighting] = []
+        self.known: set[tuple[MentionSource, str]] = set()
+        self.observed: set[tuple[uuid.UUID, MentionSource, str]] = set()
 
     def record(self, sighting: Sighting, *, at: datetime) -> Recorded:
         self.sightings.append(sighting)
-        seen = len(sighting.mentions)
-        return Recorded(new=seen, revised=0, observed=seen)
+        seen = [(m.source, m.identity_key) for m in best_ranked(sighting.mentions)]
+        new = [key for key in seen if key not in self.known]
+        fresh = [(sighting.scan_id, *key) for key in seen]
+        fresh = [key for key in fresh if key not in self.observed]
+        self.known.update(seen)
+        self.observed.update(fresh)
+        return Recorded(new=len(new), revised=0, observed=len(fresh))
 
 
 class RecordingObservations:

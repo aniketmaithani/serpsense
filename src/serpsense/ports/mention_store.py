@@ -17,7 +17,8 @@ from serpsense.domain.mention import ParsedMention
 
 @dataclass(frozen=True)
 class Sighting:
-    """Everything one collector saw in a scan, and the app or place its reviews cite."""
+    """Mentions a scan saw that cite the same app or place (or none): the reviews of one app,
+    say, or everything that isn't a review."""
 
     scan_id: uuid.UUID
     mentions: tuple[ParsedMention, ...]
