@@ -24,7 +24,7 @@ Scans call many external APIs and must not run in web requests. Scheduled scans,
 - **Claim**: `UPDATE scans SET status='running' WHERE id=:id AND status='queued' RETURNING id`, with the transition row in the same transaction. Zero rows → another worker has it or it is finished → exit. A redelivered message for a `running` scan therefore does nothing.
 - **One claimed task runs the whole pipeline as stages:** settings → budget/quota check (`running → skipped` if insufficient) → collect → normalise → enrich (inline LLM calls) → score → alerts → finish. Every finishing transition is a compare-and-set on `status = 'running'`, so it can't collide with the sweep. If the LLM fails, the scan finishes `partial` with deterministic scores; pending enrichment is picked up by the brand's **next** scan (there is no separate re-score job). Stages check `brands.archived_at` / `users.deleted_at` before LLM calls and before alerts; if set, the scan finishes `skipped`.
 - **Sweep** (`sweep_stuck_work`, Beat every 5 min), ignoring archived brands and deleted users:
-  - `queued` scans older than 2 min → re-enqueue (or `skipped` if the brand is archived);
+  - `queued` scans older than 2 min → re-enqueue. *(Amended 2026-10-03: the sweep doesn't read brand state; the worker that claims a scan of an archived brand or a deleted user finishes it `skipped`, which keeps the sweep a pure re-send.)*
   - `running` scans older than the time limit + margin → `failed` (reason `timed_out`);
   - `pending` outbox rows past `next_attempt_at` → nudge the dispatcher.
 - **Other Beat tasks:** `dispatch_due_scans` (5 min, respects each brand's quiet hours in its timezone), `dispatch_outbox` (15 s), `scrub_personal_data` (daily, ADR-0013 retention).
