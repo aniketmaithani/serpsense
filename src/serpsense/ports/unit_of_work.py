@@ -23,6 +23,7 @@ from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.scan_store import ScanStore
 from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
+from serpsense.ports.score_store import ScoreStore
 
 
 class UnitOfWork(Protocol):
@@ -50,6 +51,9 @@ class UnitOfWork(Protocol):
 
     @property
     def accounts(self) -> Accounts: ...
+
+    @property
+    def scores(self) -> ScoreStore: ...
 
     @property
     def jobs(self) -> JobQueue:

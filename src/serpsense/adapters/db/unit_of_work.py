@@ -14,6 +14,7 @@ from serpsense.adapters.db.observation_store import SqlObservationStore
 from serpsense.adapters.db.scan_store import SqlScanStore
 from serpsense.adapters.db.scan_targets import SqlScanTargets
 from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
+from serpsense.adapters.db.score_store import SqlScoreStore
 from serpsense.observability import get_logger
 from serpsense.ports.accounts import Accounts
 from serpsense.ports.brand_store import BrandStore
@@ -24,6 +25,7 @@ from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.scan_store import ScanStore
 from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
+from serpsense.ports.score_store import ScoreStore
 
 log = get_logger(__name__)
 
@@ -54,6 +56,7 @@ class SqlUnitOfWork:
     targets: ScanTargets
     brands: BrandStore
     accounts: Accounts
+    scores: ScoreStore
     jobs: JobQueue
 
     def __init__(self, engine: Engine, queue: JobQueue) -> None:
@@ -76,6 +79,7 @@ class SqlUnitOfWork:
         self.targets = SqlScanTargets(self._conn)
         self.brands = SqlBrandStore(self._conn)
         self.accounts = SqlAccounts(self._conn)
+        self.scores = SqlScoreStore(self._conn)
         self.jobs = self._pending
         return self
 
