@@ -18,6 +18,7 @@ from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.scan_store import ScanStore
+from serpsense.ports.scheduled_brands import ScheduledBrands
 
 
 class UnitOfWork(Protocol):
@@ -30,6 +31,9 @@ class UnitOfWork(Protocol):
 
     @property
     def observations(self) -> ObservationStore: ...
+
+    @property
+    def schedules(self) -> ScheduledBrands: ...
 
     @property
     def jobs(self) -> JobQueue:

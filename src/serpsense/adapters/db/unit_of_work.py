@@ -9,11 +9,13 @@ from sqlalchemy import Connection, Engine, RootTransaction
 from serpsense.adapters.db.mention_store import SqlMentionStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
 from serpsense.adapters.db.scan_store import SqlScanStore
+from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.observability import get_logger
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.observation_store import ObservationStore
 from serpsense.ports.scan_store import ScanStore
+from serpsense.ports.scheduled_brands import ScheduledBrands
 
 log = get_logger(__name__)
 
@@ -39,6 +41,7 @@ class SqlUnitOfWork:
     scans: ScanStore
     mentions: MentionStore
     observations: ObservationStore
+    schedules: ScheduledBrands
     jobs: JobQueue
 
     def __init__(self, engine: Engine, queue: JobQueue) -> None:
@@ -56,6 +59,7 @@ class SqlUnitOfWork:
         self.scans = SqlScanStore(self._conn)
         self.mentions = SqlMentionStore(self._conn)
         self.observations = SqlObservationStore(self._conn)
+        self.schedules = SqlScheduledBrands(self._conn)
         self.jobs = self._pending
         return self
 
