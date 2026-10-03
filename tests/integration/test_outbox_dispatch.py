@@ -56,24 +56,30 @@ def _url(postgres_url: str, database: str) -> str:
     return make_url(postgres_url).set(database=database).render_as_string(hide_password=False)
 
 
+def _named(postgres_url: str, suffix: str) -> str:
+    """A database named after the test database, so a run's databases share its prefix."""
+    return f"{make_url(postgres_url).database}_outbox_{suffix}"
+
+
 @pytest.fixture(scope="module")
 def template(postgres_url: str) -> str:
+    name = _named(postgres_url, "template")
     admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
-        connection.execute(text("CREATE DATABASE outbox_template"))
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
     admin.dispose()
     with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("DATABASE_URL", _url(postgres_url, "outbox_template"))
+        patch.setenv("DATABASE_URL", _url(postgres_url, name))
         command.upgrade(alembic_config(), "head")
-    return "outbox_template"
+    return name
 
 
 @pytest.fixture
 def engine(postgres_url: str, template: str) -> Iterator[Engine]:
-    name = f"outbox_{uuid.uuid4().hex[:12]}"
+    name = _named(postgres_url, uuid.uuid4().hex[:12])
     admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
-        connection.execute(text(f"CREATE DATABASE {name} TEMPLATE {template}"))
+        connection.execute(text(f'CREATE DATABASE "{name}" TEMPLATE "{template}"'))
     admin.dispose()
     engine = create_db_engine(_url(postgres_url, name))
     yield engine

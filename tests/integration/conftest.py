@@ -1,5 +1,6 @@
 """Shared Postgres for integration tests, migrated with the real Alembic migrations."""
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Connection, Engine, create_engine, make_url, text
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from serpsense.adapters.db.engine import create_db_engine
 
@@ -20,10 +22,35 @@ def alembic_config() -> Config:
     return config
 
 
+THROWAWAY = "serpsense_test_"  # the only databases TEST_DATABASE_URL may name
+
+
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
-    with PostgresContainer("postgres:16-alpine", driver="psycopg") as container:
-        yield container.get_connection_url()
+    """A throwaway Postgres: TEST_DATABASE_URL's when set (`scripts/dev.sh test` makes one in the
+    native Postgres and drops it after), else a container. The migrations are run down to
+    nothing on it, so a database that isn't a throwaway one is refused."""
+    given = os.environ.get("TEST_DATABASE_URL")
+    if given is None:
+        with PostgresContainer("postgres:16-alpine", driver="psycopg") as container:
+            yield container.get_connection_url()
+        return
+    if not (make_url(given).database or "").startswith(THROWAWAY):
+        raise pytest.UsageError(f"TEST_DATABASE_URL must name a {THROWAWAY}* database")
+    yield given
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """A throwaway Redis: TEST_REDIS_URL's when set (`scripts/dev.sh test` starts one and shuts
+    it down after), else a container."""
+    given = os.environ.get("TEST_REDIS_URL")
+    if given is not None:
+        yield given
+        return
+    with RedisContainer("redis:7-alpine") as container:
+        host, port = container.get_container_host_ip(), container.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
 
 
 @pytest.fixture(scope="session")
@@ -55,11 +82,12 @@ def committing_engine(postgres_url: str) -> Iterator[Engine]:
     """A second migrated database for tests that must commit (units of work, two connections).
     Committed rows outlive the test, so these tests use brands of their own and never count rows
     they didn't make; the rolled-back `conn` tests never see them."""
+    committed = f"{make_url(postgres_url).database}_committed"
     admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
-        connection.execute(text("CREATE DATABASE committed"))
+        connection.execute(text(f'CREATE DATABASE "{committed}"'))
     admin.dispose()
-    url = make_url(postgres_url).set(database="committed").render_as_string(hide_password=False)
+    url = make_url(postgres_url).set(database=committed).render_as_string(hide_password=False)
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("DATABASE_URL", url)
         command.upgrade(alembic_config(), "head")
