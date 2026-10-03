@@ -1,5 +1,6 @@
-"""Running one scan with fakes: the claim, the skips, collection and the finish."""
+"""Running one scan with fakes: the claim, the skips, collection, labelling and the finish."""
 
+import json
 import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -9,24 +10,35 @@ import pytest
 from structlog.testing import capture_logs
 
 from serpsense.domain.enums import (
+    LlmTask,
+    MentionSource,
     ScanStatus,
     ScanTrigger,
     SerpErrorCode,
     Surface,
 )
 from serpsense.domain.estimator import BrandFacts, estimate
+from serpsense.domain.llm_capabilities import HAIKU, OPUS, Effort, TaskSettings
 from serpsense.domain.scan_state import Transition, TransitionReason
 from serpsense.domain.settings.search import resolve
+from serpsense.ports.enrichment_store import PendingText
+from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, PromptUnavailable
 from serpsense.ports.scan_store import NewScan
 from serpsense.ports.scan_targets import NamedBrand, ScanTarget, StoreApp
 from serpsense.ports.search_provider import SearchFailed, SearchRequest
 from serpsense.services.collection import CollectorRunner
+from serpsense.services.labelling import Labeller
+from serpsense.services.llm_gateway import LlmGateway
 from serpsense.services.scans import ScanLimits, ScanPorts, ScanService
 from serpsense.services.search import SearchResult
 from tests.fakes import (
     FakeUnitOfWork,
     FixedClock,
+    FixedProfiles,
     InMemoryScans,
+    MemoryLedger,
+    RecordingEnrichments,
+    ScriptedLlm,
     ScriptedSearch,
     StaticSchedules,
     StaticTargets,
@@ -43,6 +55,7 @@ SNAPSHOT = resolve({}).model_dump(mode="json")
 MOST = estimate(resolve({}), BrandFacts(apps=1, locations=0))  # the Standard preset, one app
 S, R = ScanStatus, TransitionReason
 FAILED = SearchFailed(SerpErrorCode.HTTP_5XX, http_status=503, latency_ms=40)
+SETTINGS = TaskSettings(OPUS, Effort.LOW, 8000)
 
 
 @dataclass
@@ -65,6 +78,9 @@ class Scan:
     service: ScanService
     uow: FakeUnitOfWork
     scan_id: uuid.UUID
+    llm: ScriptedLlm
+    ledger: MemoryLedger
+    profiles: FixedProfiles
 
 
 def scan(searcher: ScriptedSearch, *collectors: StubCollector, **options: Any) -> Scan:
@@ -77,11 +93,34 @@ def scan(searcher: ScriptedSearch, *collectors: StubCollector, **options: Any) -
         scan_id, brand, OWNER, SNAPSHOT, ("Ola Cabs",), (RIVAL,), (CABS,), False, False
     )
     uow.targets = StaticTargets(replace(target, **options.pop("target", {})))
+    pending = PendingText(uuid.uuid4(), 1, MentionSource.NEWS, "en", "Ola driver late")
+    uow.enrichments = RecordingEnrichments([pending])
     clock = FixedClock(NOW)
     runner = CollectorRunner(collectors or [StubCollector(Surface.NEWS, "news")], searcher, clock)
-    ports = ScanPorts(lambda: uow, runner, Usage(**options), clock)
+
+    answering = options.pop("answer", labels)
+
+    def answer(request: LlmRequest) -> str | LlmCallFailed:
+        assert not uow.open  # no model call inside a unit of work
+        return answering(request)  # type: ignore[no-any-return]
+
+    llm, ledger = ScriptedLlm(answer), MemoryLedger(spent=options.pop("llm_spent", 0))
+    gateway = LlmGateway(llm, ledger, clock, monthly_budget_micros=lambda u: 30_000_000)
+    profiles = FixedProfiles(options.pop("settings", SETTINGS))
+    usage = Usage(**options)
+    ports = ScanPorts(
+        lambda: uow, runner, Labeller(lambda: uow, gateway, clock), usage, profiles, clock
+    )
     service = ScanService(ports, ScanLimits(timedelta(minutes=10), monthly_searches=1500))
-    return Scan(service, uow, scan_id)
+    return Scan(service, uow, scan_id, llm, ledger, profiles)
+
+
+def labels(request: LlmRequest) -> str | LlmCallFailed:
+    records = request.variables["mentions"]
+    assert isinstance(records, list)
+    label = {"is_about_brand": True, "sentiment": -1, "topic": "reliability"}
+    rest = {"is_complaint": True, "severity": 30, "reason": "Late."}
+    return json.dumps({"labels": [{"id": r["id"], **label, **rest} for r in records]})
 
 
 class Outside(ScriptedSearch):
@@ -100,7 +139,7 @@ def moves(run: Scan) -> list[tuple[ScanStatus | None, ScanStatus, TransitionReas
     return [(t.from_status, t.to_status, t.reason) for _, t, _ in run.uow.scans.transitions]
 
 
-def test_a_queued_scan_is_claimed_collected_kept_and_succeeds() -> None:
+def test_a_queued_scan_is_claimed_collected_kept_labelled_and_succeeds() -> None:
     searcher = Outside()
     run = scan(searcher)
     searcher.uow = run.uow
@@ -109,6 +148,10 @@ def test_a_queued_scan_is_claimed_collected_kept_and_succeeds() -> None:
     assert searcher.billed == [(OWNER, run.scan_id)]  # billed to the brand's owner
     assert set(run.uow.scans.surfaces[run.scan_id]) == set(Surface)
     assert [m.text for s in run.uow.mentions.sightings for m in s.mentions] == ["news news"]
+    assert len(run.uow.enrichments.labels) == 1 and run.uow.enrichments.asked_for == [BRAND]
+    assert run.profiles.asked == [(OWNER, LlmTask.LABEL_MENTIONS)]
+    assert [call.user_id for call in run.ledger.calls] == [OWNER]  # the model call too
+    assert run.llm.requests[0].variables["aliases"] == "Ola Cabs"
 
 
 def test_a_scan_another_worker_has_is_left_alone() -> None:
@@ -132,7 +175,7 @@ def test_a_scan_of_a_brand_that_is_gone_is_skipped_before_any_search(
     assert moves(run)[-1] == (S.RUNNING, S.SKIPPED, reason) and searcher.asked == []
 
 
-def test_a_brand_archived_while_collecting_finishes_skipped() -> None:
+def test_a_brand_archived_while_collecting_gets_no_model_call() -> None:
     run: Scan
 
     class Archiving(ScriptedSearch):
@@ -146,7 +189,20 @@ def test_a_brand_archived_while_collecting_finishes_skipped() -> None:
     run = scan(Archiving())
     assert run.service.run(run.scan_id) is S.SKIPPED
     assert moves(run)[-1] == (S.RUNNING, S.SKIPPED, R.BRAND_ARCHIVED)
-    assert run.uow.mentions.sightings  # what was seen is kept
+    assert run.uow.mentions.sightings and run.llm.requests == []  # what was seen is kept
+
+
+def test_a_brand_archived_while_labelling_finishes_skipped() -> None:
+    run: Scan
+
+    def archiving(request: LlmRequest) -> str | LlmCallFailed:
+        targets = run.uow.targets.targets
+        targets[run.scan_id] = replace(targets[run.scan_id], brand_archived=True)
+        return labels(request)
+
+    run = scan(ScriptedSearch(), answer=archiving)
+    assert run.service.run(run.scan_id) is S.SKIPPED
+    assert moves(run)[-1] == (S.RUNNING, S.SKIPPED, R.BRAND_ARCHIVED)
 
 
 def test_a_scan_the_owners_searches_cant_cover_is_skipped() -> None:
@@ -166,13 +222,34 @@ def test_a_scan_is_never_skipped_for_more_than_it_may_make() -> None:
     assert run.service.run(run.scan_id) is S.SUCCEEDED
 
 
-def test_a_scan_finishes_by_how_its_surfaces_went() -> None:
+def test_a_scan_finishes_by_how_its_surfaces_and_labelling_went() -> None:
     some = scan(ScriptedSearch({"down": FAILED}), StubCollector(Surface.NEWS, "news", "down"))
     assert some.service.run(some.scan_id) is S.PARTIAL
     assert moves(some)[-1] == (S.RUNNING, S.PARTIAL, R.SURFACES_FAILED)
     every = scan(ScriptedSearch({"down": FAILED}), StubCollector(Surface.NEWS, "down"))
     assert every.service.run(every.scan_id) is S.FAILED
     assert moves(every)[-1] == (S.RUNNING, S.FAILED, R.ALL_SURFACES_FAILED)
+    timeout = LlmCallFailed("llm.timeout", retryable=True, latency_ms=10)
+    unlabelled = scan(ScriptedSearch(), answer=lambda request: timeout)
+    assert unlabelled.service.run(unlabelled.scan_id) is S.PARTIAL
+    assert moves(unlabelled)[-1] == (S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
+    spent = scan(ScriptedSearch(), llm_spent=30_000_000)  # the month's model budget is used up
+    assert spent.service.run(spent.scan_id) is S.PARTIAL and spent.llm.requests == []
+
+
+@pytest.mark.parametrize("misconfigured", ["settings", "prompt"])
+def test_labelling_that_cant_run_leaves_the_scan_partial(misconfigured: str) -> None:
+    def missing(request: LlmRequest) -> str | LlmCallFailed:
+        raise PromptUnavailable("label_mentions/v1")
+
+    bad = {"settings": TaskSettings(HAIKU, Effort.MAX, 1024)} if misconfigured == "settings" else {}
+    run = scan(
+        ScriptedSearch(), **bad, **({"answer": missing} if misconfigured == "prompt" else {})
+    )
+    with capture_logs() as logs:
+        assert run.service.run(run.scan_id) is S.PARTIAL
+    assert moves(run)[-1] == (S.RUNNING, S.PARTIAL, R.ENRICHMENT_FAILED)
+    assert "labelling.misconfigured" in [entry["event"] for entry in logs]
 
 
 def test_a_stage_that_raises_fails_the_scan_and_the_error_propagates() -> None:
