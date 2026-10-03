@@ -68,3 +68,11 @@ def test_seed_demo_refuses_what_isnt_an_email_address(monkeypatch: pytest.Monkey
     assert result.exit_code == 2
     assert "That isn't an email address." in result.stderr
     assert "nobody" not in result.stdout + result.stderr
+
+
+def test_score_backlog_says_how_many_scans_it_scored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_scorer", lambda settings, celery: lambda: 5)
+    result = runner.invoke(app, ["score-backlog"])
+    assert result.exit_code == 0
+    assert "Scored 5 scans." in result.stdout
