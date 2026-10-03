@@ -120,3 +120,24 @@ class MentionSource(StrEnum):
     PLAY_REVIEW = "play_review"
     MAPS_REVIEW = "maps_review"
     YOUTUBE_VIDEO = "youtube_video"
+
+
+class LlmTask(StrEnum):
+    """What a model call is for (`llm_task` Postgres enum; BUILD_PLAN §7.1)."""
+
+    LABEL_MENTIONS = "label_mentions"
+    CLASSIFY_AUTOCOMPLETE = "classify_autocomplete"
+    ASSESS_AI_OVERVIEW = "assess_ai_overview"
+    GROUP_NARRATIVES = "group_narratives"
+    EXPLAIN_CRISIS = "explain_crisis"
+    DRAFT_RESPONSE = "draft_response"
+
+
+class LlmCallOutcome(StrEnum):
+    """How a model call ended (`llm_call_outcome` Postgres enum)."""
+
+    SUCCEEDED = "succeeded"
+    REFUSED = "refused"  # stop_reason "refusal"
+    TRUNCATED = "truncated"  # stop_reason "max_tokens"
+    INVALID_OUTPUT = "invalid_output"  # the structured output failed validation
+    FAILED = "failed"  # no response: network, timeout or an API error

@@ -261,20 +261,20 @@ Google Trends interest is relative within a single query, so each scan runs **on
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| user_id | uuid | fk → users (RESTRICT) |
-| scan_id | uuid null | fk → scans |
-| task | enum `llm_task` | |
-| requested_model | text | from settings |
-| served_model | text | from `response.model` (may differ after refusal fallback) |
-| prompt_version | text | |
-| 📄 request_settings | jsonb | resolved effort/thinking/max_tokens/etc. |
-| input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | integer | |
-| cost_micros | bigint | priced on `served_model` |
-| currency | char(3) | `USD` |
-| stop_reason | text null | |
-| outcome | enum (`succeeded`, `refused`, `truncated`, `invalid_output`, `failed`) | |
-| latency_ms | integer | |
-| created_at | timestamptz | `ix_llm_calls_user_id_created_at` |
+| user_id | uuid | fk → users (RESTRICT), `ix_llm_calls_user_id_created_at` (monthly spend); a scan's calls belong to the owner of its brand (`trg_llm_calls_user_owns_scan` → `ck_llm_calls_user_owns_scan`, the generic `serpsense_user_owns_scan(constraint)`) |
+| scan_id | uuid null | fk → scans (RESTRICT), `ix_llm_calls_scan_id`; null for calls outside a scan (drafts) |
+| task | enum `llm_task` (`label_mentions`, `classify_autocomplete`, `assess_ai_overview`, `group_narratives`, `explain_crisis`, `draft_response`; mirrors `domain.enums.LlmTask`) | |
+| requested_model | text | from settings; `^[a-z0-9][a-z0-9.-]{0,63}$` (`ck_llm_calls_requested_model_format`) |
+| served_model | text null | from `response.model` (may differ after refusal fallback); set exactly when a response arrived, i.e. unless `outcome = 'failed'` (`ck_llm_calls_served_model_iff_response`); same format |
+| prompt_version | text | `<task>/v<N>`, the prompt file (`ck_llm_calls_prompt_version_format`), of the call's own task (`ck_llm_calls_prompt_matches_task`) |
+| 📄 request_settings | jsonb | resolved effort/thinking/max_tokens/etc.; a JSON object (`ck_llm_calls_request_settings_is_object`) |
+| input_tokens / output_tokens / cache_read_tokens / cache_write_tokens | integer | ≥ 0 (`ck_llm_calls_<column>_non_negative`) |
+| cost_micros | bigint | ≥ 0; priced on `served_model` |
+| currency | char(3) | `USD`; `^[A-Z]{3}$` (`ck_llm_calls_currency_iso_4217`) |
+| stop_reason | text null | `^[a-z][a-z_]{0,31}$` |
+| outcome | enum `llm_call_outcome` (`succeeded`, `refused`, `truncated`, `invalid_output`, `failed`; mirrors `domain.enums.LlmCallOutcome`) | `failed` = no response (network, timeout, API error) |
+| latency_ms | integer | ≥ 0 |
+| created_at | timestamptz | |
 
 No prompt or completion content stored.
 
