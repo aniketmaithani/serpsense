@@ -8,10 +8,18 @@ from sqlalchemy import Connection, insert, select
 
 from serpsense.adapters.db.alert_store import SqlAlertStore
 from serpsense.domain.alert_rules import Fired
-from serpsense.domain.enums import AlertRule, CrisisComponent, CrisisLevel, Surface
+from serpsense.domain.enums import AlertRule, CrisisComponent, CrisisLevel, MentionSource, Surface
 from serpsense.ports.alert_store import AlertStore
-from tests.integration.db_helpers import NOW, add_brand, add_llm_call, add_scan, add_user, table
-from tests.integration.test_narratives_schema import GROUPING, narrative
+from tests.integration.db_helpers import (
+    NOW,
+    add_brand,
+    add_llm_call,
+    add_mention,
+    add_scan,
+    add_user,
+    table,
+)
+from tests.integration.test_narratives_schema import GROUPING, assign, narrative
 from tests.integration.test_scan_scores_view import scored
 
 pytestmark = pytest.mark.integration
@@ -94,3 +102,35 @@ def test_an_alert_and_its_notification_are_written_once(
     notes = table("notifications")
     rows = conn.execute(select(notes.c.user_id, notes.c.alert_id, notes.c.body)).all()
     assert [tuple(row) for row in rows] == [(owner, alert_id, "A new suggestion.")]
+
+
+def test_the_stories_a_scans_grouping_added_to(conn: Connection, store: AlertStore) -> None:
+    owner = add_user(conn)
+    brand_id = add_brand(conn, owner, name="Ola", slug="ola")
+    before, latest = scans(conn, brand_id, 2)
+    earlier, now = (add_llm_call(conn, owner, scan_id=s, **GROUPING) for s in (before, latest))
+    cash, quiet = (narrative(conn, brand_id, earlier, label=label) for label in ("Cash", "Quiet"))
+    news, result, story, other = (
+        add_mention(conn, brand_id, source=source, identity_key=f"{n:064x}", outlet=outlet)
+        for n, (source, outlet) in enumerate(
+            (("news", "A"), ("serp_result", None), ("top_story", "B"), ("news", "C"))
+        )
+    )
+    half_day_ago = {"created_at": NOW - 12 * HOUR}
+    for mention, placed_in in ((news, cash), (result, quiet), (other, quiet)):
+        assign(conn, placed_in, mention, earlier, **half_day_ago)
+    assign(conn, cash, story, now)
+    assign(conn, cash, result, now)  # moved from the quiet story, which didn't grow
+    old = {"scan_id": before, "rule": "narrative_spread", "narrative_id": cash}
+    conn.execute(insert(table("alerts")).values(id=uuid.uuid4(), created_at=NOW, **old))
+
+    context = store.context(latest)
+    assert context is not None
+    (grown,) = context.facts.stories
+    assert (grown.narrative_id, grown.label, grown.last) == (cash, "Cash", NOW - 12 * HOUR)
+    sources = {MentionSource.NEWS: 1, MentionSource.SERP_RESULT: 1, MentionSource.TOP_STORY: 1}
+    assert dict(grown.sources) == sources and grown.mentions == 3
+    spread = AlertRule.NARRATIVE_SPREAD
+    assert store.fire(latest, spread, at=NOW, narrative_id=cash) is not None
+    assert store.fire(latest, spread, at=NOW, narrative_id=cash) is None  # once per narrative
+    assert store.fire(latest, spread, at=NOW, narrative_id=quiet) is not None

@@ -8,8 +8,8 @@ from types import MappingProxyType
 
 import pytest
 
-from serpsense.domain.alert_rules import AlertFacts
-from serpsense.domain.enums import AlertRule, CrisisLevel
+from serpsense.domain.alert_rules import AlertFacts, Story
+from serpsense.domain.enums import AlertRule, CrisisLevel, MentionSource
 from serpsense.ports.alert_store import ScanAlertContext
 from serpsense.services.alerts import message, raise_alerts
 from tests.fakes import FakeUnitOfWork, InMemoryScans, StaticSchedules
@@ -63,6 +63,34 @@ def test_a_message_states_the_scores_and_marks_a_competitor() -> None:
     assert body == (
         "People typing Uber into Google now see a negative suggestion. "
         "The crisis score is 74 (high)."
+    )
+
+
+def spread(label: str) -> Story:
+    sources = {MentionSource.PLAY_REVIEW: 4, MentionSource.NEWS: 1, MentionSource.TOP_STORY: 1}
+    return Story(uuid.uuid4(), label, MappingProxyType(sources))
+
+
+def test_each_spreading_story_raises_its_own_alert_once() -> None:
+    cash, refunds = spread("Drivers demand cash"), spread("Refunds pending")
+    calm = replace(FACTS, previous=CrisisLevel.HIGH, autocomplete=0, stories=(cash, refunds))
+    uow, scan_id = unit_of_work(replace(OLA, facts=calm)), uuid.uuid4()
+    with uow:
+        assert raise_alerts(uow, scan_id, at=AT) == [AlertRule.NARRATIVE_SPREAD] * 2
+    assert set(uow.alerts.fired) == {
+        (scan_id, AlertRule.NARRATIVE_SPREAD, cash.narrative_id),
+        (scan_id, AlertRule.NARRATIVE_SPREAD, refunds.narrative_id),
+    }
+    assert len(uow.outbox.alert_emails) == 2
+    with uow:
+        assert raise_alerts(uow, scan_id, at=AT) == []
+
+
+def test_a_spread_message_gives_the_counts_and_marks_the_label_as_the_models() -> None:
+    assert message(OLA, AlertRule.NARRATIVE_SPREAD, spread("Drivers demand cash")) == (
+        "Ola: a story is spreading",
+        'The story "Drivers demand cash" (labelled by AI) now has 6 mentions on 3 surfaces '
+        "(news, play, search_page). The crisis score is 74 (high). Health is 58.",
     )
 
 

@@ -1,13 +1,16 @@
-"""The deterministic alert rules: a rising level, a new negative suggestion, and the cooldown."""
+"""The deterministic alert rules: a rising level, a new negative suggestion, a spreading story,
+and the cooldown."""
 
+import uuid
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 
 import pytest
 
-from serpsense.domain.alert_rules import AlertFacts, Fired, due
-from serpsense.domain.enums import AlertRule, CrisisLevel
+from serpsense.domain.alert_rules import AlertFacts, Fired, Story, due, spreading
+from serpsense.domain.enums import AlertRule, CrisisLevel, MentionSource
 
 pytestmark = pytest.mark.unit
 
@@ -64,3 +67,37 @@ def test_a_level_rising_past_the_last_alert_alerts_within_the_cooldown() -> None
     assert due(facts(HIGH, MEDIUM, last=flapped)) == []  # back to the level it alerted
     earlier = {RISE: Fired(AT - timedelta(hours=13), HIGH)}
     assert due(facts(HIGH, MEDIUM, last=earlier)) == [RISE]  # cooled down
+
+
+def story(last: datetime | None = None, **sources: int) -> Story:
+    counts = {MentionSource(source): count for source, count in sources.items()}
+    return Story(uuid.uuid4(), "Drivers demand cash", MappingProxyType(counts), last)
+
+
+@pytest.mark.parametrize(
+    ("sources", "spreads"),
+    [
+        ({"play_review": 3, "news": 2}, True),
+        ({"play_review": 2, "news": 1, "autocomplete": 1}, False),  # four mentions
+        ({"play_review": 9}, False),  # one surface
+        (
+            {"serp_result": 2, "top_story": 2, "people_also_ask": 1},
+            False,
+        ),  # all on the results page
+        ({"play_review": 4, "maps_review": 0, "news": 1}, True),
+    ],
+)
+def test_a_story_spreads_with_5_mentions_on_2_surfaces(
+    sources: dict[str, int], spreads: bool
+) -> None:
+    grown = story(**sources)
+    assert (spreading(replace(facts(LOW), stories=(grown,))) == [grown]) is spreads
+
+
+def test_a_spreading_story_cools_down_on_its_own_and_waits_for_the_warm_up() -> None:
+    lately = story(AT - timedelta(hours=2), play_review=4, news=1)
+    schedule = story(AT - timedelta(hours=11, minutes=55), play_review=4, news=1)
+    fresh = story(play_review=4, news=1)
+    stories = (lately, schedule, fresh)
+    assert spreading(replace(facts(LOW), stories=stories)) == [schedule, fresh]
+    assert spreading(replace(facts(None), stories=stories)) == []  # warming up
