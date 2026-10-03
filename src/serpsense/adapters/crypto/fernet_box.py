@@ -1,15 +1,13 @@
 """SecretBox on MultiFernet (ADR-0010): the first key seals, every key opens, so keys rotate by
 putting the new one first."""
 
-from collections.abc import Sequence
-
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from serpsense.ports.secret_box import SealBroken
 
 
 class FernetBox:
-    def __init__(self, keys: Sequence[str]) -> None:
+    def __init__(self, keys: tuple[str, ...]) -> None:
         """`keys` newest first, as settings parse OUTBOX_ENCRYPTION_KEYS."""
         self._fernet = MultiFernet([Fernet(key) for key in keys])
 

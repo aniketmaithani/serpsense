@@ -43,3 +43,8 @@ def next_attempt(at: datetime, retryable_errors: int) -> datetime:
 def alert_email_key(alert_id: uuid.UUID) -> str:
     """An alert's email is written once (data-model §8)."""
     return f"alert:{alert_id}:email"
+
+
+def otp_email_key(otp_code_id: uuid.UUID) -> str:
+    """A sign-in code's email is written once (data-model §8)."""
+    return f"otp:{otp_code_id}"

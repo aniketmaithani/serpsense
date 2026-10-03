@@ -32,12 +32,33 @@ ON CONFLICT (dedupe_key) DO NOTHING
 RETURNING id
 """
 )
+OTP_EMAIL = text(
+    """
+INSERT INTO outbox_messages (id, kind, user_id, otp_code_id, recipient_email, template,
+                             template_data, sensitive_data_encrypted, dedupe_key, status,
+                             next_attempt_at, created_at)
+SELECT :id, 'otp_email',
+       (SELECT u.id FROM users u WHERE u.email = c.email AND u.deleted_at IS NULL),
+       c.id, c.email, 'otp', CAST(:data AS jsonb), :sealed, :key, 'pending', :at, :at
+FROM otp_codes c
+WHERE c.id = :code
+ON CONFLICT (dedupe_key) DO NOTHING
+RETURNING id
+"""
+)
 CLAIM = text(
     """
-SELECT m.id, m.kind, m.recipient_email, m.template, m.template_data
-FROM outbox_messages m
-WHERE m.status = 'pending' AND m.next_attempt_at <= :at
-ORDER BY m.next_attempt_at, m.id
+SELECT m.id, m.kind, m.recipient_email, m.template, m.template_data, m.sensitive_data_encrypted,
+       (c.id IS NOT NULL AND (c.expires_at <= :at OR c.consumed_at IS NOT NULL
+                              OR c.superseded_at IS NOT NULL)) AS stale
+FROM outbox_messages m LEFT JOIN otp_codes c ON c.id = m.otp_code_id
+WHERE m.status = 'pending'
+  AND (m.next_attempt_at <= :at
+       OR c.id IS NOT NULL AND (c.expires_at <= :at OR c.consumed_at IS NOT NULL
+                                OR c.superseded_at IS NOT NULL))
+ORDER BY m.next_attempt_at
+         - CASE WHEN m.kind = 'otp_email' THEN interval '2 minutes' ELSE interval '0' END,
+         m.id
 LIMIT 1
 FOR UPDATE OF m SKIP LOCKED
 """
@@ -57,6 +78,14 @@ class SqlOutbox:
         added = self._conn.execute(ALERT_EMAIL, values | {"key": rules.alert_email_key(alert_id)})
         return added.first() is not None
 
+    def add_otp_email(
+        self, otp_code_id: uuid.UUID, *, sealed: bytes, minutes: int, at: datetime
+    ) -> bool:
+        key = rules.otp_email_key(otp_code_id)
+        values = {"id": uuid.uuid4(), "code": otp_code_id, "sealed": sealed, "key": key, "at": at}
+        added = self._conn.execute(OTP_EMAIL, values | {"data": json.dumps({"minutes": minutes})})
+        return added.first() is not None
+
     def claim_due(self, at: datetime) -> DueEmail | None:
         self._conn.execute(SEND_WINDOW)
         row = self._conn.execute(CLAIM, {"at": at}).first()
@@ -64,7 +93,8 @@ class SqlOutbox:
             return None
         data = {str(k): str(v) for k, v in (row.template_data or {}).items()}
         kind = OutboxKind(row.kind)
-        return DueEmail(row.id, kind, row.recipient_email, row.template, data)
+        sealed = row.sensitive_data_encrypted
+        return DueEmail(row.id, kind, row.recipient_email, row.template, data, sealed, row.stale)
 
     def record(
         self,
