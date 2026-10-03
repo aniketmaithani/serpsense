@@ -3,10 +3,10 @@
 Every scan of the brand that succeeded or is partial, oldest first, with its settings and the
 successful searches it made, each with its own payload, kept only as far as its parser reads it.
 A call served from the local cache kept none of its own, so it gets the newest payload the same
-request had by then (the cache is shared, so from any call). Labels are the latest per text,
-the active labelling prompt's. Nothing replayed is recorded again: replay scans are left out, and
-so is any output made by the model `replay`. The transaction is read-only, so the command can
-safely point at the demo database.
+request had by then (the cache is shared, so from any call). Model output is the latest per
+text: the active labelling prompt's label, and the story its mention was last put in. Nothing
+replayed is recorded again: replay scans are left out, and so is any output made by the model
+`replay`. The transaction is read-only, so the command can safely point at the demo database.
 """
 
 import json
@@ -21,6 +21,7 @@ from sqlalchemy import Connection, Engine, text
 from serpsense.adapters.replay.recording import (
     RecordedAnswer,
     RecordedLabel,
+    RecordedNarrative,
     RecordedScan,
     Recording,
     cleaned,
@@ -63,6 +64,18 @@ WHERE m.brand_id = :brand AND e.prompt_version = :prompt AND e.{NOT_REPLAYED}
 ORDER BY e.created_at, e.id
 """  # noqa: S608 (constant fragments only; every value is a bound parameter)
 )
+STORIES = text(
+    f"""
+SELECT DISTINCT ON (a.mention_id) m.source, coalesce(rv.text, m.text) AS text,
+       n.prompt_version, n.label, n.summary
+FROM narrative_assignments a JOIN narratives n ON n.id = a.narrative_id
+JOIN mentions m ON m.id = a.mention_id
+LEFT JOIN LATERAL (SELECT text FROM mention_revisions WHERE mention_id = m.id
+                   ORDER BY revision DESC LIMIT 1) rv ON true
+WHERE m.brand_id = :brand AND a.{NOT_REPLAYED} AND n.{NOT_REPLAYED}
+ORDER BY a.mention_id, a.created_at DESC, a.id DESC
+"""  # noqa: S608 (constant fragments only; every value is a bound parameter)
+)
 PROMPT = PROMPTS[LlmTask.LABEL_MENTIONS]  # the active labelling prompt's labels are recorded
 LABEL_FIELDS = ("is_about_brand", "sentiment", "topic", "is_complaint", "severity", "reason")
 
@@ -77,6 +90,7 @@ class Exported:
     scans: int
     answers: int
     labels: int
+    narratives: int
 
 
 class SqlRecordingExport:
@@ -97,7 +111,8 @@ class SqlRecordingExport:
         if recording is None:
             raise RecordingRefused("the stored scans would make a recording that isn't safe")
         answers = sum(len(scan.answers) for scan in recording.scans)
-        return Exported(dump(recording), len(recording.scans), answers, len(recording.labels))
+        counts = len(recording.scans), answers, len(recording.labels), len(recording.narratives)
+        return Exported(dump(recording), *counts)
 
 
 @contextmanager
@@ -136,6 +151,7 @@ def _recording(conn: Connection, slug: str, brand: Any) -> Recording:
         payloads=tuple(kept),
         scans=tuple(recorded),
         labels=_labels(conn.execute(LABELS, params | {"prompt": PROMPT}).all()),
+        narratives=_stories(conn.execute(STORIES, params).all()),
     )
 
 
@@ -147,3 +163,15 @@ def _labels(rows: Sequence[Any]) -> tuple[RecordedLabel, ...]:
         fields: Mapping[str, Any] = {name: getattr(row, name) for name in LABEL_FIELDS}
         labels[key] = RecordedLabel(text_id=key, prompt_version=row.prompt_version, **fields)
     return tuple(labels.values())
+
+
+def _stories(rows: Sequence[Any]) -> tuple[RecordedNarrative, ...]:
+    """Each text's latest story, once per text."""
+    stories = {
+        text_id(MentionSource(row.source), row.text): (row.prompt_version, row.label, row.summary)
+        for row in rows
+    }
+    return tuple(
+        RecordedNarrative(text_id=key, prompt_version=prompt, label=label, summary=summary)
+        for key, (prompt, label, summary) in stories.items()
+    )
