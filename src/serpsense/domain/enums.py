@@ -190,3 +190,11 @@ class CrisisLevel(StrEnum):
     @property
     def rank(self) -> int:
         return list(CrisisLevel).index(self)
+
+
+class AlertRule(StrEnum):
+    """Why an alert fired (`alert_rule` Postgres enum; BUILD_PLAN §12)."""
+
+    LEVEL_INCREASE = "level_increase"  # the crisis level went up
+    NEW_NEGATIVE_AUTOCOMPLETE = "new_negative_autocomplete"  # people see it as they type
+    NARRATIVE_SPREAD = "narrative_spread"  # a story reached 5+ mentions on 2+ surfaces
