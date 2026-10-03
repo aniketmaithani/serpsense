@@ -74,8 +74,10 @@ ORDER BY r.surface
 MENTIONS = scoped(
     """
 SELECT m.source, coalesce(rv.text, m.text) AS text, m.url, m.outlet, o.position, m.published_at,
-       e.sentiment, e.reason, count(*) OVER () AS total
+       e.sentiment, e.reason, na.narrative_id AS story_id, count(*) OVER () AS total
 FROM mention_observations o JOIN mentions m ON m.id = o.mention_id
+LEFT JOIN LATERAL (SELECT narrative_id FROM narrative_assignments WHERE mention_id = m.id
+                   ORDER BY created_at DESC, id DESC LIMIT 1) na ON true
 LEFT JOIN LATERAL (SELECT revision, text FROM mention_revisions WHERE mention_id = m.id
                    ORDER BY revision DESC LIMIT 1) rv ON true
 LEFT JOIN LATERAL (SELECT sentiment, severity, reason, is_about_brand FROM enrichments
@@ -224,6 +226,7 @@ def _mention(row: Any) -> MentionRow:
         published_at=row.published_at,
         sentiment=row.sentiment,
         reason=row.reason,
+        story_id=row.story_id,
     )
 
 
