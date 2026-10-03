@@ -4,12 +4,13 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection, delete, text
+from sqlalchemy import Connection, Executable, delete, text, update
 from sqlalchemy.exc import IntegrityError
 
 from serpsense.domain.enums import Topic
 from tests.integration.db_helpers import (
     NOW,
+    RESTRICT_VIOLATION,
     add,
     add_app,
     add_brand,
@@ -141,3 +142,53 @@ def test_labels_come_from_a_labelling_task(conn: Connection) -> None:
     with pytest.raises(IntegrityError) as exc:
         label(conn, mention_id, call(conn, owner, **draft), prompt_version="draft_response/v1")
     assert violation(exc).constraint_name == "ck_enrichments_prompt_from_labelling_task"
+
+
+@pytest.mark.parametrize(
+    "call_overrides",
+    [
+        {"outcome": "invalid_output"},
+        {"outcome": "failed", "served_model": None, "stop_reason": None},
+        {"prompt_version": "label_mentions/v2"},  # labels must say which prompt made them
+    ],
+)
+def test_labels_come_from_a_successful_call_with_their_prompt(
+    conn: Connection, call_overrides: dict[str, Any]
+) -> None:
+    owner, mention_id = review(conn)
+    with pytest.raises(IntegrityError) as exc:
+        label(conn, mention_id, call(conn, owner, **call_overrides))
+    assert violation(exc).constraint_name == "ck_enrichments_from_call"
+
+
+def test_labels_come_from_a_call_for_the_brands_owner(conn: Connection) -> None:
+    _, mention_id = review(conn)
+    stranger = add_user(conn, "stranger@example.com")
+    with pytest.raises(IntegrityError) as exc:
+        label(conn, mention_id, call(conn, stranger))
+    assert violation(exc).constraint_name == "ck_enrichments_from_call"
+
+
+def test_only_the_reason_can_be_rewritten_and_labels_are_never_deleted(conn: Connection) -> None:
+    owner, mention_id = review(conn)
+    enrichment_id = label(conn, mention_id, call(conn, owner))
+    row = ENRICHMENTS.c.id == enrichment_id
+    conn.execute(update(ENRICHMENTS).where(row).values(reason="[removed]"))  # a scrub
+    for change in ({"sentiment": 1}, {"topic": "pricing"}, {"mention_id": uuid.uuid4()}):
+        with pytest.raises(IntegrityError) as exc, conn.begin_nested():
+            conn.execute(update(ENRICHMENTS).where(row).values(**change))
+        assert violation(exc).constraint_name == "ck_enrichments_identity_immutable"
+    statements: list[Executable] = [delete(ENRICHMENTS), text("TRUNCATE enrichments CASCADE")]
+    for statement in statements:
+        with pytest.raises(IntegrityError) as exc, conn.begin_nested():
+            conn.execute(statement)
+        assert violation(exc).sqlstate == RESTRICT_VIOLATION
+
+
+def test_every_column_but_the_reason_is_frozen(conn: Connection) -> None:
+    """A column added later must be added to the freeze too."""
+    args = conn.execute(
+        text("SELECT tgargs FROM pg_trigger WHERE tgname = 'trg_enrichments_identity_immutable'")
+    ).scalar_one()
+    frozen = set(bytes(args).decode().split("\x00")[1:-1])  # after the constraint name
+    assert frozen == {column.name for column in ENRICHMENTS.columns} - {"reason"}
