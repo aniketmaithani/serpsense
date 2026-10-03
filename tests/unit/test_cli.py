@@ -1,6 +1,8 @@
 import base64
+import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -10,7 +12,9 @@ from serpsense.entrypoints import cli
 from serpsense.entrypoints.cli import app
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.demo import Seeded
+from serpsense.services.evals import EvalResult, Evaluator, GoldenBrand, GoldenItem, Split
 from tests.factories import make_settings
+from tests.unit.test_evals import answering, evaluator, item
 
 pytestmark = pytest.mark.unit
 
@@ -76,3 +80,61 @@ def test_score_backlog_says_how_many_scans_it_scored(monkeypatch: pytest.MonkeyP
     result = runner.invoke(app, ["score-backlog"])
     assert result.exit_code == 0
     assert "Scored 5 scans." in result.stdout
+
+
+def test_eval_scores_a_golden_split_and_writes_its_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    golden, reports = tmp_path / "golden", tmp_path / "reports"
+    golden.mkdir()
+    items = [item(1), item(2, 1)]
+    other = item(3).model_copy(update={"split": Split.DEV})
+    (golden / "label_mentions.jsonl").write_text(
+        "\n".join(i.model_dump_json() for i in [*items, other]) + "\n"
+    )
+    (golden / "label_mentions.brand.json").write_text(json.dumps({"name": "Ola"}))
+    run, llm = evaluator(answering([*items, other]))
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_evaluator", lambda settings: (run, "claude-opus-5-5"))
+    args = ["eval", "label_mentions", "--golden", str(golden), "--reports", str(reports)]
+    result = runner.invoke(app, [*args, "--cap-cents", "5"])
+    assert result.exit_code == 0 and "Scored 2 of 2 items" in result.stdout  # the test split only
+    (written,) = reports.iterdir()
+    assert (
+        written.name.endswith("-label_mentions.md") and "| sentiment | 2/2 |" in written.read_text()
+    )
+    assert len(llm.requests) == 1
+
+
+class CapturingEvaluator:
+    """The real evaluator, noting the cap it was given."""
+
+    def __init__(self, run: Evaluator) -> None:
+        self.run, self.caps = run, list[int]()
+
+    def label_mentions(
+        self, items: Sequence[GoldenItem], brand: GoldenBrand, *, cap_micros: int
+    ) -> EvalResult:
+        self.caps.append(cap_micros)
+        return self.run.label_mentions(items, brand, cap_micros=cap_micros)
+
+
+def test_eval_passes_the_cap_in_micros_and_fails_when_items_go_unanswered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "label_mentions.jsonl").write_text(item(1).model_dump_json() + "\n")
+    (tmp_path / "label_mentions.brand.json").write_text(json.dumps({"name": "Ola"}))
+    run, _ = evaluator(lambda request: json.dumps({"labels": []}))  # answers nothing
+    capturing = CapturingEvaluator(run)
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_evaluator", lambda settings: (capturing, "claude-opus-5-5"))
+    args = ["eval", "label_mentions", "--golden", str(tmp_path), "--reports", str(tmp_path)]
+    result = runner.invoke(app, [*args, "--cap-cents", "7"])
+    assert result.exit_code == 1 and "Scored 0 of 1 items" in result.stdout
+    assert capturing.caps == [70_000]  # 7 US cents in micros
+
+
+@pytest.mark.parametrize("args", [["group_narratives"], ["label_mentions", "--split", "train"]])
+def test_eval_refuses_a_task_or_split_with_no_golden_set(args: list[str]) -> None:
+    result = runner.invoke(app, ["eval", *args])
+    assert result.exit_code == 2 and "No eval for" in result.stderr
