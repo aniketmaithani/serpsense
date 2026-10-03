@@ -18,6 +18,7 @@ from serpsense.domain.mention import (
     MAX_OUTLET,
     MAX_TEXT,
     ParsedMention,
+    best_ranked,
     clean_language,
     clean_url,
     text_key,
@@ -256,22 +257,11 @@ def _timestamp(value: object) -> datetime | None:
         return None
 
 
-def _rank(mention: ParsedMention) -> int:
-    return mention.position or 10**6  # unranked mentions sort last
-
-
 def _best_ranks(found: Iterable[ParsedMention | None], surface: str) -> list[ParsedMention]:
     """One mention per identity, at its best rank. Skipped items are logged per surface, so a
     change in SerpApi's format shows up instead of quietly giving no mentions."""
-    best: dict[tuple[MentionSource, str], ParsedMention] = {}
-    skipped = 0
-    for mention in found:
-        if mention is None:
-            skipped += 1
-            continue
-        key = (mention.source, mention.identity_key)
-        if key not in best or _rank(mention) < _rank(best[key]):
-            best[key] = mention
-    if skipped:
+    items = list(found)
+    mentions = [mention for mention in items if mention is not None]
+    if skipped := len(items) - len(mentions):
         log.info("serp_parse.items_skipped", surface=surface, count=skipped)
-    return sorted(best.values(), key=lambda m: (m.source, _rank(m)))
+    return best_ranked(mentions)
