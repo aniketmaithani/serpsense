@@ -2,27 +2,6 @@
    is a plain section showing its copy and its end state; landing.js turns the page into one
    scroll-scrubbed sequence by adding `motion` to <html>. */
 
-@font-face { font-family: "Space Grotesk"; font-weight: 400; font-display: swap; src: url("/static/fonts/space-grotesk-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-weight: 500; font-display: swap; src: url("/static/fonts/space-grotesk-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-weight: 700; font-display: swap; src: url("/static/fonts/space-grotesk-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url("/static/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
-
-:root {
-  --bg: #07090d;
-  --panel: #0f131b;
-  --ink: #e8ecf3;
-  --muted: #8a94a6;
-  --line: #1d2431;
-  --signal: #4f8cff;
-  --pos: #34d399;
-  --neu: #94a3b8;
-  --neg: #f87171;
-  --warn: #fbbf24;
-  --display: "Space Grotesk", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
-  color-scheme: dark;
-}
-* { box-sizing: border-box; }
 body.landing { margin: 0; background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.55 var(--display); }
 a { color: var(--signal); }
 .mono, code, pre { font-family: var(--mono); }
