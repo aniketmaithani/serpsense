@@ -3,6 +3,7 @@ session cookie, and CSRF on sign-out."""
 
 import re
 import uuid
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,3 +89,28 @@ def test_a_malformed_address_is_said_so(committing_engine: Engine) -> None:
     form = token(client.get("/login").text)
     response = client.post("/login", data={"form_token": form, "email": "not an address"})
     assert response.status_code == 400 and "look like an email address" in response.text
+
+
+def test_signing_in_again_ends_the_session_the_browser_had(committing_engine: Engine) -> None:
+    clock = FixedClock(NOW)
+    client, email = browser(committing_engine, clock), f"{uuid.uuid4().hex[:10]}@example.com"
+    form = token(client.get("/login").text)
+    for minutes in (0, 2):  # the second time from an old tab, still signed in
+        clock.at = NOW + timedelta(minutes=minutes)
+        client.cookies.set("serpsense_form", form)
+        client.post("/login", data={"form_token": form, "email": email})
+        code = code_for(committing_engine, email)
+        old = client.cookies.get("serpsense_session")
+        client.post("/verify", data={"form_token": form, "email": email, "code": code})
+    assert old is not None and client.cookies["serpsense_session"] != old
+    client.cookies.set("serpsense_session", old)
+    assert client.get("/").headers["location"] == "/login"  # the old session is over
+
+
+def test_production_cookies_are_secure_and_host_only(committing_engine: Engine) -> None:
+    production = make_settings(
+        app_env="production", base_url="https://serpsense.example", signup_mode="invite",
+        smtp_starttls="true",
+    )  # fmt: skip
+    cookie = browser(committing_engine, settings=production).get("/login").headers["set-cookie"]
+    assert cookie.startswith("__Host-serpsense_form=") and "secure" in cookie.lower()
