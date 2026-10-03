@@ -49,6 +49,7 @@ from serpsense.ports.mailer import Mailer
 from serpsense.ports.overview import Overview
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
+from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.collection import CollectorRunner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
@@ -72,6 +73,7 @@ __all__ = [
     "SWEEP_TASK",
     "Container",
     "Worker",
+    "build_brand_settings",
     "build_celery",
     "build_container",
     "build_evaluator",
@@ -101,6 +103,7 @@ class Container:
     overview: Overview
     scan_now: ScanNow
     inbox: Inbox
+    brand_settings: BrandSettings
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -129,6 +132,17 @@ def build_container(settings: Settings | None = None) -> Container:
         overview=SqlOverview(engine.connect),
         scan_now=build_scan_now(resolved, engine, celery),
         inbox=SqlInbox(engine, SystemClock()),
+        brand_settings=build_brand_settings(resolved, engine, celery),
+    )
+
+
+def build_brand_settings(settings: Settings, engine: Engine, celery: Celery) -> BrandSettings:
+    """A brand's search settings page; saving sends no jobs."""
+    queue = CeleryJobQueue(celery)
+    return BrandSettings(
+        lambda: SqlUnitOfWork(engine, queue),
+        SystemClock(),
+        max_searches_per_scan=settings.max_searches_per_scan,
     )
 
 

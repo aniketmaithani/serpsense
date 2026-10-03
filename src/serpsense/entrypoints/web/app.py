@@ -4,11 +4,13 @@ Run with `uvicorn serpsense.entrypoints.web.app:create_app --factory`.
 """
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from serpsense.composition import Container, build_container
 from serpsense.entrypoints.web.auth import router as auth_router
+from serpsense.entrypoints.web.brand_settings import router as settings_router
 from serpsense.entrypoints.web.brands import router as brands_router
 from serpsense.entrypoints.web.health import router as health_router
 from serpsense.entrypoints.web.middleware import (
@@ -35,7 +37,17 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(brands_router)
     app.include_router(notifications_router)
+    app.include_router(settings_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.exception_handler(RequestValidationError)
+    def invalid_form(request: Request, exc: RequestValidationError) -> PlainTextResponse:
+        # A tampered or incomplete form: say so without echoing what was sent (it carries the
+        # CSRF token); an expected outcome, not an error.
+        response = PlainTextResponse("That form wasn't valid. Go back and try again.", 400)
+        response.headers["Cache-Control"] = "no-store"
+        apply_security_headers(response, hsts=hsts)
+        return response
 
     @app.exception_handler(Exception)
     def internal_error(request: Request, exc: Exception) -> PlainTextResponse:
