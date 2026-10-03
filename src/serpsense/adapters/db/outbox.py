@@ -15,6 +15,8 @@ from serpsense.ports.outbox import DueEmail
 
 MESSAGES = cast(Table, OutboxMessage.__table__)
 ATTEMPTS = cast(Table, OutboxAttempt.__table__)
+# The row stays locked through the send; let the session idle that long (ADR-0010).
+SEND_WINDOW = text("SET LOCAL idle_in_transaction_session_timeout = '3min'")
 CLAIM = text(
     """
 SELECT m.id, m.kind, m.recipient_email, m.template, m.template_data
@@ -34,6 +36,7 @@ class SqlOutbox:
         self._conn = conn
 
     def claim_due(self, at: datetime) -> DueEmail | None:
+        self._conn.execute(SEND_WINDOW)
         row = self._conn.execute(CLAIM, {"at": at}).first()
         if row is None:
             return None
