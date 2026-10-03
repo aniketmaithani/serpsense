@@ -10,6 +10,7 @@ from serpsense.composition import (
     COLLECTION_TIME,
     SCAN_TIME_LIMIT_SECONDS,
     STUCK_AFTER,
+    build_account_deletion,
     build_celery,
     build_container,
     build_evaluator,
@@ -106,3 +107,9 @@ def test_build_evaluator_needs_the_anthropic_key_and_says_which_model() -> None:
     grouping, model = build_grouping_evaluator(settings)
     preset = preset_settings(settings.default_llm_preset, LlmTask.GROUP_NARRATIVES)
     assert (grouping.settings, model) == (preset, preset.model)
+
+
+def test_build_account_deletion_confirms_with_the_sign_in_codes() -> None:
+    settings = make_settings()
+    sign_in = build_sign_in(settings, build_celery(settings))
+    assert build_account_deletion(settings, build_celery(settings), sign_in)._sign_in is sign_in
