@@ -41,6 +41,7 @@ def test_metadata_has_expected_tables() -> None:
         "app_rating_observations",
         "trends_observations",
         "llm_calls",
+        "enrichments",
     }
 
 
