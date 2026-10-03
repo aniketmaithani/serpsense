@@ -1,0 +1,12 @@
+{
+  "name": "Ola",
+  "aliases": "Ola Cabs, Olacabs, Ola Consumer, ANI Technologies",
+  "open": [
+    {
+      "story": "fare_above_app",
+      "label": "Drivers ask for more than the fare the app showed",
+      "summary": "Riders report drivers demanding extra money in cash on top of the fare shown in the app, or cancelling when refused. Seen in Play reviews.",
+      "mentions": 6
+    }
+  ]
+}
