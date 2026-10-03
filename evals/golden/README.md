@@ -173,3 +173,79 @@ When `is_about_brand` is false, the other fields are fixed: sentiment 0, severit
 7. Changing an existing label changes the baseline. Say so in the commit and re-run the baseline eval.
 8. Check that every line parses:
    `python3 -c "import json; [json.loads(l) for l in open('evals/golden/label_mentions.jsonl', encoding='utf-8')]"`
+
+## `group_narratives.jsonl`
+
+### Status: draft stories, not yet reviewed by a person
+
+**An AI agent assigned all 25 stories on 2026-10-03.** No person has checked them yet, so results on this set are indicative only.
+
+### What it holds
+
+Each item is an unfavourable mention about Ola, as the grouper receives it: `source`, `language`, the label's `topic` and `severity`, and the `text`. Each item also has the `story` it tells, or `null` for a one-off.
+
+**Where the texts come from:**
+
+- 24 items are the about-the-brand, unfavourable items of `label_mentions.jsonl`. Their text, topic and severity are copied unchanged, and `origin` names the source item.
+- One item is the fifth review of `tests/fixtures/serpapi/ola/play_reviews.json`.
+
+All texts are real, already anonymised, and copied unchanged. Item order was shuffled with a fixed seed, so stories don't sit next to each other.
+
+`group_narratives.brand.json` holds the brand, its aliases, and the open narratives the run starts with. There is one: `fare_above_app`, "Drivers ask for more than the fare the app showed".
+
+### Stories
+
+| Story | Items | Why they belong together |
+|---|---|---|
+| `fare_above_app` (the open narrative) | 3 | A driver demands more than the app's fare, or cash, or cancels |
+| `billing_unresolved` (disputed, see below) | 5 | A wrong charge or a payment problem, and support doesn't resolve it |
+| `no_ride_accepted` | 3 | Nobody accepts the ride, or a booked cab never comes |
+| `wrong_drop` | 2 | Dropped somewhere other than the booked place |
+| `notices_overcharging`, `hc_safety_pil`, `chandigarh_suspension`, `ahmedabad_boycott` | 1 each | Serious news that may start a story alone; it scores no pairs |
+| `null` | 8 | Vague, or a grievance nobody else shares |
+
+**Hard items:**
+
+- The airport cash demand.
+- The outstation no-show.
+- The unsafe wrong drop.
+- Payment complaints that also blame support.
+- Regulator notices about overcharging, which are not riders' fare complaints.
+- A drivers' boycott, which is not "nobody accepts".
+- A fare compared with a rival's.
+
+Each item's `notes` names the nearest wrong answer.
+
+### Scoring
+
+The eval scores pairs of mentions:
+
+- **Recall:** of the pairs that share a golden story, how many the model placed in the same narrative.
+- **Precision:** of the pairs the model placed together, how many share a golden story.
+- **Open narrative:** how many items of the open story were placed in it.
+
+A pair that includes a one-off counts as apart. The report also shows:
+
+- how many golden one-offs the model left in no narrative;
+- how many items had a placement the product would set aside: no placement, an unknown narrative, or a story too long. These items score no pairs, and are not counted as one-offs.
+
+**The 2-point rule can't be applied to this set.** AGENTS §7 forbids a drop of more than 2 points on any class. Here, one item moves recall by far more:
+
+- The set has 17 golden pairs, and 10 of them (59%) sit in `billing_unresolved`.
+- Moving one item out of that story removes 4 golden pairs, which moves recall by about 23.5 points.
+- Outside that story, one item moves recall by 6 to 12 points.
+
+Until the set grows, compare runs item by item, using the placements table. Don't compare them by rate.
+
+### Splits
+
+Every item is in `test`. The set is too small to split without leaving stories one item per side. Before any prompt change, add real items and deal a `dev` split by the rule above.
+
+### Known gaps
+
+- **Few, small stories.** There are only 17 golden pairs. One item moves recall by 6 to 23.5 points, as described under Scoring.
+- **`billing_unresolved` is grouped by topic.** It holds five different grievances that share a topic: cash trips billed, a full fare after an early drop, tolls added, dues the app can't take, and a wrong charge. What joins them is "support doesn't fix it". Prompt v1's rule 4 says to group by the story, not the topic, so a model that splits them follows the prompt and still loses recall. The story holds 59% of the pairs, so this one disputed decision dominates the scores. A reviewer should decide first whether it is one story or several.
+- **Only Play reviews.** Every multi-item story is made of Play reviews, so grouping across surfaces is untested. That is what the spread alert relies on: 5 mentions on 2 surfaces. Real news, search and review mentions of one story need adding.
+- **No injection items.** No real sample tries to steer the grouping. The prompt's data rules are covered only by the prompt library's tests.
+- **One open narrative.** Every mention is grouped in one batch.
+- **One open narrative.** Every mention is grouped in one batch.
