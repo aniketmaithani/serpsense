@@ -30,6 +30,7 @@ from tests.integration.db_helpers import (
     NOW,
     add,
     add_brand,
+    add_llm_call,
     add_scan,
     add_user,
     table,
@@ -236,6 +237,34 @@ def test_an_alert_email_goes_to_the_brands_owner_once(engine: Engine) -> None:
     assert dispatcher(engine, mailer, NOW + rules.EXPLANATION_WAIT).dispatch() == 1
     assert [(e.to, e.subject) for e in mailer.sent] == [("ola-owner@example.com", data["title"])]
     assert "AI-generated" not in mailer.sent[0].text  # none was written in time
+
+
+def explain(engine: Engine, message_id: uuid.UUID, words: str) -> None:
+    with engine.begin() as conn:
+        row = conn.execute(select(MESSAGES).where(MESSAGES.c.id == message_id)).one()
+        call = add_llm_call(conn, row.user_id, task="explain_crisis",
+                            prompt_version="explain_crisis/v1")  # fmt: skip
+        add(conn, table("alert_explanations"), alert_id=row.alert_id, text=words,
+            prompt_version="explain_crisis/v1", llm_call_id=call, created_at=NOW)  # fmt: skip
+
+
+def test_an_explained_alert_email_goes_at_once_with_the_explanation(engine: Engine) -> None:
+    waiting = queue(engine, next_attempt_at=NOW + rules.EXPLANATION_WAIT)
+    explain(engine, waiting, "Fares at airports drove it.")
+    mailer = FakeMailer()
+    assert dispatcher(engine, mailer).dispatch() == 1
+    (email,) = mailer.sent
+    assert email.text == (
+        "Crisis 74.\n\nIn plain words (AI-generated):\nFares at airports drove it." + FOOTER
+    )
+
+
+def test_an_explanation_doesnt_cut_a_retry_short(engine: Engine) -> None:
+    message_id = queue(engine)
+    dispatcher(engine, FakeMailer(TIMEOUT)).dispatch()  # its retry is due in a minute
+    explain(engine, message_id, "Fares at airports drove it.")
+    assert dispatcher(engine, FakeMailer(), NOW + MINUTE / 2).dispatch() == 0
+    assert dispatcher(engine, FakeMailer(), NOW + MINUTE).dispatch() == 1
 
 
 def code_email(
