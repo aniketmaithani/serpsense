@@ -22,6 +22,7 @@ from serpsense.ports.search_ledger import CallRecord
 from serpsense.ports.search_provider import SearchRequest
 from tests.integration.db_helpers import (
     NOW,
+    add,
     add_app,
     add_brand,
     add_llm_call,
@@ -45,6 +46,7 @@ STORY = {
     "serpapi_pagination": {"next": "https://serpapi.com/search.json?start=10"},
 }
 SETTINGS = {"languages": ["en"], "max_searches": 8}
+GROUPING = {"task": "group_narratives", "prompt_version": "group_narratives/v1"}
 
 
 def searched(
@@ -62,7 +64,7 @@ def searched(
         ledger.store_payload(call_id, payload, at=call.created_at)
 
 
-def labelled(conn: Connection, owner: uuid.UUID, mention: uuid.UUID, **kw: Any) -> None:
+def labelled(conn: Connection, owner: uuid.UUID, mention: uuid.UUID, **kw: Any) -> uuid.UUID:
     prompt, served = kw.pop("prompt", "label_mentions/v1"), kw.pop("served", "claude-opus-5-5")
     label = MentionLabel(
         mention, kw.pop("revision", 1), -1, 60, Topic.PRICING, True, True, kw.pop("reason")
@@ -70,6 +72,31 @@ def labelled(conn: Connection, owner: uuid.UUID, mention: uuid.UUID, **kw: Any) 
     call = add_llm_call(conn, owner, prompt_version=prompt, served_model=served)
     at = kw.pop("at", NOW)
     SqlEnrichmentStore(conn).record([label], prompt_version=prompt, llm_call_id=call, at=at)
+    return call
+
+
+def grouped(conn: Connection, owner: uuid.UUID, mention: uuid.UUID, label: str, **kw: Any) -> None:
+    call = add_llm_call(conn, owner, served_model=kw.pop("served", "claude-opus-5-5"), **GROUPING)
+    at = kw.pop("at", NOW)
+    story = add(
+        conn,
+        table("narratives"),
+        brand_id=kw.pop("brand"),
+        label=label,
+        summary=f"{label}: what riders say.",
+        prompt_version="group_narratives/v1",
+        llm_call_id=call,
+        created_at=at,
+    )
+    add(
+        conn,
+        table("narrative_assignments"),
+        narrative_id=story,
+        mention_id=mention,
+        llm_call_id=call,
+        prompt_version="group_narratives/v1",
+        created_at=at,
+    )
 
 
 def test_a_brand_s_scans_become_a_recording(committing_engine: Engine) -> None:
@@ -96,13 +123,15 @@ def test_a_brand_s_scans_become_a_recording(committing_engine: Engine) -> None:
         labelled(conn, owner, story, revision=2, reason="Another prompt's.", **later)
         replay = {"at": NOW + 3 * HOUR, "served": "replay"}
         labelled(conn, owner, story, revision=2, reason="Replayed, not recorded.", **replay)
+        grouped(conn, owner, story, "Fare rises", brand=brand)
+        grouped(conn, owner, story, "Replayed story", brand=brand, **replay)
     news = SearchRequest(SerpEngine.GOOGLE_NEWS, {"q": slug})
     searched(committing_engine, owner, first, news, payload=STORY)
     searched(committing_engine, owner, second, news, at=NOW + HOUR)  # from the local cache
     searched(committing_engine, owner, second, SUGGEST, payload={"suggestions": []}, at=NOW + HOUR)
 
     exported = SqlRecordingExport(committing_engine).export(slug)
-    assert (exported.scans, exported.answers, exported.labels) == (2, 3, 2)
+    assert (exported.scans, exported.answers, exported.labels, exported.narratives) == (2, 3, 2, 1)
     recording = Recording.model_validate_json(exported.text)
     assert (recording.brand, recording.name) == (slug, "Ola") and exported.text.count("\n") == 1
     first_scan, second_scan = recording.scans
@@ -121,6 +150,8 @@ def test_a_brand_s_scans_become_a_recording(committing_engine: Engine) -> None:
         (text_id(MentionSource.PLAY_REVIEW, "Fares rise"), "Fares up."),
         (edited, "Fares up again."),  # the edit's own label; replayed output is left out
     }
+    (story_kept,) = recording.narratives
+    assert (story_kept.text_id, story_kept.label) == (edited, "Fare rises")
 
 
 def brand_with(engine: Engine, request: SearchRequest, payload: dict[str, Any]) -> str:
