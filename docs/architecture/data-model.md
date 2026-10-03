@@ -125,7 +125,7 @@ Every brand (including competitors) is a full brand with its own settings, sched
 `brand_id` fk, `competitor_brand_id` fk (both RESTRICT); pk (brand_id, competitor_brand_id); `ix_brand_competitors_competitor_brand_id` for reverse lookups ("competitor of …"); `ck_brand_competitors_not_self`. **Same owner** enforced by `trg_brand_competitors_same_owner` (reported as `ck_brand_competitors_same_owner`; a missing brand is left to the FK/NOT NULL constraints so the real error is reported). Comparisons use the competitor's own latest completed scan.
 
 ### Brand attributes
-All have a brand FK (RESTRICT). Aliases, watch terms and location queries are `citext`, so uniqueness ignores case; they may not start or end with whitespace, so padding can't sidestep uniqueness (the service trims input).
+All have a brand FK (RESTRICT). `brand_locations` and `brand_apps` also have a `(brand_id, id)` unique key (`uq_<table>_brand_id_id`), the target of the mentions' same-brand composite FKs. Aliases, watch terms and location queries are `citext`, so uniqueness ignores case; they may not start or end with whitespace, so padding can't sidestep uniqueness (the service trims input).
 
 | Table | Columns | Uniqueness | Checks |
 |---|---|---|---|
@@ -205,17 +205,19 @@ running → failed                      (reason timed_out, by the maintenance sw
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | pk |
-| brand_id | uuid | fk → brands |
-| source | enum `mention_source` (`serp_result`, `top_story`, `people_also_ask`, `autocomplete`, `ai_overview`, `news`, `trends_query`, `play_review`, `maps_review`, `youtube_video`) | |
-| identity_key | text | stable per source |
-| text | text | author names/handles removed at parse time |
-| url / outlet | text null | |
-| brand_location_id / brand_app_id | uuid null | fks |
-| language_code | text null | |
-| published_at | timestamptz null | |
+| brand_id | uuid | fk → brands (RESTRICT) |
+| source | enum `mention_source` (`serp_result`, `top_story`, `people_also_ask`, `autocomplete`, `ai_overview`, `news`, `trends_query`, `play_review`, `maps_review`, `youtube_video`; mirrors `domain.enums.MentionSource`) | |
+| identity_key | text | stable per source: the provider's id for reviews and videos; the sha256 hex of the canonical URL (`serp_result`, `top_story`, `news`) or of the normalised text (`people_also_ask`, `autocomplete`, `ai_overview`, `trends_query`), so long URLs fit (`ck_mentions_identity_key_hashed`: anything but a review or video key is 64 lowercase hex chars); 1–512 chars (`ck_mentions_identity_key_length`) |
+| text | text | author names/handles removed at parse time; not only whitespace, ≤ 10 000 chars (`ck_mentions_text_length`) |
+| url | text null | `^https?://…`, ≤ 2048 chars (`ck_mentions_url_format`); never on reviews (`ck_mentions_review_has_no_url`), so no reviewer profile link is stored |
+| outlet | text null | news publisher, only for `news` and `top_story` (`ck_mentions_outlet_news_only`): a channel or reviewer name is author identity (ADR-0007); ≤ 200 chars (`ck_mentions_outlet_length`) |
+| brand_location_id | uuid null | set **exactly** for `maps_review` (`ck_mentions_location_iff_maps_review`); composite FK `(brand_id, brand_location_id)` → `brand_locations(brand_id, id)` (`fk_mentions_brand_location_id_brand_locations`), so it is always the **same brand's** location |
+| brand_app_id | uuid null | set **exactly** for `play_review` (`ck_mentions_app_iff_play_review`); composite FK onto `brand_apps(brand_id, id)` likewise (`fk_mentions_brand_app_id_brand_apps`) |
+| language_code | text null | lowercase BCP-47, as for `brand_languages` (`ck_mentions_language_code_format`) |
+| published_at | timestamptz null | from provider when available |
 | created_at | timestamptz | |
 
-`uq_mentions_brand_id_source_identity_key`.
+`uq_mentions_brand_id_source_identity_key`. **Content is first-seen:** mentions are written with `INSERT … ON CONFLICT DO NOTHING`, so a later edit of the same review never overwrites the text that was labelled. The table is mutable (not append-only) only so a redaction scrub can rewrite content; the observations below are the history.
 
 ### Trends comparison (deliberate design)
 Google Trends interest is relative within a single query, so each scan runs **one joint query** (the scan's brand + up to 4 competitors) and stores every series. The rows belong to the **scan** (and so to the scanning brand's owner); `subject_brand_id` says which line of the comparison a row is. Constraint trigger `trg_trends_observations_subject_in_comparison`: the subject must be the scan's brand or one of its `brand_competitors`. A competitor's own scans run their own joint query; series from different scans are never mixed.
