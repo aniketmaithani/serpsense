@@ -1,0 +1,90 @@
+"""The sign-in pages over HTTP, on real Postgres (ADR-0009): forms that came from our page, a
+session cookie, and CSRF on sign-out."""
+
+import re
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select
+
+from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
+from serpsense.composition import Container
+from serpsense.config import Settings
+from serpsense.entrypoints.web.app import create_app
+from serpsense.services.auth import SignIn, SignInPorts
+from serpsense.services.sessions import SessionGuard
+from tests.factories import make_settings
+from tests.fakes import FixedClock
+from tests.integration.db_helpers import NOW, table
+from tests.integration.test_sign_in import BOX, KEYS, OPEN, Jobs, Limiter
+
+pytestmark = [pytest.mark.integration, pytest.mark.api]  # on Postgres, over HTTP
+
+MESSAGES = table("outbox_messages")
+TOKEN = re.compile(r'name="(?:form_token|csrf_token)" value="([^"]+)"')
+
+
+def browser(
+    engine: Engine, clock: FixedClock | None = None, settings: Settings | None = None
+) -> TestClient:
+    clock = clock or FixedClock(NOW)
+    ports = SignInPorts(lambda: SqlUnitOfWork(engine, Jobs()), BOX, Limiter(), clock)
+    sign_in = SignIn(ports, KEYS, OPEN, session_days=7)
+    guard = SessionGuard(ports.unit_of_work, clock, KEYS.csrf, session_days=7)
+    app = create_app(Container(settings or make_settings(), (), sign_in, guard))
+    base = "https://testserver" if settings else "http://testserver"
+    return TestClient(app, base_url=base, raise_server_exceptions=False, follow_redirects=False)
+
+
+def token(html: str) -> str:
+    match = TOKEN.search(html)
+    assert match is not None
+    return match.group(1)
+
+
+def code_for(engine: Engine, email: str) -> str:
+    with engine.connect() as conn:
+        query = (
+            select(MESSAGES.c.sensitive_data_encrypted)
+            .where(MESSAGES.c.recipient_email == email)
+            .order_by(MESSAGES.c.created_at.desc())
+            .limit(1)
+        )
+        return BOX.open(conn.execute(query).scalar_one()).decode()
+
+
+def test_signing_in_and_out_through_the_pages(committing_engine: Engine) -> None:
+    client, email = browser(committing_engine), f"{uuid.uuid4().hex[:10]}@example.com"
+    login = client.get("/login")
+    assert (
+        login.status_code == 200
+        and "default-src 'self'" in login.headers["content-security-policy"]
+        and login.headers["cache-control"] == "no-store"
+    )
+    form = token(login.text)
+    assert client.post("/login", data={"email": email}).status_code == 403  # not from our page
+    sent = client.post("/login", data={"form_token": form, "email": email})
+    assert sent.status_code == 200 and "Check your email" in sent.text and email in sent.text
+    assert email not in str(sent.url)  # never in a URL, so never in a log
+    wrong = client.post("/verify", data={"form_token": form, "email": email, "code": "abc"})
+    assert wrong.status_code == 400 and "That code" in wrong.text
+    code = code_for(committing_engine, email)
+    signed_in = client.post("/verify", data={"form_token": form, "email": email, "code": code})
+    assert signed_in.status_code == 303 and signed_in.headers["location"] == "/"
+    cookie = signed_in.headers["set-cookie"].lower()
+    assert "serpsense_session=" in cookie and "httponly" in cookie and "samesite=lax" in cookie
+    home = client.get("/")
+    assert home.status_code == 200 and "signed in" in home.text
+    assert client.get("/login").headers["location"] == "/"  # already signed in
+    assert client.post("/logout", data={"csrf_token": "forged"}).status_code == 403
+    out = client.post("/logout", data={"csrf_token": token(home.text)})
+    assert out.status_code == 303 and out.headers["location"] == "/login"
+    assert client.get("/").headers["location"] == "/login"
+
+
+def test_a_malformed_address_is_said_so(committing_engine: Engine) -> None:
+    client = browser(committing_engine)
+    form = token(client.get("/login").text)
+    response = client.post("/login", data={"form_token": form, "email": "not an address"})
+    assert response.status_code == 400 and "look like an email address" in response.text
