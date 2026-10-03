@@ -1,5 +1,8 @@
-"""Brands on a schedule, with what their next scan needs, in one query (data-model §2, §3)."""
+"""Brands on a schedule, or one brand for "Scan now", with what a scan needs, in one query each
+(data-model §2, §3)."""
 
+import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import cast
 
@@ -14,9 +17,10 @@ from serpsense.adapters.db.models.settings import (
     BrandSearchSettingsVersion,
     UserSearchDefaultVersion,
 )
+from serpsense.adapters.db.scoping import owned_ids
 from serpsense.domain.enums import ScanStatus, ScanTrigger
 from serpsense.domain.estimator import BrandFacts
-from serpsense.ports.scheduled_brands import ScheduledBrand
+from serpsense.ports.scheduled_brands import ScanInputs, ScheduledBrand
 
 BRANDS, USERS, SCANS = (cast(Table, m.__table__) for m in (Brand, User, Scan))
 APPS, LOCATIONS = cast(Table, BrandApp.__table__), cast(Table, BrandLocation.__table__)
@@ -71,6 +75,44 @@ class SqlScheduledBrands:
         )
         return [_brand(row) for row in self._conn.execute(query).mappings()]
 
+    def scan_inputs(
+        self, owner_id: uuid.UUID, brand_id: uuid.UUID, as_of: datetime
+    ) -> ScanInputs | None:
+        brand_doc, user_doc = (
+            _latest(BRAND_DOCS, "brand_id", as_of),
+            _latest(USER_DOCS, "user_id", as_of),
+        )
+        languages, apps, places = _languages(), _apps(), _places()
+        scans = _covering_scans(as_of)
+        query = (
+            select(
+                scans.c.last_scan_at,
+                user_doc.c.document.label("user_defaults"),
+                brand_doc.c.document.label("brand_settings"),
+                languages.c.codes,
+                apps.c.apps,
+                places.c.places,
+                places.c.unresolved,
+            )
+            .select_from(BRANDS)
+            .join(USERS, USERS.c.id == BRANDS.c.owner_id)
+            .outerjoin(user_doc, user_doc.c.user_id == USERS.c.id)
+            .outerjoin(brand_doc, brand_doc.c.brand_id == BRANDS.c.id)
+            .outerjoin(languages, languages.c.brand_id == BRANDS.c.id)
+            .outerjoin(apps, apps.c.brand_id == BRANDS.c.id)
+            .outerjoin(places, places.c.brand_id == BRANDS.c.id)
+            .outerjoin(scans, scans.c.brand_id == BRANDS.c.id)
+            .where(
+                BRANDS.c.id == brand_id,
+                BRANDS.c.id.in_(owned_ids(owner_id)),  # the one owner check (AGENTS §4)
+                USERS.c.deleted_at.is_(None),
+            )
+        )
+        row = self._conn.execute(query).mappings().first()
+        if row is None:
+            return None
+        return replace(_inputs(row), last_scan_at=row["last_scan_at"])
+
 
 def _latest(table: Table, key: str, as_of: datetime) -> Subquery:
     """The latest version per key; `uq_<table>_<key>_created_at` makes it a single row."""
@@ -119,12 +161,23 @@ def _covering_scans(as_of: datetime) -> Subquery:
 
 
 def _brand(row: RowMapping) -> ScheduledBrand:
+    inputs = _inputs(row)
     return ScheduledBrand(
         brand_id=row["id"],
         interval_minutes=row["interval_minutes"],
         timezone=row["timezone"],
         quiet_start=row["quiet_start"],
         quiet_end=row["quiet_end"],
+        user_defaults=inputs.user_defaults,
+        brand_settings=inputs.brand_settings,
+        languages=inputs.languages,
+        facts=inputs.facts,
+        last_scan_at=row["last_scan_at"],
+    )
+
+
+def _inputs(row: RowMapping) -> ScanInputs:
+    return ScanInputs(
         user_defaults=row["user_defaults"] or {},
         brand_settings=row["brand_settings"] or {},
         languages=tuple(row["codes"] or ()),
@@ -133,5 +186,4 @@ def _brand(row: RowMapping) -> ScheduledBrand:
             locations=row["places"] or 0,
             unresolved_locations=row["unresolved"] or 0,
         ),
-        last_scan_at=row["last_scan_at"],
     )

@@ -33,7 +33,7 @@ from serpsense.ports.mention_store import Recorded, Sighting
 from serpsense.ports.observation_store import Comparison
 from serpsense.ports.scan_store import NewScan, SurfaceResult
 from serpsense.ports.scan_targets import ScanTarget
-from serpsense.ports.scheduled_brands import ScheduledBrand
+from serpsense.ports.scheduled_brands import ScanInputs, ScheduledBrand
 from serpsense.ports.search_provider import SearchRequest
 from serpsense.services.search import SearchResult
 
@@ -122,12 +122,23 @@ class StaticTargets:
 
 
 class StaticSchedules:
-    def __init__(self, brands: Sequence[ScheduledBrand]) -> None:
+    def __init__(
+        self,
+        brands: Sequence[ScheduledBrand] = (),
+        owned: Mapping[tuple[uuid.UUID, uuid.UUID], ScanInputs] | None = None,
+    ) -> None:
         self.brands = brands
+        self.owned = owned or {}  # by (owner, brand): the brands "Scan now" may scan
 
     def scheduled_brands(self, as_of: datetime) -> Sequence[ScheduledBrand]:
         self.read_as_of = as_of
         return self.brands
+
+    def scan_inputs(
+        self, owner_id: uuid.UUID, brand_id: uuid.UUID, as_of: datetime
+    ) -> ScanInputs | None:
+        self.read_as_of = as_of
+        return self.owned.get((owner_id, brand_id))
 
 
 class RecordingMentions:

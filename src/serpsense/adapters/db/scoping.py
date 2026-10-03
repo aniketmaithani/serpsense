@@ -6,7 +6,9 @@ and widening ownership later (teams) is a change here only. Archived brands are 
 reading: they read as missing.
 """
 
-from sqlalchemy import TextClause, text
+import uuid
+
+from sqlalchemy import TextClause, TextualSelect, Uuid, column, text
 
 OWNED = "SELECT id FROM brands WHERE owner_id = :user AND archived_at IS NULL"
 
@@ -16,3 +18,8 @@ def scoped(sql: str) -> TextClause:
     if "{owned}" not in sql:
         raise ValueError("a user-scoped query must reach its rows through {owned}")
     return text(sql.replace("{owned}", OWNED))
+
+
+def owned_ids(user_id: uuid.UUID) -> TextualSelect:
+    """The same owner check as a subquery of brand ids, for queries built with SQLAlchemy Core."""
+    return text(OWNED).bindparams(user=user_id).columns(column("id", Uuid))
