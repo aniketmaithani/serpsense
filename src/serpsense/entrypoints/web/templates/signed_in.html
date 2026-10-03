@@ -3,6 +3,7 @@
 <nav>
   <a href="/">Brands</a>
   <a href="/notifications">Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
+  <a href="/settings/ai">AI settings</a>
   <a href="/settings/account">Account</a>
   <form method="post" action="/logout" class="inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

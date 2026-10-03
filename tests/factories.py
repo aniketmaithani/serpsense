@@ -2,6 +2,7 @@
 
 from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.inbox import SqlInbox
+from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.stories import SqlStories
 from serpsense.adapters.system_clock import SystemClock
@@ -16,6 +17,7 @@ from serpsense.composition import (
 )
 from serpsense.config import Settings
 from serpsense.ports.health import HealthCheck
+from serpsense.services.ai_settings import AiSettings
 
 # Obviously fake, low-entropy values: never real secrets.
 TEST_SECRET_KEY = "unit-test-only-" + "x" * 32
@@ -50,4 +52,9 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
         brand_settings=build_brand_settings(settings, engine, celery),
         stories=SqlStories(engine.connect),
         accounts=build_account_deletion(settings, celery, sign_in),
+        ai_settings=AiSettings(
+            SqlLlmProfiles(engine, settings.default_llm_preset),
+            SystemClock(),
+            fallback=settings.default_llm_preset,
+        ),
     )
