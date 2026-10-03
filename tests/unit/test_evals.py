@@ -15,6 +15,7 @@ from serpsense.services.evals import (
     GoldenItem,
     MemoryLedger,
     Stop,
+    report,
 )
 from serpsense.services.llm_gateway import LlmGateway
 from tests.fakes import FixedClock, ScriptedLlm
@@ -134,3 +135,24 @@ def test_the_cap_stops_the_run_before_a_call_that_would_pass_it() -> None:
     assert result.stopped is Stop.CAP and len(llm.requests) == 1 and result.answered == 25
     again = run.label_mentions(items[:25], BRAND, cap_micros=10**9)
     assert len(again.calls) == 1 and again.cost_micros == result.cost_micros  # its own calls
+
+
+def test_the_report_states_agreement_cost_and_disagreements() -> None:
+    items = [item(1), item(2, 1)]
+    run, _ = evaluator(answering(items, {"is_about_brand": False}))
+    text = report(
+        run.label_mentions(items, BRAND, cap_micros=10**9),
+        on="2026-10-03",
+        model=OPUS,
+        split="test",
+    )
+    assert "| answered | 2/2 | 100.0% |" in text and "| is_about_brand | 1/2 | 50.0% |" in text
+    assert "| g001 | is_about_brand | True | False |" in text and "Cost: $" in text
+    assert "| g001 | topic | reliability | other |" in text  # enum values, as stored
+
+
+def test_the_report_says_why_a_run_stopped() -> None:
+    run, _ = evaluator(lambda request: TIMEOUT)
+    result = run.label_mentions([item(n) for n in range(1, 51)], BRAND, cap_micros=10**9)
+    text = report(result, on="2026-10-03", model=OPUS, split="test")
+    assert "**Stopped after failed calls**" in text and "| answered | 0/50 | 0.0% |" in text
