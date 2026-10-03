@@ -7,6 +7,7 @@ from typing import Self
 from sqlalchemy import Connection, Engine, RootTransaction
 
 from serpsense.adapters.db.accounts import SqlAccounts
+from serpsense.adapters.db.brand_store import SqlBrandStore
 from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
@@ -15,6 +16,7 @@ from serpsense.adapters.db.scan_targets import SqlScanTargets
 from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.observability import get_logger
 from serpsense.ports.accounts import Accounts
+from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
 from serpsense.ports.mention_store import MentionStore
@@ -50,6 +52,7 @@ class SqlUnitOfWork:
     schedules: ScheduledBrands
     enrichments: EnrichmentStore
     targets: ScanTargets
+    brands: BrandStore
     accounts: Accounts
     jobs: JobQueue
 
@@ -71,6 +74,7 @@ class SqlUnitOfWork:
         self.schedules = SqlScheduledBrands(self._conn)
         self.enrichments = SqlEnrichmentStore(self._conn)
         self.targets = SqlScanTargets(self._conn)
+        self.brands = SqlBrandStore(self._conn)
         self.accounts = SqlAccounts(self._conn)
         self.jobs = self._pending
         return self
