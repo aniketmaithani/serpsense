@@ -1,9 +1,9 @@
 # Scoring (version `s1`)
 
 How SerpSense turns what a scan saw into scores (BUILD_PLAN §11). The formulas are pure
-functions in `src/serpsense/domain/scoring/` (`surfaces.py`, `crisis.py`). The weights and thresholds will also live in the
-database as reference rows, and `v_scan_scores` will derive health, crisis and level from the
-stored surface scores and components using the same numbers.
+functions in `src/serpsense/domain/scoring/` (`surfaces.py`, `crisis.py`). The weights, thresholds and warm-up also live in the
+database as reference rows (migration 0020), and `v_scan_scores` derives health, crisis and level
+from the stored surface scores and components using the same numbers.
 
 Every score is an integer from 0 to 100. Every ratio is rounded half up with exact integer
 arithmetic, the way Postgres rounds a positive numeric (Python's `round()` would round 62.5 to
@@ -43,7 +43,7 @@ search prefix or a language makes the baseline, not a crisis). The surfaces are 
 surfaces: search page, autocomplete, AI Overview, news, Play and Maps.
 
 **Warm-up.** On a brand's first scans everything it shows is new, so its crisis has **no level**,
-and raises no alert, until it has 3 earlier succeeded scans. A newly added competitor therefore
+and raises no alert, until it has 3 earlier scored scans (succeeded or partial). A newly added competitor therefore
 never sends a "Competitor: …" alert on its first scan. The components are still recorded.
 
 Each component is 0–100 and weighted in basis points; a missing component counts as 0.
