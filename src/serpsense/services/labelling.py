@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 
 from serpsense.domain.enums import LlmTask, Topic
-from serpsense.domain.labelling import sources_for
+from serpsense.domain.labelling import PROMPTS, sources_for
 from serpsense.domain.llm_capabilities import TaskSettings
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
@@ -31,7 +31,7 @@ from serpsense.services.llm_gateway import Call, LlmBudgetExhausted, LlmGateway,
 log = get_logger(__name__)
 
 TASK = LlmTask.LABEL_MENTIONS
-PROMPT_VERSION = "label_mentions/v1"
+PROMPT_VERSION = PROMPTS[LlmTask.LABEL_MENTIONS]
 BATCH = 25
 MOST_PER_RUN = 200  # eight calls at most
 SEEN_FOR = timedelta(days=7)
