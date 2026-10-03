@@ -5,6 +5,9 @@ the block raises, so a scan's finish commits together with the alerts and emails
 Jobs asked for inside it are sent only after it commits, so a worker never looks for a row that
 isn't there yet, and a rolled-back change sends nothing.
 
+A lock wait that outlasts the session's lock timeout ends the unit of work with `Busy`, so a
+caller can tell "try again shortly" from a fault.
+
 Keep units of work short: no SerpApi, LLM, SMTP or broker call inside one. A session that sits
 idle in a transaction for a minute is ended by Postgres, so a service opens one unit of work
 per stage and does its slow calls between them.
@@ -30,6 +33,12 @@ from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
 from serpsense.ports.score_store import ScoreStore
 from serpsense.ports.sessions import Sessions
+
+
+class Busy(RuntimeError):
+    """A row the unit of work needed stayed locked past the session's lock timeout (another
+    transaction held it, say an email being sent). Everything was rolled back; trying again
+    shortly may work."""
 
 
 class UnitOfWork(Protocol):

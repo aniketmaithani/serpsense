@@ -5,6 +5,7 @@ from types import TracebackType
 from typing import Self
 
 from sqlalchemy import Connection, Engine, RootTransaction
+from sqlalchemy.exc import DBAPIError
 
 from serpsense.adapters.db.accounts import SqlAccounts
 from serpsense.adapters.db.alert_store import SqlAlertStore
@@ -38,8 +39,11 @@ from serpsense.ports.scan_targets import ScanTargets
 from serpsense.ports.scheduled_brands import ScheduledBrands
 from serpsense.ports.score_store import ScoreStore
 from serpsense.ports.sessions import Sessions
+from serpsense.ports.unit_of_work import Busy
 
 log = get_logger(__name__)
+
+LOCK_NOT_AVAILABLE = "55P03"  # the session's lock_timeout ran out (adapters/db/engine.py)
 
 
 class _AfterCommit:
@@ -132,6 +136,8 @@ class SqlUnitOfWork:
             self._open = False
         if exc_type is None:
             self._send(self._pending)
+        elif _lock_wait_ran_out(exc):
+            raise Busy("a row stayed locked past the lock timeout; nothing was changed") from exc
 
     def _send(self, pending: _AfterCommit) -> None:
         for scan_id in pending.scans:
@@ -145,3 +151,9 @@ class SqlUnitOfWork:
                 self._queue.dispatch_outbox()
             except JobQueueUnavailable:  # Beat runs the dispatcher within 15 seconds anyway
                 log.warning("job.enqueue_failed", job="dispatch_outbox")
+
+
+def _lock_wait_ran_out(exc: BaseException | None) -> bool:
+    return isinstance(exc, DBAPIError) and (
+        getattr(exc.orig, "sqlstate", None) == LOCK_NOT_AVAILABLE
+    )
