@@ -6,6 +6,7 @@ from serpsense.config import LlmPreset as ConfigPreset
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import (
     HAIKU,
+    MAX_TOKENS,
     OPUS,
     PRESETS,
     SONNET,
@@ -14,6 +15,7 @@ from serpsense.domain.llm_capabilities import (
     RequestShape,
     TaskSettings,
     UnsupportedSetting,
+    preset_settings,
     request_shape,
 )
 
@@ -78,3 +80,13 @@ def test_unsupported_settings_are_refused_before_any_call(settings: TaskSettings
 def test_haiku_budgets_follow_its_effort() -> None:
     budgets = [request_shape(TaskSettings(HAIKU, e, 40000)).thinking for e in list(E)[1:]]
     assert budgets == [2048, 8192, 16384, 32768]
+
+
+def test_every_task_has_preset_settings_on_opus_with_room_for_its_answer() -> None:
+    for preset in LlmPreset:
+        for task in LlmTask:
+            settings = preset_settings(preset, task)
+            assert (settings.model, settings.effort) == (OPUS, PRESETS[preset][task])
+            assert request_shape(settings).max_tokens == MAX_TOKENS[task] >= 4000
+    labelling = preset_settings(LlmPreset.BALANCED, LlmTask.LABEL_MENTIONS)
+    assert (labelling.effort, labelling.max_tokens) == (Effort.LOW, 8000)
