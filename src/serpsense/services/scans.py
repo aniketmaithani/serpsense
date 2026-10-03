@@ -4,12 +4,15 @@ A worker is handed a scan id, and Postgres is the source of truth: the scan is c
 compare-and-set, so a redelivered message finds nothing to do. Then the brand behind it is read,
 and the scan is skipped if the brand was archived or its owner's account deleted, or if the
 owner's searches this month can't cover the most it may make. Otherwise its surfaces are
-collected and kept, and it finishes by how its surfaces went, in a last unit of work that checks
-the brand again. Each stage has a unit of work of its own, and no SerpApi call happens inside one.
+collected and kept, its recent mentions labelled (the brand is checked again first: no model is
+called for a brand that is gone), and it finishes by how its surfaces went, in a last unit of
+work that checks the brand once more. Each stage has a unit of work of its own, and no SerpApi
+or model call happens inside one.
 
-A stage that raises fails the scan (`stage_failed`) and the error propagates. The scan task has
-no soft time limit and never retries: each external call already did, and collection keeps to
-its own deadline (#47).
+The model never fails a scan (ADR-0008): labelling that can't run (settings the model rejects, a
+missing prompt) is logged and the scan finishes partial. Any other stage that raises fails the
+scan (`stage_failed`) and the error propagates. The scan task has no soft time limit and never
+retries: each external call already did, and collection keeps to its own deadline (#47).
 """
 
 import uuid
@@ -17,18 +20,22 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from serpsense.domain import usage
-from serpsense.domain.enums import ScanStatus
+from serpsense.domain.enums import LlmTask, ScanStatus
 from serpsense.domain.estimator import BrandFacts, estimate
+from serpsense.domain.llm_capabilities import UnsupportedSetting
 from serpsense.domain.scan_state import Transition, TransitionReason, finished
 from serpsense.domain.settings.search import SearchSettings
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
 from serpsense.ports.collector import App, Subject, Target
+from serpsense.ports.llm_client import PromptUnavailable
+from serpsense.ports.llm_profiles import LlmProfiles
 from serpsense.ports.scan_targets import ScanTarget
 from serpsense.ports.search_ledger import SearchUsage
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 from serpsense.services.collection import Collected, CollectorRunner
 from serpsense.services.harvest import harvest, keep
+from serpsense.services.labelling import BrandContext, Labeller
 
 log = get_logger(__name__)
 
@@ -41,7 +48,9 @@ STAGE_FAILED = Transition(S.RUNNING, S.FAILED, R.STAGE_FAILED)
 class ScanPorts:
     unit_of_work: UnitOfWorkFactory
     collector: CollectorRunner
+    labeller: Labeller
     usage: SearchUsage
+    profiles: LlmProfiles
     clock: Clock
 
 
@@ -86,16 +95,33 @@ class ScanService:
         )
         with self._ports.unit_of_work() as uow:
             kept = keep(uow, harvest(target.scan_id, collected), at=self._ports.clock.now())
+            now = _present(uow.targets.for_scan(target.scan_id))
         new, revised = kept.new_mentions, kept.revised
         log.info("scan.collected", scan_id=str(target.scan_id), new=new, revised=revised)
+        gone = _gone(now)
+        if gone is not None:
+            return gone
+        labelled = self._label(now, aim)
         outcomes = (outcome.outcome for outcome in collected.outcomes.values())
-        return finished(outcomes, answered=_answered(collected), enrichment_failed=False)
+        return finished(outcomes, answered=_answered(collected), enrichment_failed=not labelled)
 
     def _affordable(self, user_id: uuid.UUID, searches: int, at: datetime) -> bool:
         budget = self._ports.usage.monthly_budget(user_id, at=at)
         used = self._ports.usage.live_calls(since=usage.month_start(at), user_id=user_id)
         left = (self._limits.monthly_searches if budget is None else budget) - used
         return searches <= left
+
+    def _label(self, target: ScanTarget, aim: Target) -> bool:
+        """Whether every batch was labelled; labelling that can't run is logged, not raised."""
+        brand = BrandContext(target.brand.brand_id, target.owner_id, aim.brand.name, target.aliases)
+        try:
+            settings = self._ports.profiles.settings(target.owner_id, LlmTask.LABEL_MENTIONS)
+            labelled = self._ports.labeller.label(brand, settings, target.scan_id)
+        except (UnsupportedSetting, PromptUnavailable) as exc:
+            scan_id, error = str(target.scan_id), type(exc).__name__
+            log.error("labelling.misconfigured", scan_id=scan_id, error=error)
+            return False
+        return labelled.failed_batches == 0 and not labelled.budget_exhausted
 
     def _finish(self, scan_id: uuid.UUID, ending: Transition) -> ScanStatus | None:
         """Move the scan to its ending, or to skipped if its brand went meanwhile. The alerts a
