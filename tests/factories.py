@@ -1,7 +1,9 @@
 """Test data builders shared across test layers."""
 
 from serpsense.adapters.db.engine import create_db_engine
+from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.overview import SqlOverview
+from serpsense.adapters.system_clock import SystemClock
 from serpsense.composition import (
     Container,
     build_celery,
@@ -41,4 +43,5 @@ def make_container(settings: Settings, checks: tuple[HealthCheck, ...] = ()) -> 
         sessions=sessions,
         overview=SqlOverview(engine.connect),
         scan_now=build_scan_now(settings, engine, celery),
+        inbox=SqlInbox(engine, SystemClock()),
     )
