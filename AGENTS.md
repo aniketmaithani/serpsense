@@ -59,7 +59,7 @@ src/serpsense/
 - **Time:** timezone-aware UTC only. No `datetime.now()` without tz, no `utcnow()`. Anything depending on "now" takes a `Clock` port.
 - **Money:** integers only. User-facing amounts in minor units (`*_cents` + `currency`); LLM cost accounting in `*_micros` (1 micro = 10⁻⁶ of the currency unit) + `currency`. Never `float`.
 - **Randomness for security** (OTP, tokens): `secrets` only.
-- No bare `except`, no `except Exception: pass`. Re-raise with `from exc`. Exception text never reaches users or HTTP responses.
+- No bare `except`, no `except Exception: pass`. Re-raise with `from exc`. Exception text never reaches users or HTTP responses. **Exception:** when the caught error may carry a secret (the SerpApi SDK puts the request URL, key included, into its messages), classify it inside the handler and raise the new error after the handler, so nothing is chained (`adapters/serp/client.py`).
 - No `eval`/`exec`/`pickle`/`yaml.load` on untrusted data; no `subprocess` with `shell=True`.
 - No commented-out code, stray `print`, `TODO` stubs or debug routes. `# noqa` / `# type: ignore` always carry a code and a reason.
 - Imports at the top of the module, sorted and grouped.
