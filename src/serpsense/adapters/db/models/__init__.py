@@ -40,6 +40,7 @@ from serpsense.adapters.db.models.scores import (
 )
 from serpsense.adapters.db.models.search import RawResponse, SerpCall
 from serpsense.adapters.db.models.settings import (
+    BrandCrisisTuningVersion,
     BrandScheduleVersion,
     BrandSearchSettingsVersion,
     UserLlmProfileVersion,
@@ -56,6 +57,7 @@ __all__ = [
     "BrandAlias",
     "BrandApp",
     "BrandCompetitor",
+    "BrandCrisisTuningVersion",
     "BrandLanguage",
     "BrandLocation",
     "BrandScheduleVersion",

@@ -3,7 +3,8 @@
 A crisis is a change, so every component compares a scan with the brand's usual, or counts only
 what is new: a brand that always has some negative reviews and articles is not in crisis
 because of them. A brand needs a few earlier scans before "new" and "usual" mean anything, so
-until then it has no level (and so raises no alert); its components are still recorded.
+until then it has no level (and so raises no alert); its components are still recorded. The
+warm-up and the level floors are the brand's tuning (`tuning.py`), the version's by default.
 """
 
 from collections.abc import Mapping, Sequence
@@ -11,10 +12,11 @@ from dataclasses import dataclass
 
 from serpsense.domain.enums import CrisisComponent, CrisisLevel
 from serpsense.domain.scoring.surfaces import ratio
+from serpsense.domain.scoring.tuning import DEFAULT_TUNING, CrisisTuning
 
 USUAL_SCANS = 8  # a brand's usual is the median of its newest eight earlier scans
 USUAL_FLOOR = 2
-WARM_UP_SCANS = 3  # earlier scored scans a brand needs before its crisis has a level
+WARM_UP_SCANS = DEFAULT_TUNING.warm_up_scans  # earlier scored scans before a level
 
 CRISIS_WEIGHTS_BP: Mapping[CrisisComponent, int] = {
     CrisisComponent.VELOCITY: 3000,
@@ -23,7 +25,7 @@ CRISIS_WEIGHTS_BP: Mapping[CrisisComponent, int] = {
     CrisisComponent.TRENDS: 1500,
     CrisisComponent.PRESS: 1000,
 }
-LEVEL_FLOORS = ((CrisisLevel.HIGH, 70), (CrisisLevel.MEDIUM, 40), (CrisisLevel.LOW, 0))
+LEVEL_FLOORS = DEFAULT_TUNING.floors()
 
 
 def usual(earlier: Sequence[int]) -> int:
@@ -55,9 +57,9 @@ def spread(surfaces: Sequence[SurfaceNegatives]) -> int:
     return ratio(sum(s.new_negative > usual(s.earlier) for s in surfaces), len(surfaces))
 
 
-def has_level(earlier_scans: int) -> bool:
+def has_level(earlier_scans: int, tuning: CrisisTuning = DEFAULT_TUNING) -> bool:
     """On its first scans everything a brand shows is new: its crisis has no level yet."""
-    return earlier_scans >= WARM_UP_SCANS
+    return earlier_scans >= tuning.warm_up_scans
 
 
 def new_negative_autocomplete(ranks: Sequence[int | None]) -> int:
@@ -88,7 +90,7 @@ def crisis(components: Mapping[CrisisComponent, int]) -> int:
     return ratio(sum(CRISIS_WEIGHTS_BP[c] * v for c, v in components.items()), 1_000_000)
 
 
-def level(score: int) -> CrisisLevel:
+def level(score: int, tuning: CrisisTuning = DEFAULT_TUNING) -> CrisisLevel:
     if not 0 <= score <= 100:
         raise ValueError("a crisis score is 0-100")
-    return next(name for name, floor in LEVEL_FLOORS if score >= floor)
+    return next(name for name, floor in tuning.floors() if score >= floor)

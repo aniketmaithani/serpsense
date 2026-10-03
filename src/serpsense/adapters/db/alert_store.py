@@ -1,8 +1,9 @@
 """Alerts and in-app notifications in Postgres (data-model §8).
 
-Levels come from `v_scan_scores`; an alert's brand is its scan's, and a notification about it
-goes to that brand's owner. The stories a scan's grouping added to are the narratives of the
-placements its grouping calls made; each counts the mentions now placed in it, per source.
+Levels come from `v_scan_scores`, and the cooldown and spread rule from the brand's crisis
+tuning; an alert's brand is its scan's, and a notification about it goes to that brand's owner.
+The stories a scan's grouping added to are the narratives of the placements its grouping calls
+made; each counts the mentions now placed in it, per source.
 """
 
 import uuid
@@ -13,6 +14,7 @@ from typing import cast
 from sqlalchemy import Connection, Table, text
 from sqlalchemy.dialects.postgresql import insert
 
+from serpsense.adapters.db.brand_store import SqlBrandStore
 from serpsense.adapters.db.models.alerts import Alert
 from serpsense.domain.alert_rules import AlertFacts, Fired, Story
 from serpsense.domain.enums import AlertRule, CrisisComponent, CrisisLevel, MentionSource
@@ -103,6 +105,7 @@ class SqlAlertStore:
             row.autocomplete,
             last,
             self._stories(scan_id, row.brand_id, row.created_at),
+            SqlBrandStore(self._conn).crisis_tuning(row.brand_id),
         )
         return ScanAlertContext(facts, row.name, row.competitor, row.health, row.crisis)
 

@@ -2,9 +2,9 @@
 
 Writes are idempotent wherever the data model has a natural key: a brand by its owner and slug,
 an alias by its brand and text (ignoring case), an app by its brand, store and id, a competitor
-by the pair. Schedules and search settings are versions: a new one is written only when it
-differs from the latest, so writing the same again changes nothing. A store works inside the
-caller's unit of work and never commits.
+by the pair. Schedules, search settings and crisis tunings are versions: a new one is written
+only when it differs from the latest, so writing the same again changes nothing. A store works
+inside the caller's unit of work and never commits.
 """
 
 import re
@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from serpsense.domain.enums import AppStore
 from serpsense.domain.schedule import Schedule
+from serpsense.domain.scoring.tuning import CrisisTuning
 
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
@@ -72,4 +73,13 @@ class BrandStore(Protocol):
     ) -> bool:
         """A new search settings version (a document the caller validated), unless the latest
         is the same; True when one was written."""
+        ...
+
+    def crisis_tuning(self, brand_id: uuid.UUID) -> CrisisTuning:
+        """The brand's latest crisis tuning; the defaults when it has none."""
+        ...
+
+    def set_crisis_tuning(self, brand_id: uuid.UUID, tuning: CrisisTuning, *, at: datetime) -> bool:
+        """A new crisis tuning version, unless the current one is the same (the defaults, for a
+        brand without one); True when one was written."""
         ...
