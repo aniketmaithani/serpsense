@@ -15,6 +15,7 @@
   <li class="{{ 'read' if n.read else 'unread' }}">
     <div><strong>{{ n.title }}</strong> <span class="muted">· {{ n.at|when }}</span></div>
     <div class="body">{{ n.body }}</div>
+    {% if n.explanation %}<div class="reason">In plain words (AI-generated): {{ n.explanation }}</div>{% endif %}
     {% if n.brand_id %}<a href="/brands/{{ n.brand_id }}">Open the brand</a>{% endif %}
     {% if not n.read %}
     <form method="post" action="/notifications/read" class="inline">

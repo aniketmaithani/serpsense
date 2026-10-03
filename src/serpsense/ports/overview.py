@@ -64,6 +64,7 @@ class AlertRow:
     rule: AlertRule
     at: datetime
     title: str
+    explanation: str | None = None  # the model's, once written (AI-generated)
 
 
 @dataclass(frozen=True)

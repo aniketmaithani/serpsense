@@ -11,10 +11,12 @@ from serpsense.ports.inbox import NotificationRow
 
 LATEST = scoped(
     """
-SELECT n.id, n.title, n.body, n.created_at, r.read_at IS NOT NULL AS read, s.brand_id
+SELECT n.id, n.title, n.body, n.created_at, r.read_at IS NOT NULL AS read, s.brand_id,
+       e.text AS explanation
 FROM notifications n
 LEFT JOIN notification_reads r ON r.notification_id = n.id
 LEFT JOIN alerts a ON a.id = n.alert_id
+LEFT JOIN alert_explanations e ON e.alert_id = n.alert_id
 LEFT JOIN scans s ON s.id = a.scan_id AND s.brand_id IN ({owned})
 WHERE n.user_id = :user
 ORDER BY n.created_at DESC, n.id DESC
@@ -70,4 +72,5 @@ def _row(row: Any) -> NotificationRow:
         at=row.created_at,
         read=row.read,
         brand_id=row.brand_id,
+        explanation=row.explanation,
     )
