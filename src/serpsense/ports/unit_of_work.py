@@ -15,6 +15,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from serpsense.ports.accounts import Accounts
+from serpsense.ports.brand_store import BrandStore
 from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue
 from serpsense.ports.mention_store import MentionStore
@@ -43,6 +44,9 @@ class UnitOfWork(Protocol):
 
     @property
     def targets(self) -> ScanTargets: ...
+
+    @property
+    def brands(self) -> BrandStore: ...
 
     @property
     def accounts(self) -> Accounts: ...
