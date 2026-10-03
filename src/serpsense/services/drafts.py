@@ -34,7 +34,7 @@ from serpsense.domain.model_text import has_invisible
 from serpsense.domain.usage import day_start
 from serpsense.observability import get_logger
 from serpsense.ports.clock import Clock
-from serpsense.ports.drafts import DraftMaterial, DraftRow, NewDraft
+from serpsense.ports.drafts import DraftMaterial, DraftRow, NewDraft, RecentDraft
 from serpsense.ports.leases import Leases
 from serpsense.ports.llm_client import LlmCallFailed, PromptUnavailable, Variables
 from serpsense.ports.llm_profiles import LlmProfiles
@@ -172,6 +172,11 @@ class Drafter:
         user's."""
         with self._ports.unit_of_work() as uow:
             return uow.drafts.drafts(user_id, brand_id, narrative_id, limit=limit)
+
+    def recent(self, user_id: uuid.UUID, *, limit: int = 30) -> list[RecentDraft]:
+        """The user's newest drafts across their brands, with what each cites."""
+        with self._ports.unit_of_work() as uow:
+            return uow.drafts.recent(user_id, limit=limit)
 
     def _call(self, material: DraftMaterial, ask: _Ask, settings: TaskSettings) -> Call:
         return Call(

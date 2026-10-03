@@ -61,6 +61,7 @@ class MentionRow:
     published_at: datetime | None
     sentiment: int | None  # the model's label; none until labelled
     reason: str | None
+    story_id: uuid.UUID | None = None  # the story (narrative) it is placed in now, if any
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@
 {% set here = request.url.path %}
 <nav aria-label="Main">
   <a href="/"{% if here == "/" or here.startswith("/brands") %} aria-current="page"{% endif %}>Brands</a>
+  <a href="/drafts"{% if here == "/drafts" %} aria-current="page"{% endif %}>Drafts</a>
   <a href="/notifications"{% if here == "/notifications" %} aria-current="page"{% endif %}>Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
   <a href="/settings/ai"{% if here == "/settings/ai" %} aria-current="page"{% endif %}>AI settings</a>
   <a href="/settings/account"{% if here.startswith("/settings/account") %} aria-current="page"{% endif %}>Account</a>
