@@ -22,3 +22,8 @@ class JobQueue(Protocol):
         """Ask the outbox worker to send due emails now rather than at its next Beat (ADR-0010:
         a sign-in code shouldn't wait)."""
         ...
+
+    def explain_alert(self, alert_id: uuid.UUID) -> None:
+        """Ask a worker to have the model explain a new alert (ADR-0008: words only; the alert
+        and its email stand without them)."""
+        ...

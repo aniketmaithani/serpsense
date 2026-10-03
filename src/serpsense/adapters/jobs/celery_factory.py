@@ -23,6 +23,8 @@ VISIBILITY_TIMEOUT_SECONDS = 2 * SCAN_TIME_LIMIT_SECONDS
 HEARTBEAT_TASK = "serpsense.maintenance.heartbeat"
 HEARTBEAT_INTERVAL = timedelta(seconds=60)
 RUN_SCAN_TASK = "serpsense.scans.run"
+EXPLAIN_TASK = "serpsense.scans.explain_alert"  # with the scans: it calls the model too
+EXPLAIN_TIME_LIMIT_SECONDS = 5 * 60  # one call: its timeout, the SDK's retries and the store
 DISPATCH_TASK = "serpsense.maintenance.dispatch_due_scans"
 SWEEP_TASK = "serpsense.maintenance.sweep_stuck_work"
 DISPATCH_INTERVAL = SWEEP_INTERVAL = timedelta(minutes=5)  # BUILD_PLAN §10
