@@ -19,7 +19,7 @@ from serpsense.domain import outbox as rules
 from serpsense.domain.enums import OutboxOutcome, OutboxStatus
 from serpsense.ports.mailer import Email, MailFailed
 from serpsense.services.outbox import FOOTER, OutboxDispatcher
-from tests.fakes import FixedClock
+from tests.fakes import FixedClock, TickingClock
 from tests.integration.conftest import alembic_config
 from tests.integration.db_helpers import NOW, add, add_brand, add_scan, add_user, table
 
@@ -176,6 +176,20 @@ def test_an_email_that_cant_be_rendered_doesnt_hold_up_the_others(engine: Engine
     with engine.connect() as conn:
         failed = select(ATTEMPTS.c.error_code).where(ATTEMPTS.c.outbox_message_id == broken)
         assert conn.execute(failed).scalar_one() == "outbox.render_failed"
+
+
+def test_a_run_stops_claiming_after_a_minute(engine: Engine) -> None:
+    for n in range(3):
+        queue(engine, at=NOW + timedelta(seconds=n))
+    minute_later = NOW + timedelta(minutes=2)
+    ticks = [minute_later + timedelta(seconds=25 * n) for n in range(10)]
+    run = OutboxDispatcher(
+        lambda: SqlUnitOfWork(engine, NoJobs()), FakeMailer(), TickingClock(*ticks)
+    )
+    assert run.dispatch() == 1  # the clock passed a minute before the second claim
+    with engine.connect() as conn:
+        pending = conn.execute(select(MESSAGES.c.id).where(MESSAGES.c.status == "pending"))
+        assert len(pending.all()) == 2  # left for the next run
 
 
 def test_only_a_pending_email_takes_an_attempt(engine: Engine) -> None:

@@ -5,10 +5,12 @@ sending and recording the attempt, until that unit of work commits: there is no 
 so a worker that dies mid-send just releases the lock. This is the one place an outside call (to
 the mail server) happens inside a unit of work, as ADR-0010 decides; delivery is at least once.
 A message that can't be rendered (an unknown template, missing fields) fails for good rather
-than blocking the emails behind it.
+than blocking the emails behind it. A run stops after a minute, well inside its task's limit and
+the session's idle timeout, and Beat starts the next one.
 """
 
 from collections.abc import Callable, Mapping
+from datetime import timedelta
 
 from serpsense.domain.enums import OutboxOutcome, OutboxStatus
 from serpsense.observability import get_logger
@@ -20,6 +22,7 @@ from serpsense.ports.unit_of_work import UnitOfWorkFactory
 log = get_logger(__name__)
 
 BATCH = 25  # messages per run; Beat runs the dispatcher every 15 seconds
+RUN_TIME = timedelta(minutes=1)  # no new claim after this; the task's hard limit is 2 minutes
 FOOTER = "\n\n--\nSerpSense watches how your brand looks on Google. This email is automated."
 
 
@@ -48,9 +51,11 @@ class OutboxDispatcher:
         self._unit_of_work, self._mailer, self._clock = unit_of_work, mailer, clock
 
     def dispatch(self, limit: int = BATCH) -> int:
-        """Send up to `limit` due messages; how many were sent."""
-        sent = 0
+        """Send up to `limit` due messages, for up to a minute; how many were sent."""
+        sent, started = 0, self._clock.now()
         for _ in range(limit):
+            if self._clock.now() - started >= RUN_TIME:
+                break
             with self._unit_of_work() as uow:
                 due = uow.outbox.claim_due(self._clock.now())
                 if due is None:
