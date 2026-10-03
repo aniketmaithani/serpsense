@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from types import MappingProxyType, TracebackType
 from typing import Any, Self
 
@@ -22,6 +22,7 @@ from serpsense.domain.llm_pricing import Hop, TokenUsage
 from serpsense.domain.mention import ParsedMention, best_ranked, text_key
 from serpsense.domain.observation import AppRating
 from serpsense.domain.scan_state import ACTIVE, IllegalTransition, Transition
+from serpsense.domain.scoring.scan import ScanScores, ScoreInputs
 from serpsense.ports.collector import Lead, Reading, Target
 from serpsense.ports.enrichment_store import MentionLabel, PendingText
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest, LlmResponse
@@ -199,6 +200,31 @@ class RecordingEnrichments:
         return len(new)  # a label already there stays, as in the table
 
 
+class RecordingScores:
+    """Hands out preset scoring inputs (nothing seen, by default) and keeps the scores given;
+    both only inside a unit of work."""
+
+    def __init__(self, inside: Callable[[], bool]) -> None:
+        self.inside = inside
+        self.given: ScoreInputs | None = None
+        self.asked: list[tuple[uuid.UUID, dict[LlmTask, str]]] = []
+        self.recorded: dict[uuid.UUID, tuple[ScanScores, str, datetime]] = {}
+
+    def inputs(self, scan_id: uuid.UUID, *, prompts: Mapping[LlmTask, str]) -> ScoreInputs:
+        assert self.inside()
+        self.asked.append((scan_id, dict(prompts)))
+        if self.given is None:
+            return ScoreInputs(at=datetime(2026, 10, 3, tzinfo=UTC), observed=())
+        return self.given
+
+    def record(self, scan_id: uuid.UUID, scores: ScanScores, *, version: str, at: datetime) -> bool:
+        assert self.inside()
+        if scan_id in self.recorded:
+            return False
+        self.recorded[scan_id] = (scores, version, at)
+        return True
+
+
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
@@ -216,6 +242,7 @@ class FakeUnitOfWork:
         self.mentions, self.observations = RecordingMentions(), RecordingObservations()
         self.enrichments = RecordingEnrichments()
         self.targets = StaticTargets()
+        self.scores = RecordingScores(lambda: self.open)
         self.sent = RecordingJobs()
         self.jobs = RecordingJobs()
         self.open = False

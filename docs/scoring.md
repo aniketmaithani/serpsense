@@ -65,8 +65,10 @@ product watches.
 
 ## Where the inputs come from
 
-`domain/scoring/scan.py` scores one scan; the score store (`adapters/db/score_store.py`) reads
-its inputs from what the brand's scans recorded:
+`domain/scoring/scan.py` scores one scan. A scan that succeeded or is partial is scored in the
+unit of work that finishes it (`services/scoring_run.py`), so its scores commit with its ending;
+an error in scoring fails the scan (`stage_failed`). The score store
+(`adapters/db/score_store.py`) reads the inputs from what the brand's scans recorded:
 
 - **Labels.** A mention counts once its latest revision is labelled by its own labelling task
   (`label_mentions`, `classify_autocomplete` or `assess_ai_overview`; `domain/labelling.py`).
