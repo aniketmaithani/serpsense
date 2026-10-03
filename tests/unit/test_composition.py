@@ -4,6 +4,7 @@ import pytest
 
 from serpsense.adapters.cache.null_cache import NullResponseCache
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
+from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.llm.replay import ReplayLlm
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer
@@ -23,7 +24,7 @@ from serpsense.composition import (
     build_sign_in,
     build_worker,
 )
-from serpsense.composition_replay import build_replayer
+from serpsense.composition_replay import build_recording_export, build_replayer
 from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import preset_settings
@@ -88,6 +89,10 @@ def test_recordings_are_played_only_in_replay_mode_and_need_no_api_key() -> None
         build_replayer(live, build_celery(live))
     replay = make_settings(serpsense_mode="replay")
     assert callable(build_replayer(replay, build_celery(replay)))
+
+
+def test_build_recording_export_needs_no_api_key_and_connects_to_nothing() -> None:
+    assert isinstance(build_recording_export(make_settings()), SqlRecordingExport)
 
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
