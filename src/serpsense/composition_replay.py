@@ -1,6 +1,6 @@
 """The composition root's replay half (`SERPSENSE_MODE=replay`): what plays the recordings the
-package ships into a database. Kept apart from `composition` so each stays within its size
-budget; it builds on the scan service composition wires for any mode."""
+package ships into a database, and what records new ones. Kept apart from `composition` so each
+stays within its size budget; it builds on the scan service composition wires for any mode."""
 
 from collections import Counter
 from collections.abc import Callable
@@ -10,6 +10,7 @@ from datetime import timedelta
 from celery import Celery
 
 from serpsense.adapters.db.engine import create_db_engine
+from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.jobs.celery_queue import CeleryJobQueue
 from serpsense.adapters.replay.clock import ReplayClock
@@ -20,7 +21,7 @@ from serpsense.config import ConfigError, RunMode, Settings
 from serpsense.services.demo import DEMO_BRANDS, Seeded, seed_demo
 from serpsense.services.replay import Played, RecordedScan, ReplayLoader
 
-__all__ = ["Replayed", "build_replayer"]
+__all__ = ["Replayed", "build_recording_export", "build_replayer"]
 
 HOUR = timedelta(hours=1)  # replay seeds the demo this long before its first recorded scan
 
@@ -58,3 +59,8 @@ def build_replayer(settings: Settings, celery: Celery) -> Callable[[str], Replay
             engine.dispose()  # a one-shot command: close its connections when done
 
     return replay
+
+
+def build_recording_export(settings: Settings) -> SqlRecordingExport:
+    """Records a brand's stored scans for replay mode; read-only, and needs no API key."""
+    return SqlRecordingExport(create_db_engine(settings.database_url.get_secret_value()))
