@@ -23,6 +23,7 @@ from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import LlmPreset, preset_settings
 from serpsense.services.dispatch import Dispatcher
+from serpsense.services.scan_now import ScanNow
 from serpsense.services.scans import ScanService
 from serpsense.services.sweep import Sweeper
 from tests.factories import make_settings
@@ -36,6 +37,7 @@ def test_build_container_wires_postgres_and_redis_checks_without_connecting(
     container = build_container(settings)
     assert container.settings is settings
     assert [check.name for check in container.health_checks] == ["postgres", "redis"]
+    assert isinstance(container.scan_now, ScanNow)
 
 
 def test_build_celery_uses_redis_broker(settings: Settings) -> None:
