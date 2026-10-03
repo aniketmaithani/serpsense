@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from serpsense.composition import Container, build_container
 from serpsense.entrypoints.web.auth import router as auth_router
+from serpsense.entrypoints.web.brands import router as brands_router
 from serpsense.entrypoints.web.health import router as health_router
 from serpsense.entrypoints.web.middleware import (
     RequestContextMiddleware,
@@ -31,6 +32,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(brands_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.exception_handler(Exception)

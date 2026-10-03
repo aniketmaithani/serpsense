@@ -78,14 +78,6 @@ def log_out(request: Request, csrf_token: Field = "") -> Response:
     return response
 
 
-@router.get("/")
-def home(request: Request) -> Response:
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", SEE_OTHER)
-    return page(request, "home.html", csrf_token=sessions(request).csrf_token(user))
-
-
 def _form(request: Request, template: str, *, status_code: int = 200, **context: str) -> Response:
     token = form_token(request)
     response = page(request, template, status_code=status_code, form_token=token, **context)

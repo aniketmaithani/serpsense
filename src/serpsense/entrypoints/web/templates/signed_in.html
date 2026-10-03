@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block nav %}
+<nav>
+  <a href="/">Brands</a>
+  <form method="post" action="/logout" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="link">Sign out</button>
+  </form>
+</nav>
+{% endblock %}

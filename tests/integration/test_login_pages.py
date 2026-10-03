@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
+from serpsense.adapters.db.overview import SqlOverview
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.composition import Container
 from serpsense.config import Settings
@@ -33,7 +34,8 @@ def browser(
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, Jobs()), BOX, Limiter(), clock)
     sign_in = SignIn(ports, KEYS, OPEN, session_days=7)
     guard = SessionGuard(ports.unit_of_work, clock, KEYS.csrf, session_days=7)
-    app = create_app(Container(settings or make_settings(), (), sign_in, guard))
+    reads = SqlOverview(engine.connect)
+    app = create_app(Container(settings or make_settings(), (), sign_in, guard, reads))
     base = "https://testserver" if settings else "http://testserver"
     return TestClient(app, base_url=base, raise_server_exceptions=False, follow_redirects=False)
 
@@ -76,7 +78,7 @@ def test_signing_in_and_out_through_the_pages(committing_engine: Engine) -> None
     cookie = signed_in.headers["set-cookie"].lower()
     assert "serpsense_session=" in cookie and "httponly" in cookie and "samesite=lax" in cookie
     home = client.get("/")
-    assert home.status_code == 200 and "signed in" in home.text
+    assert home.status_code == 200 and "Your brands" in home.text
     assert client.get("/login").headers["location"] == "/"  # already signed in
     assert client.post("/logout", data={"csrf_token": "forged"}).status_code == 403
     out = client.post("/logout", data={"csrf_token": token(home.text)})
