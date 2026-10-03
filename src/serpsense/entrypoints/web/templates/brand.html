@@ -1,91 +1,109 @@
 {% extends "signed_in.html" %}
 {% set card = brand.card %}
 {% block title %}{{ card.name }} · SerpSense{% endblock %}
+{% macro score(value) %}{{ value if value is not none else "–" }}{% endmacro %}
+{% macro sentiment(value) %}{% if value is none %}<span class="sent sent-pending">not labelled yet</span>{% elif value < 0 %}<span class="sent sent--1">negative</span>{% elif value > 0 %}<span class="sent sent-1">positive</span>{% else %}<span class="sent sent-0">neutral</span>{% endif %}{% endmacro %}
 {% block main %}
-<h1>{{ card.name }}{% if card.competitor_of %} <span class="badge">competitor of {{ card.competitor_of|join(", ") }}</span>{% endif %}</h1>
-<section class="scores">
-  <div class="score"><span class="label">Health</span><span class="big">{{ card.health if card.health is not none else "–" }}</span></div>
-  <div class="score"><span class="label">Crisis</span><span class="big">{{ card.crisis if card.crisis is not none else "–" }}</span>
-    {% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% else %}<span class="muted">warming up: a level comes after a few scored scans</span>{% endif %}</div>
-  <div class="score"><span class="label">Last scan</span><span>{{ card.last_scan_at|when }}{% if card.last_status %} · {{ card.last_status|words }}{% endif %}</span>
-    {% if card.last_status in ("queued", "running") %}<span class="muted">Scanning…</span>{% else %}
+<header class="page-head">
+  <div>
+    <h1>{{ card.name }}</h1>
+    {% if card.competitor_of %}<span class="badge">competitor of {{ card.competitor_of|join(", ") }}</span>{% endif %}
+  </div>
+  <div class="actions">
+    {% if card.last_status in ("queued", "running") %}<span class="pill">Scanning…</span>{% else %}
     <form method="post" action="/brands/{{ card.brand_id }}/scan" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit">Scan now</button>
     </form>{% endif %}
-    <a href="/brands/{{ card.brand_id }}/settings">Search settings</a></div>
-</section>
+    <a class="button-secondary" href="/brands/{{ card.brand_id }}/settings">Search settings</a>
+  </div>
+</header>
 {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 
-{% if trend %}
-<section class="card"><h2>Over time</h2><canvas id="trend" data-trend='{{ trend|tojson }}' height="90"></canvas></section>
-{% endif %}
-
-{% if stories %}
-<section class="card">
-  <h2>Stories <span class="badge">AI-generated</span></h2>
-  <ul class="stories">
-  {% for s in stories %}
-    <li><a href="/brands/{{ card.brand_id }}/narratives/{{ s.narrative_id }}">{{ s.label }}</a>
-      <span class="muted">· {{ s.mentions }} mention{{ "s" if s.mentions != 1 }} on {{ s.sources|map("words")|join(", ") }}</span></li>
-  {% endfor %}
-  </ul>
-</section>
-{% endif %}
-
-<section class="card">
-  <h2>Surfaces in the latest scan</h2>
-  {% if brand.surfaces %}
-  <table><thead><tr><th>Surface</th><th>Score</th><th>Collected</th></tr></thead><tbody>
-  {% for row in brand.surfaces %}
-    <tr class="{{ 'missed' if row.outcome != 'succeeded' else '' }}"><td>{{ row.surface|words }}</td>
-      <td class="num">{{ row.score if row.score is not none else "–" }}</td><td>{{ row.outcome|words }}</td></tr>
-  {% endfor %}
-  </tbody></table>
-  {% else %}<p class="muted">No scan yet.</p>{% endif %}
+<section class="kpis">
+  <div class="kpi"><span class="kpi-label">Health</span><span class="kpi-value">{{ score(card.health) }}</span>
+    {% if card.health is not none %}<meter min="0" max="100" low="40" high="70" optimum="100" value="{{ card.health }}"></meter>{% endif %}</div>
+  <div class="kpi"><span class="kpi-label">Crisis</span><span class="kpi-value crisis">{{ score(card.crisis) }}</span>
+    <div class="kpi-row">{% if card.level %}<span class="level level-{{ card.level }}">{{ card.level }}</span>{% else %}<span class="muted">warming up: a level comes after a few scored scans</span>{% endif %}</div></div>
+  <div class="kpi"><span class="kpi-label">Last scan</span><span>{{ card.last_scan_at|when }}</span>
+    {% if card.last_status %}<span class="pill">{{ card.last_status|words }}</span>{% endif %}</div>
 </section>
 
-<section class="card">
-  <h2>What people see</h2>
-  <p class="muted">Labels and reasons are AI-generated.</p>
-  <ul class="mentions">
-  {% for m in brand.mentions %}
-    <li class="sentiment-{{ m.sentiment if m.sentiment is not none else 'pending' }}">
-      <span class="source">{{ m.source|words }}</span>
-      {% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(300) }}</a>{% else %}{{ m.text|truncate(300) }}{% endif %}
-      {% if m.outlet %}<span class="muted">· {{ m.outlet }}</span>{% endif %}
-      {% if m.reason %}<div class="reason">AI-generated: {{ m.reason }}</div>{% elif m.sentiment is none %}<div class="reason muted">Not labelled yet.</div>{% endif %}
-    </li>
-  {% else %}
-    <li class="muted">Nothing about the brand in the latest scan.</li>
-  {% endfor %}
-  </ul>
-</section>
+<div class="layout">
+  <div class="stack">
+    {% if trend %}
+    <section class="card"><div class="card-head"><h2>Health and crisis over time</h2></div><div class="chart"><canvas id="trend" data-trend='{{ trend|tojson }}'></canvas></div></section>
+    {% endif %}
 
-{% if brand.alerts %}
-<section class="card">
-  <h2>Alerts</h2>
-  <ul class="alerts">
-  {% for a in brand.alerts %}
-    <li>{{ a.at|when }} · {{ a.title }}
-      {% if a.explanation %}<div class="reason">AI-generated: {{ a.explanation }}</div>{% endif %}</li>
-  {% endfor %}
-  </ul>
-</section>
-{% endif %}
+    <section class="card ai-card">
+      <div class="card-head"><h2>Stories Claude found</h2><span class="ai-badge">AI-generated</span></div>
+      {% if stories %}
+      <ul class="stories">
+      {% for s in stories %}
+        <li><a href="/brands/{{ card.brand_id }}/narratives/{{ s.narrative_id }}">{{ s.label }}</a>
+          <span class="muted">· {{ s.mentions }} mention{{ "s" if s.mentions != 1 }} on {{ s.sources|map("words")|join(", ") }}</span></li>
+      {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">After each scan Claude groups the brand's complaints into stories, so a crisis shows up as one thread rather than scattered posts. None yet.</p>
+      {% endif %}
+    </section>
 
-{% if brand.competitors %}
-<section class="card">
-  <h2>Competitors</h2>
-  <table><thead><tr><th>Brand</th><th>Health</th><th>Crisis</th></tr></thead><tbody>
-  {% for c in brand.competitors %}
-    <tr><td><a href="/brands/{{ c.brand_id }}">{{ c.name }}</a></td>
-      <td class="num">{{ c.health if c.health is not none else "–" }}</td>
-      <td class="num">{{ c.crisis if c.crisis is not none else "–" }}{% if c.level %} <span class="level level-{{ c.level }}">{{ c.level }}</span>{% endif %}</td></tr>
-  {% endfor %}
-  </tbody></table>
-</section>
-{% endif %}
+    <section class="card">
+      <div class="card-head"><h2>What people see</h2><span class="ai-badge">labels by Claude</span></div>
+      <ul class="mentions">
+      {% for m in brand.mentions %}
+        <li>
+          <div class="mention-meta">{{ sentiment(m.sentiment) }}<span class="source">{{ m.source|words }}</span>{% if m.outlet %}<span>{{ m.outlet }}</span>{% endif %}</div>
+          <div>{% if m.url %}<a href="{{ m.url }}" rel="noopener noreferrer nofollow">{{ m.text|truncate(300) }}</a>{% else %}{{ m.text|truncate(300) }}{% endif %}</div>
+          {% if m.reason %}<div class="reason"><span class="ai-badge">AI-generated</span><span>{{ m.reason }}</span></div>{% elif m.sentiment is none %}<div class="reason muted">Not labelled yet.</div>{% endif %}
+        </li>
+      {% else %}
+        <li class="muted">Nothing about the brand in the latest scan.</li>
+      {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <aside class="stack">
+    <section class="card">
+      <div class="card-head"><h2>Surfaces</h2><span class="muted">latest scan</span></div>
+      {% if brand.surfaces %}
+      <div class="tiles">
+      {% for row in brand.surfaces %}
+        <div class="tile"><span class="t-name">{{ row.surface|words }}</span><span class="t-score">{{ score(row.score) }}</span><span class="t-out out-{{ row.outcome }}">{{ row.outcome|words }}</span></div>
+      {% endfor %}
+      </div>
+      {% else %}<p class="muted">No scan yet.</p>{% endif %}
+    </section>
+
+    {% if brand.alerts %}
+    <section class="card">
+      <div class="card-head"><h2>Alerts</h2></div>
+      <ul class="timeline">
+      {% for a in brand.alerts %}
+        <li><time>{{ a.at|when }}</time>{{ a.title }}
+          {% if a.explanation %}<div class="reason"><span class="ai-badge">AI-generated</span><span>{{ a.explanation }}</span></div>{% endif %}</li>
+      {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if brand.competitors %}
+    <section class="card">
+      <div class="card-head"><h2>Competitors</h2><span class="muted">health</span></div>
+      <div class="rivals">
+      {% for c in brand.competitors %}
+        <div class="rival">
+          <div class="r-top"><a href="/brands/{{ c.brand_id }}">{{ c.name }}</a><span>{{ score(c.health) }}{% if c.level %} <span class="level level-{{ c.level }}">{{ c.level }}</span>{% endif %}</span></div>
+          {% if c.health is not none %}<meter min="0" max="100" low="40" high="70" optimum="100" value="{{ c.health }}"></meter>{% endif %}
+        </div>
+      {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </aside>
+</div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/chart.umd.js"></script>

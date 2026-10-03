@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% block body_class %}app{% endblock %}
 {% block nav %}
-<nav>
-  <a href="/">Brands</a>
-  <a href="/notifications">Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
-  <a href="/settings/ai">AI settings</a>
-  <a href="/settings/account">Account</a>
+{% set here = request.url.path %}
+<nav aria-label="Main">
+  <a href="/"{% if here == "/" or here.startswith("/brands") %} aria-current="page"{% endif %}>Brands</a>
+  <a href="/notifications"{% if here == "/notifications" %} aria-current="page"{% endif %}>Notifications{% if unread %} <span class="count">{{ unread }}</span>{% endif %}</a>
+  <a href="/settings/ai"{% if here == "/settings/ai" %} aria-current="page"{% endif %}>AI settings</a>
+  <a href="/settings/account"{% if here.startswith("/settings/account") %} aria-current="page"{% endif %}>Account</a>
+  <a class="model-chip" href="/settings/ai"><strong>✦ Claude</strong>labels every mention, groups complaints into stories, explains alerts and drafts replies</a>
   <form method="post" action="/logout" class="inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="link">Sign out</button>
