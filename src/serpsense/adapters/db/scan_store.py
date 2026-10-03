@@ -8,6 +8,7 @@ from typing import cast
 from sqlalchemy import Connection, Table, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from serpsense.adapters.db.models.brands import Brand
 from serpsense.adapters.db.models.scans import Scan, ScanStatusTransition, ScanSurfaceResult
 from serpsense.domain.enums import ScanStatus, ScanTrigger, TransitionActor
 from serpsense.domain.scan_state import IllegalTransition, Transition, TransitionReason
@@ -16,6 +17,7 @@ from serpsense.ports.scan_store import NewScan, SurfaceResult
 SCANS = cast(Table, Scan.__table__)
 TRANSITIONS = cast(Table, ScanStatusTransition.__table__)
 SURFACES = cast(Table, ScanSurfaceResult.__table__)
+BRANDS = cast(Table, Brand.__table__)
 CREATION_REASON = {
     ScanTrigger.SCHEDULE: TransitionReason.SCHEDULED,
     ScanTrigger.MANUAL: TransitionReason.REQUESTED,
@@ -89,6 +91,13 @@ class SqlScanStore:
     def queued_before(self, at: datetime) -> list[uuid.UUID]:
         query = select(SCANS.c.id).where(
             SCANS.c.status == ScanStatus.QUEUED, SCANS.c.created_at < at
+        )
+        return list(self._conn.execute(query).scalars())
+
+    def queued_for_owner(self, owner_id: uuid.UUID) -> list[uuid.UUID]:
+        owned = select(BRANDS.c.id).where(BRANDS.c.owner_id == owner_id).scalar_subquery()
+        query = select(SCANS.c.id).where(
+            SCANS.c.status == ScanStatus.QUEUED, SCANS.c.brand_id.in_(owned)
         )
         return list(self._conn.execute(query).scalars())
 
