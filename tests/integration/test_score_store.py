@@ -252,3 +252,16 @@ def test_the_usual_reads_the_eight_newest_earlier_scored_scans(
         brand.label(mention_id, -1 if n >= 2 else 0)  # the two oldest saw nothing negative
     inputs = store.inputs(brand.scan(0), prompts=PROMPTS)
     assert [dict(e.new_negative) for e in inputs.earlier] == [{Surface.NEWS: 1}] * 8
+
+
+def test_the_unscored_scans_are_the_finished_ones_oldest_first(
+    conn: Connection, store: ScoreStore
+) -> None:
+    brand = Brand(conn)
+    statuses = ["partial", "succeeded", "failed", "skipped", "succeeded", "running"]
+    made = []
+    for hours, status in zip(range(-60, 0, 10), statuses, strict=True):
+        at = NOW + hours * HOUR
+        made.append(add_scan(conn, brand.id, status=status, scheduled_for=at, created_at=at))
+    store.record(made[4], ScanScores({}, QUIET), version="s1", at=NOW)
+    assert store.unscored() == made[:2]  # scored, failed, skipped and running ones aren't
