@@ -211,6 +211,7 @@ class RecordingScores:
         self.given: ScoreInputs | None = None
         self.asked: list[tuple[uuid.UUID, dict[LlmTask, str]]] = []
         self.recorded: dict[uuid.UUID, tuple[ScanScores, str, datetime]] = {}
+        self.backlog: list[uuid.UUID] = []  # finished scans with no scores, oldest first
 
     def inputs(self, scan_id: uuid.UUID, *, prompts: Mapping[LlmTask, str]) -> ScoreInputs:
         assert self.inside()
@@ -218,6 +219,10 @@ class RecordingScores:
         if self.given is None:
             return ScoreInputs(at=datetime(2026, 10, 3, tzinfo=UTC), observed=())
         return self.given
+
+    def unscored(self) -> list[uuid.UUID]:
+        assert self.inside()
+        return [scan_id for scan_id in self.backlog if scan_id not in self.recorded]
 
     def record(self, scan_id: uuid.UUID, scores: ScanScores, *, version: str, at: datetime) -> bool:
         assert self.inside()

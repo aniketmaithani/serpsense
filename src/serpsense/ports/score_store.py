@@ -21,6 +21,10 @@ class ScoreStore(Protocol):
         eight newest earlier scored scans."""
         ...
 
+    def unscored(self) -> list[uuid.UUID]:
+        """Scans that succeeded or are partial but have no scores, oldest first."""
+        ...
+
     def record(self, scan_id: uuid.UUID, scores: ScanScores, *, version: str, at: datetime) -> bool:
         """The scan's scores under a scoring version; False when it was already scored."""
         ...
