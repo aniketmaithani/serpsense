@@ -1,0 +1,34 @@
+{% extends "signed_in.html" %}
+{% block title %}AI settings · SerpSense{% endblock %}
+{% block main %}
+<h1>AI settings</h1>
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+<p class="muted">Which Claude model does each job, and how hard it thinks. A task left to the preset follows it; changing only its effort keeps the preset's model. "High thinking" spends more on a better answer. The model only labels, groups, explains and drafts: it never sends anything.</p>
+<form method="post" action="/settings/ai" class="settings">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <fieldset><legend>Preset</legend>
+    <select name="preset">
+    {% for p in presets %}<option value="{{ p.value }}"{% if p == view.preset %} selected{% endif %}>{{ p.value|words }}</option>{% endfor %}
+    </select>
+  </fieldset>
+  <table>
+    <thead><tr><th>Task</th><th>Model</th><th>Effort</th><th>Now</th></tr></thead>
+    <tbody>
+    {% for row in view.rows %}
+      <tr>
+        <td>{{ tasks[row.task] }}{% if row.task in not_used %} <span class="muted">(not used yet)</span>{% endif %}</td>
+        <td><select name="model_{{ row.task.value }}">
+          <option value=""{% if not row.chosen %} selected{% endif %}>The preset's</option>
+          {% for id, name in models.items() %}<option value="{{ id }}"{% if row.chosen and row.settings.model == id %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select></td>
+        <td><select name="effort_{{ row.task.value }}">
+          {% for e in efforts %}<option value="{{ e.value }}"{% if row.settings.effort == e %} selected{% endif %}>{{ "High thinking" if e.value == "xhigh" else e.value|words }}</option>{% endfor %}
+        </select></td>
+        <td class="muted">{{ models[row.settings.model] }}, {{ "High thinking" if row.settings.effort.value == "xhigh" else row.settings.effort.value }}{% if not row.chosen %} (preset){% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <button type="submit">Save</button>
+</form>
+{% endblock %}
