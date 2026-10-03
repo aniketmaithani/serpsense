@@ -12,6 +12,7 @@ from serpsense.composition import (
     STUCK_AFTER,
     build_celery,
     build_container,
+    build_evaluator,
     build_outbox,
     build_seeder,
     build_session_guard,
@@ -89,3 +90,10 @@ def test_build_session_guard_wires_sessions_without_connecting() -> None:
     settings = make_settings()
     guard = build_session_guard(settings, build_celery(settings))
     assert guard._csrf_key != build_sign_in(settings, build_celery(settings))._keys.otp
+
+
+def test_build_evaluator_needs_the_anthropic_key_and_says_which_model() -> None:
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):
+        build_evaluator(make_settings())
+    _, model = build_evaluator(make_settings(anthropic_api_key="sk-ant-test-only"))
+    assert model == "claude-opus-5-5"
