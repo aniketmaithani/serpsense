@@ -141,3 +141,22 @@ class LlmCallOutcome(StrEnum):
     TRUNCATED = "truncated"  # stop_reason "max_tokens"
     INVALID_OUTPUT = "invalid_output"  # the structured output failed validation
     FAILED = "failed"  # no response: network, timeout or an API error
+
+
+class Topic(StrEnum):
+    """What a mention is about (`topic` Postgres enum): the taxonomy the labelling prompt uses."""
+
+    PRODUCT_QUALITY = "product_quality"
+    PRICING = "pricing"
+    BILLING_REFUNDS = "billing_refunds"
+    CUSTOMER_SERVICE = "customer_service"
+    RELIABILITY = "reliability"  # availability, delays, cancellations
+    SAFETY = "safety"
+    APP_EXPERIENCE = "app_experience"
+    PRIVACY_SECURITY = "privacy_security"
+    FRAUD_SCAM = "fraud_scam"  # fake support numbers, phishing in the brand's name
+    MARKETING_ETHICS = "marketing_ethics"  # campaigns, boycotts, conduct
+    LEGAL_REGULATORY = "legal_regulatory"
+    CORPORATE = "corporate"  # leadership, finances, stock, funding
+    WORKFORCE = "workforce"  # employees, drivers, partners, layoffs
+    OTHER = "other"
