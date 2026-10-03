@@ -255,7 +255,7 @@ Rules: ADR-0009. Highlights: HMAC-hashed codes, 10-min expiry, single use, 5 att
 | Brands | `brands`, `brand_competitors`, `brand_aliases`, `brand_languages`, `brand_watch_terms`, `brand_apps`, `brand_locations` |
 | Scans | `scans` (unique `scheduled_for`; one active per brand), 🔒`scan_status_transitions`, 🔒`scan_surface_results` |
 | Search data | 🔒`serp_calls`, `raw_responses` (redacted), `mentions`, 🔒`mention_observations`, 🔒`app_rating_observations`, 🔒`trends_observations` |
-| Model output | `enrichments`, `narratives`, 🔒`narrative_assignments`, `drafts`, `draft_citations`, 🔒`llm_calls` |
+| Model output | `enrichments`, 🔒`narratives`, 🔒`narrative_assignments`, `drafts`, `draft_citations`, 🔒`llm_calls` |
 | Scores | reference: `scoring_versions`, `scoring_weights`, `crisis_level_thresholds`; results: `score_runs`, `surface_scores`, `crisis_components`; totals via `v_scan_scores` |
 | Alerts | `alerts` (unique per scan/rule/narrative), `notifications`, `notification_reads`, `outbox_messages`, 🔒`outbox_attempts` |
 | Audit | 🔒`audit_events`, `audit_event_network` (scrubbable) |

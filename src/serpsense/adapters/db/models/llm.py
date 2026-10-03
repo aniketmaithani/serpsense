@@ -126,3 +126,60 @@ class Enrichment(Base):
     is_about_brand: Mapped[bool] = mapped_column(Boolean)
     reason: Mapped[str] = mapped_column(Text)  # the model's one-line reason, shown as AI-generated
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+GROUPING_PROMPT = "split_part(prompt_version, '/', 1) = 'group_narratives'"
+
+
+class Narrative(Base):
+    """A story the model found in a brand's mentions. Immutable (append-only): a re-summarised
+    story is a new narrative. From a successful grouping call, with its prompt version, made for
+    the brand's owner (migration 0019)."""
+
+    __tablename__ = "narratives"
+    __table_args__ = (
+        Index("ix_narratives_brand_id_created_at", "brand_id", "created_at"),
+        Index("ix_narratives_llm_call_id", "llm_call_id"),
+        CheckConstraint("label ~ '\\S' AND char_length(label) <= 120", name="label_length"),
+        CheckConstraint("summary ~ '\\S' AND char_length(summary) <= 2000", name="summary_length"),
+        CheckConstraint(GROUPING_PROMPT, name="prompt_from_grouping_task"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    brand_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("brands.id", ondelete="RESTRICT")
+    )
+    label: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    llm_call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("llm_calls.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class NarrativeAssignment(Base):
+    """Append-only: the latest row per mention says which narrative it belongs to (A → B → A is
+    allowed). Narrative and mention are of the same brand, and the row comes from a successful
+    grouping call, with its prompt version, made for the brand's owner (triggers)."""
+
+    __tablename__ = "narrative_assignments"
+    __table_args__ = (
+        UniqueConstraint("mention_id", "created_at"),  # "latest" has a single answer
+        Index("ix_narrative_assignments_narrative_id", "narrative_id"),
+        Index("ix_narrative_assignments_llm_call_id", "llm_call_id"),
+        CheckConstraint(GROUPING_PROMPT, name="prompt_from_grouping_task"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    narrative_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("narratives.id", ondelete="RESTRICT")
+    )
+    mention_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("mentions.id", ondelete="RESTRICT")
+    )
+    prompt_version: Mapped[str] = mapped_column(Text)
+    llm_call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("llm_calls.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
