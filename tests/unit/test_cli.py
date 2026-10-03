@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from serpsense import __version__
+from serpsense.adapters.db.replay_export import Exported
 from serpsense.entrypoints import cli
 from serpsense.entrypoints.cli import app
 from serpsense.ports.accounts import InvalidEmail
@@ -138,3 +139,26 @@ def test_eval_passes_the_cap_in_micros_and_fails_when_items_go_unanswered(
 def test_eval_refuses_a_task_or_split_with_no_golden_set(args: list[str]) -> None:
     result = runner.invoke(app, ["eval", *args])
     assert result.exit_code == 2 and "No eval for" in result.stderr
+
+
+class Exporter:
+    """Answers one brand's recording, and knows no other brand."""
+
+    def export(self, slug: str) -> Exported:
+        if slug != "ola":
+            raise LookupError("exactly one live brand must have this slug")
+        return Exported(text='{"format":1}\n', scans=2, answers=9, labels=40)
+
+
+def test_replay_export_writes_the_recording(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli, "build_settings", make_settings)
+    monkeypatch.setattr(cli, "build_recording_export", lambda settings: Exporter())
+    out = tmp_path / "recordings" / "ola.json"
+    result = runner.invoke(app, ["replay", "export", "--brand", "ola", "--out", str(out)])
+    assert result.exit_code == 0 and "Recorded 2 scans (9 answers) and 40 labels" in result.stdout
+    assert out.read_text(encoding="utf-8") == '{"format":1}\n'
+    missing = ["replay", "export", "--brand", "uber", "--out", str(out)]
+    refused = runner.invoke(app, missing)
+    assert refused.exit_code == 2 and "exactly one live brand" in refused.stderr

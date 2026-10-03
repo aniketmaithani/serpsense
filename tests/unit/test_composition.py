@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 
 from serpsense.adapters.cache.null_cache import NullResponseCache
+from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.llm.profiles import PresetProfiles
 from serpsense.adapters.llm.replay import ReplayLlm
 from serpsense.adapters.mail.console import ConsoleMailer
@@ -17,6 +18,7 @@ from serpsense.composition import (
     build_container,
     build_evaluator,
     build_outbox,
+    build_recording_export,
     build_seeder,
     build_session_guard,
     build_sign_in,
@@ -75,6 +77,10 @@ def test_until_profiles_can_be_edited_every_user_gets_the_configured_preset() ->
     profiles = PresetProfiles(LlmPreset.HIGH_THINKING)
     settings = profiles.settings(uuid.uuid4(), LlmTask.LABEL_MENTIONS)
     assert settings == preset_settings(LlmPreset.HIGH_THINKING, LlmTask.LABEL_MENTIONS)
+
+
+def test_build_recording_export_needs_no_api_key_and_connects_to_nothing() -> None:
+    assert isinstance(build_recording_export(make_settings()), SqlRecordingExport)
 
 
 def test_build_seeder_is_ready_without_connecting(settings: Settings) -> None:
