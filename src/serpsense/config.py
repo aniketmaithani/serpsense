@@ -171,6 +171,8 @@ def _check_fernet_keys(raw: str) -> None:
 
 def _check_production(settings: Settings) -> None:
     """Production guards from ADR-0009, ADR-0010 and the bootstrap security review."""
+    if settings.serpsense_mode is RunMode.REPLAY:
+        raise ConfigError("SERPSENSE_MODE=replay plays back recorded scans; not for production")
     if settings.email_backend is EmailBackend.CONSOLE:
         raise ConfigError("EMAIL_BACKEND=console is not allowed in production")
     if not settings.smtp_starttls:
