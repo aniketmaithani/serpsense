@@ -61,7 +61,17 @@ _QUERY_SECRET = re.compile(
 # password is covered); the authority ends at "/", "?", "#" or whitespace, so "@" in a path or
 # query is never touched. Configured secrets (e.g. DATABASE_URL) are also scrubbed verbatim.
 _URL_USERINFO = re.compile(r"://([^/?#\s]*)@")
-_NOISY_LOGGERS = ("urllib3", "requests", "httpx", "httpcore", "celery.utils.functional")
+# HTTP clients log request URLs; the Anthropic SDK logs whole request bodies (prompts and
+# mention text) at DEBUG, so it never logs below WARNING whatever LOG_LEVEL says.
+_NOISY_LOGGERS = (
+    "urllib3",
+    "requests",
+    "httpx",
+    "httpx2",
+    "httpcore",
+    "anthropic",
+    "celery.utils.functional",
+)
 # Frameworks that install their own handlers (often with propagate=False) before our setup runs;
 # we strip those so every record reaches the scrubbing root handler.
 _FRAMEWORK_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "celery", "celery.task")
