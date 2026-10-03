@@ -6,11 +6,13 @@ from typing import Self
 
 from sqlalchemy import Connection, Engine, RootTransaction
 
+from serpsense.adapters.db.enrichment_store import SqlEnrichmentStore
 from serpsense.adapters.db.mention_store import SqlMentionStore
 from serpsense.adapters.db.observation_store import SqlObservationStore
 from serpsense.adapters.db.scan_store import SqlScanStore
 from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.observability import get_logger
+from serpsense.ports.enrichment_store import EnrichmentStore
 from serpsense.ports.job_queue import JobQueue, JobQueueUnavailable
 from serpsense.ports.mention_store import MentionStore
 from serpsense.ports.observation_store import ObservationStore
@@ -42,6 +44,7 @@ class SqlUnitOfWork:
     mentions: MentionStore
     observations: ObservationStore
     schedules: ScheduledBrands
+    enrichments: EnrichmentStore
     jobs: JobQueue
 
     def __init__(self, engine: Engine, queue: JobQueue) -> None:
@@ -60,6 +63,7 @@ class SqlUnitOfWork:
         self.mentions = SqlMentionStore(self._conn)
         self.observations = SqlObservationStore(self._conn)
         self.schedules = SqlScheduledBrands(self._conn)
+        self.enrichments = SqlEnrichmentStore(self._conn)
         self.jobs = self._pending
         return self
 
