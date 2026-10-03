@@ -387,6 +387,7 @@ class RecordingOutbox:
 class RecordingJobs:
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
+        self.explanations: list[uuid.UUID] = []
         self.outbox_nudges = 0
 
     def run_scan(self, scan_id: uuid.UUID) -> None:
@@ -394,6 +395,9 @@ class RecordingJobs:
 
     def dispatch_outbox(self) -> None:
         self.outbox_nudges += 1
+
+    def explain_alert(self, alert_id: uuid.UUID) -> None:
+        self.explanations.append(alert_id)
 
 
 class FakeUnitOfWork:
@@ -429,6 +433,7 @@ class FakeUnitOfWork:
         self.open = False
         if exc_type is None:
             self.sent.scans.extend(self.jobs.scans)
+            self.sent.explanations.extend(self.jobs.explanations)
             self.sent.outbox_nudges += self.jobs.outbox_nudges
 
 

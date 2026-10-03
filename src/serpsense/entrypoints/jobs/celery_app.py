@@ -13,6 +13,8 @@ from structlog.contextvars import bound_contextvars
 
 from serpsense.composition import (
     DISPATCH_TASK,
+    EXPLAIN_TASK,
+    EXPLAIN_TIME_LIMIT_SECONDS,
     HEARTBEAT_TASK,
     OUTBOX_TASK,
     RUN_SCAN_TASK,
@@ -60,6 +62,14 @@ def run_scan(scan_id: str) -> None:
     collection keeps to its own deadline, and the hard limit is the backstop."""
     with bound_contextvars(scan_id=scan_id):
         _worker().scans.run(uuid.UUID(scan_id))
+
+
+@app.task(name=EXPLAIN_TASK, time_limit=EXPLAIN_TIME_LIMIT_SECONDS)
+def explain_alert(alert_id: str) -> None:
+    """A nudge: the explainer writes the alert's explanation, or finds it written already. Never
+    retried: an alert stands without its explanation."""
+    with bound_contextvars(alert_id=alert_id):
+        _worker().explainer.explain(uuid.UUID(alert_id))
 
 
 @app.task(name=DISPATCH_TASK)

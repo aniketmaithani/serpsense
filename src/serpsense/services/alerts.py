@@ -5,7 +5,8 @@ spreading story for `narrative_spread`) writes one alert, one in-app notificatio
 to the brand's owner (through the outbox, ADR-0010), all in the unit of work that finishes the
 scan, so they commit with its ending and its scores. The two channels say the same thing. A
 competitor's alert says so in its title. A story's label is the model's and is marked as such;
-the model's explanation comes later and never decides anything (ADR-0008).
+the model's explanation is asked for once they commit (`services/explanations.py`) and
+never decides anything (ADR-0008).
 """
 
 import uuid
@@ -38,6 +39,7 @@ def raise_alerts(uow: UnitOfWork, scan_id: uuid.UUID, *, at: datetime) -> list[A
         title, body = message(context, rule, story)
         store.notify(alert_id, title=title, body=body, at=at)
         uow.outbox.add_alert_email(alert_id, data={"title": title, "body": body}, at=at)
+        uow.jobs.explain_alert(alert_id)  # after the commit; the email waits a little for it
         raised.append(rule)
     return raised
 

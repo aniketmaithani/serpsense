@@ -54,6 +54,7 @@ class _AfterCommit:
 
     def __init__(self) -> None:
         self.scans: list[uuid.UUID] = []
+        self.alerts: list[uuid.UUID] = []
         self.nudge_outbox = False
         self.closed = False
 
@@ -64,6 +65,10 @@ class _AfterCommit:
     def dispatch_outbox(self) -> None:
         self._open()
         self.nudge_outbox = True
+
+    def explain_alert(self, alert_id: uuid.UUID) -> None:
+        self._open()
+        self.alerts.append(alert_id)
 
     def _open(self) -> None:
         if self.closed:
@@ -150,6 +155,13 @@ class SqlUnitOfWork:
             except JobQueueUnavailable:
                 # Committed already: the scan stays queued and the sweep sends it again.
                 log.warning("job.enqueue_failed", job="run_scan", scan_id=str(scan_id))
+        for alert_id in pending.alerts:
+            try:
+                self._queue.explain_alert(alert_id)
+            except JobQueueUnavailable:
+                # Committed already: the alert stands, and its email goes without an
+                # explanation once its wait is over.
+                log.warning("job.enqueue_failed", job="explain_alert", alert_id=str(alert_id))
         if pending.nudge_outbox:
             try:
                 self._queue.dispatch_outbox()
