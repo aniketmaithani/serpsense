@@ -21,3 +21,4 @@ Before they were committed, every response was:
 | `ola/trends_timeseries.json` | `google_trends` | `q=Ola,Uber,Rapido,Namma Yatri,inDrive`, `geo=IN`, `date=today 3-m`, `data_type=TIMESERIES` (first and last days only) |
 | `ola/trends_related.json` | `google_trends` | `q=Ola`, `geo=IN`, `date=today 3-m`, `data_type=RELATED_QUERIES` |
 | `ola/play_product.json` | `google_play_product` | `product_id=com.olacabs.customer`, `store=apps` (the product page: rating and its "most relevant" reviews) |
+| `ola/play_reviews.json` | `google_play_product` | `product_id=com.olacabs.customer`, `store=apps`, `all_reviews=true`, `sort_by=2` (newest reviews; `serpapi_pagination` keeps its recorded shape, but its `next_page_token` value is replaced by a synthetic one and its `next` link is trimmed) |
