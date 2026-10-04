@@ -11,6 +11,7 @@ class KeyPurpose(StrEnum):
     OTP = "otp"
     CSRF = "csrf"
     RATE_LIMIT = "rate-limit"
+    CONSOLE = "console"  # the operator console (ADR-0014)
 
 
 def derive_key(secret_key: str, purpose: KeyPurpose) -> bytes:

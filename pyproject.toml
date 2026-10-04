@@ -136,6 +136,7 @@ layers = [
     "serpsense.entrypoints",
     "serpsense.composition_replay",
     "serpsense.composition",
+    "serpsense.composition_console",
     "serpsense.adapters",
     "serpsense.services",
     "serpsense.ports",
@@ -148,6 +149,17 @@ type = "forbidden"
 allow_indirect_imports = true
 source_modules = ["serpsense.entrypoints"]
 forbidden_modules = ["serpsense.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "Only the operator console reads across users (ADR-0014)"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = ["serpsense.entrypoints", "serpsense.services", "serpsense.adapters", "serpsense.composition"]
+forbidden_modules = ["serpsense.ports.console", "serpsense.adapters.db.console"]
+ignore_imports = [
+    "serpsense.services.console -> serpsense.ports.console",
+    "serpsense.adapters.db.console -> serpsense.ports.console",
+]
 
 [[tool.importlinter.contracts]]
 name = "Adapters never import services"
@@ -211,6 +223,7 @@ allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "serpsense.composition -> celery",
+    "serpsense.composition_console -> celery",
     "serpsense.composition_replay -> celery",
     "serpsense.adapters.jobs -> celery",
     "serpsense.adapters.jobs.** -> celery",

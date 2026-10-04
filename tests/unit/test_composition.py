@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 
 from serpsense.adapters.cache.null_cache import NullResponseCache
+from serpsense.adapters.db.engine import create_db_engine
 from serpsense.adapters.db.llm_profiles import SqlLlmProfiles
 from serpsense.adapters.db.replay_export import SqlRecordingExport
 from serpsense.adapters.llm.replay import ReplayLlm
@@ -26,6 +27,7 @@ from serpsense.composition import (
     build_sign_in,
     build_worker,
 )
+from serpsense.composition_console import build_console
 from serpsense.composition_replay import build_recording_export, build_replayer
 from serpsense.config import ConfigError, Settings
 from serpsense.domain.enums import LlmTask
@@ -135,6 +137,17 @@ def test_build_sign_in_wires_sign_in_without_connecting() -> None:
     sign_in = build_sign_in(settings, build_celery(settings))
     assert sign_in._policy.allows("a@serpsense.in") and not sign_in._policy.allows("a@x.in")
     assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
+
+
+def test_the_console_is_built_only_with_a_password_and_without_connecting() -> None:
+    off = make_settings()
+    engine = create_db_engine(off.database_url.get_secret_value())
+    assert build_console(off, engine, build_celery(off)) is None  # ADR-0014: off, so 404
+    on = make_settings(admin_password="p" * 16)
+    console = build_console(on, engine, build_celery(on))
+    assert console is not None and not console.gate.signed_in("1.forged.signature")
+    other = build_console(make_settings(admin_password="q" * 16), engine, build_celery(on))
+    assert other is not None and other.gate._keys.session != console.gate._keys.session
 
 
 def test_build_session_guard_wires_sessions_without_connecting() -> None:
