@@ -248,6 +248,14 @@ class OutboxOutcome(StrEnum):
     DROPPED = "dropped"
 
 
+class AccessDecision(StrEnum):
+    """The operator's answer to an access request (`access_decision`; ADR-0014); the latest
+    decision counts, and none yet means the request is pending."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class AuditAction(StrEnum):
     """What an audit event records (`audit_events.action`, noun.verb_past; ADR-0009, 0013)."""
 
