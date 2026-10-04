@@ -96,6 +96,20 @@ docker compose exec -T postgres pg_restore -U serpsense -d serpsense --clean < s
 Restore into a stopped stack (`docker compose stop web worker worker-outbox beat`), then start it;
 `migrate` brings an older dump up to the current schema.
 
+## Operator console
+
+Set `ADMIN_PASSWORD` (16 characters or more) and restart the web app to turn on the console at
+`/admin` (ADR-0014); without it every console route answers 404. It shows how many users,
+brands and scans there are, every brand with its owner, and the access requests: in invite
+mode, an address that isn't invited and asks for a code leaves one. **Approve** lets that address
+sign in (it asks for a code again; nothing is emailed), **Reject** keeps it out, and a later
+decision replaces an earlier one. The invite lists (`ALLOWED_EMAILS`, `ALLOWED_DOMAINS`) still
+work alongside; rejecting doesn't end sessions already open. A console session lasts 4 hours;
+**Sign out** ends every console session (copies of the cookie included), and so does changing the
+password or `SECRET_KEY`. Thirty failed logins in an hour, from anywhere, lock the console for
+the rest of that hour, the right password included: if that happens, wait it out, then change
+the password.
+
 ## Account deletion
 
 A user deletes their account from Settings → Account with a fresh code and their address typed
