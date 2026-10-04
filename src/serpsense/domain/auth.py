@@ -20,6 +20,7 @@ HOUR = timedelta(hours=1)
 SESSION_REFRESH = timedelta(hours=1)  # a session's expiry slides at most this often
 MAX_SESSION_AGE = timedelta(days=30)  # however often it slides, a session ends by then
 CODES_PER_HOUR_IN_ALL = 200  # every address together: bounds a spray, or a limiter that's down
+ACCESS_REQUESTS_PER_HOUR_IN_ALL = 50  # new access requests, every address together (ADR-0014)
 MAX_USER_AGENT = 256
 
 
@@ -67,8 +68,9 @@ def clean_user_agent(raw: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class SignupPolicy:
-    """Who may get a code: anyone, or in invite mode only the listed addresses and domains
-    (ADR-0009; production runs invite mode)."""
+    """Who may get a code: anyone, or in invite mode the listed addresses and domains
+    (ADR-0009; production runs invite mode), and those the operator approved (ADR-0014, read
+    from the database by the sign-in service)."""
 
     invite_only: bool
     emails: frozenset[str] = frozenset()
