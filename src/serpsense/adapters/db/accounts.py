@@ -26,7 +26,7 @@ from serpsense.adapters.db.models.brands import Brand
 from serpsense.adapters.db.models.identity import OtpCode, User, UserSession
 from serpsense.adapters.db.models.outbox import OutboxMessage
 from serpsense.domain.enums import AuditTarget
-from serpsense.ports.accounts import Scrubbed, email_address
+from serpsense.ports.accounts import PSEUDONYM_DOMAIN, Scrubbed, email_address
 
 USERS, CODES = cast(Table, User.__table__), cast(Table, OtpCode.__table__)
 SESSIONS, BRANDS = cast(Table, UserSession.__table__), cast(Table, Brand.__table__)
@@ -120,4 +120,4 @@ class SqlAccounts:
 
 def _pseudonym(row_id: Column[uuid.UUID]) -> ColumnElement[str]:
     """`ports.accounts.pseudonym`, computed per row in SQL."""
-    return func.concat("deleted+", row_id, "@serpsense.invalid")
+    return func.concat("deleted+", row_id, f"@{PSEUDONYM_DOMAIN}")

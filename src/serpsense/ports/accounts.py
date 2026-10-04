@@ -16,6 +16,7 @@ MAX_EMAIL = 254  # RFC 5321's path limit
 # One bare address: no list or display-name characters an SMTP server would fan out on, the same
 # rule as the outbox's recipient check.
 EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
+PSEUDONYM_DOMAIN = "serpsense.invalid"  # RFC 2606: no one can sign in with an address in it
 
 
 class InvalidEmail(ValueError):
@@ -36,7 +37,7 @@ def email_address(raw: str) -> str:
 def pseudonym(row_id: uuid.UUID) -> str:
     """What replaces an address on a deleted account's rows: unique per row, so pseudonyms never
     collide, and in a reserved domain (RFC 2606) no one can sign in with (ADR-0013)."""
-    return f"deleted+{row_id}@serpsense.invalid"
+    return f"deleted+{row_id}@{PSEUDONYM_DOMAIN}"
 
 
 @dataclass(frozen=True)
