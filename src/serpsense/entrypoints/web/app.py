@@ -15,6 +15,7 @@ from serpsense.entrypoints.web.ai_settings import router as ai_router
 from serpsense.entrypoints.web.auth import router as auth_router
 from serpsense.entrypoints.web.brand_settings import router as settings_router
 from serpsense.entrypoints.web.brands import router as brands_router
+from serpsense.entrypoints.web.console import router as console_router
 from serpsense.entrypoints.web.crisis_tuning import router as crisis_tuning_router
 from serpsense.entrypoints.web.health import router as health_router
 from serpsense.entrypoints.web.middleware import (
@@ -48,6 +49,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(stories_router)
     app.include_router(account_router)
     app.include_router(ai_router)
+    app.include_router(console_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.exception_handler(RequestValidationError)

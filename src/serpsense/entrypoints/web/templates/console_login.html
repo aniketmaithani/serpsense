@@ -1,0 +1,14 @@
+{% extends "signin.html" %}
+{% block title %}Operator console · SerpSense{% endblock %}
+{% block card %}
+  <p class="step">Operator console</p>
+  <h1>Sign in</h1>
+  <p class="muted">For whoever runs this SerpSense. Users sign in with an emailed code instead.</p>
+  {% if error %}<p class="error" id="problem" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/admin/login">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus{% if error %} aria-invalid="true" aria-describedby="problem"{% endif %}>
+    <button type="submit">Sign in</button>
+  </form>
+{% endblock %}
