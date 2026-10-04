@@ -50,3 +50,17 @@ WHERE c.task = 'draft_response' AND c.outcome = 'succeeded'
   AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.llm_call_id = c.id);
 ```
 
+## Operator console (ADR-0014)
+
+```sql
+-- Console logins per day in the last week, by outcome: a run of failures means someone is
+-- guessing the password (change ADMIN_PASSWORD).
+SELECT date_trunc('day', created_at) AS day, action, count(*)
+FROM audit_events WHERE action LIKE 'admin.login_%' AND created_at > now() - interval '7 days'
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- Access requests waiting for a decision, oldest first (no addresses: count and age only).
+SELECT count(*), min(r.requested_at) AS oldest FROM access_requests r
+WHERE NOT EXISTS (SELECT 1 FROM access_decisions d WHERE d.access_request_id = r.id)
+  AND r.email NOT LIKE '%@serpsense.invalid';
+```
