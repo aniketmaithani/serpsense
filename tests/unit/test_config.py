@@ -93,9 +93,22 @@ def test_settings_never_expose_secrets_in_repr() -> None:
 
 
 def test_secret_values_lists_every_configured_secret() -> None:
-    settings = make_settings(serpapi_api_key="serp-test-value", smtp_password="smtp-pass-123")
+    settings = make_settings(
+        serpapi_api_key="serp-test-value",
+        smtp_password="smtp-pass-123",
+        admin_password="console-pass-0123",
+    )
     values = settings.secret_values()
-    assert {TEST_SECRET_KEY, "serp-test-value", "smtp-pass-123", TEST_FERNET_KEY} <= set(values)
+    expected = {TEST_SECRET_KEY, "serp-test-value", "smtp-pass-123", "console-pass-0123"}
+    assert expected | {TEST_FERNET_KEY} <= set(values)
+
+
+def test_the_operator_console_is_off_without_a_password_and_needs_a_long_one() -> None:
+    assert make_settings().admin_password is None  # ADR-0014: no password, no console
+    assert make_settings(admin_password="").admin_password is None  # as .env.example has it
+    with pytest.raises(ValidationError, match="ADMIN_PASSWORD"):
+        make_settings(admin_password="short-but-15ch!")
+    assert "x" * 16 not in repr(make_settings(admin_password="x" * 16))
 
 
 def test_csv_settings_are_split_trimmed_and_lowercased() -> None:
