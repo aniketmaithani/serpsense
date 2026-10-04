@@ -46,7 +46,14 @@ def asked(engine: Engine) -> tuple[str, uuid.UUID]:
 
 def test_without_a_password_the_console_is_not_there(committing_engine: Engine) -> None:
     client = browser(committing_engine)
-    for method, path in (("GET", "/admin"), ("GET", "/admin/login"), ("POST", "/admin/login")):
+    decide = f"/admin/access/{uuid.uuid4()}/approve"
+    for method, path in (
+        ("GET", "/admin"),
+        ("GET", "/admin/login"),
+        ("POST", "/admin/login"),
+        ("POST", "/admin/logout"),
+        ("POST", decide),
+    ):
         assert client.request(method, path).status_code == 404
 
 
@@ -66,6 +73,7 @@ def test_logging_in_approving_and_logging_out(committing_engine: Engine) -> None
     assert signed_in.status_code == 303 and signed_in.headers["location"] == "/admin"
     cookie = signed_in.headers["set-cookie"].lower()
     assert "serpsense_admin=" in cookie and "httponly" in cookie and "samesite=strict" in cookie
+    assert client.get("/admin/login").headers["location"] == "/admin"  # already in
     home = client.get("/admin")
     assert home.status_code == 200 and email in home.text and "Waiting" in home.text
     assert home.headers["cache-control"] == "no-store"
@@ -86,9 +94,13 @@ def test_logging_in_approving_and_logging_out(committing_engine: Engine) -> None
         assert SqlAccessRequests(conn).approved(email)
     assert "Approved" in client.get("/admin").text
     copied = client.cookies.get("serpsense_admin")
+    assert client.post("/admin/logout", data={}).status_code == 403  # no CSRF token: still in
+    assert client.get("/admin").status_code == 200
     out = client.post("/admin/logout", data={"csrf_token": csrf})
     assert out.status_code == 303 and out.headers["location"] == "/admin/login"
     assert client.get("/admin").headers["location"] == "/admin/login"
     client.cookies.set("serpsense_admin", copied or "")  # a copy of the cookie is over too
     assert client.get("/admin").headers["location"] == "/admin/login"
     client.cookies.delete("serpsense_admin")
+    after = client.post(approve, data={"csrf_token": csrf})  # a signed-out form decides nothing
+    assert after.status_code == 303 and after.headers["location"] == "/admin/login"
