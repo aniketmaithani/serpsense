@@ -257,7 +257,7 @@ class AccessDecision(StrEnum):
 
 
 class AuditAction(StrEnum):
-    """What an audit event records (`audit_events.action`, noun.verb_past; ADR-0009, 0013)."""
+    """What an audit event records (`audit_events.action`, noun.verb_past; ADR-0009, 0013, 0014)."""
 
     CODE_REQUESTED = "auth.code_requested"
     LOGIN_SUCCEEDED = "auth.login_succeeded"
@@ -265,6 +265,8 @@ class AuditAction(StrEnum):
     LOGGED_OUT = "auth.logged_out"
     SESSIONS_REVOKED = "auth.sessions_revoked"
     ACCOUNT_DELETED = "account.deleted"
+    ADMIN_LOGIN_SUCCEEDED = "admin.login_succeeded"  # the operator console (ADR-0014)
+    ADMIN_LOGIN_FAILED = "admin.login_failed"
 
 
 class AuditTarget(StrEnum):
