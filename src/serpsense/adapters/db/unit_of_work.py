@@ -7,6 +7,7 @@ from typing import Self
 from sqlalchemy import Connection, Engine, RootTransaction
 from sqlalchemy.exc import DBAPIError
 
+from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.accounts import SqlAccounts
 from serpsense.adapters.db.alert_store import SqlAlertStore
 from serpsense.adapters.db.audit import SqlAuditLog
@@ -25,6 +26,7 @@ from serpsense.adapters.db.scheduled_brands import SqlScheduledBrands
 from serpsense.adapters.db.score_store import SqlScoreStore
 from serpsense.adapters.db.sessions import SqlSessions
 from serpsense.observability import get_logger
+from serpsense.ports.access import AccessRequests
 from serpsense.ports.accounts import Accounts
 from serpsense.ports.alert_store import AlertStore
 from serpsense.ports.audit import AuditLog
@@ -91,6 +93,7 @@ class SqlUnitOfWork:
     brands: BrandStore
     accounts: Accounts
     otp_codes: OtpCodes
+    access: AccessRequests
     sessions: Sessions
     audit: AuditLog
     outbox: Outbox
@@ -122,6 +125,7 @@ class SqlUnitOfWork:
         self.brands = SqlBrandStore(self._conn)
         self.accounts = SqlAccounts(self._conn)
         self.otp_codes = SqlOtpCodes(self._conn)
+        self.access = SqlAccessRequests(self._conn)
         self.sessions = SqlSessions(self._conn)
         self.audit = SqlAuditLog(self._conn)
         self.outbox = SqlOutbox(self._conn)
