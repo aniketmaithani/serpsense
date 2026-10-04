@@ -9,6 +9,7 @@ from ipaddress import IPv6Address
 import pytest
 from sqlalchemy import Connection, Engine, select, update
 
+from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.accounts import SqlAccounts
 from serpsense.adapters.db.audit import SqlAuditLog
 from serpsense.adapters.db.otp_codes import SqlOtpCodes
@@ -26,10 +27,17 @@ pytestmark = pytest.mark.integration
 
 HOUR = timedelta(hours=1)
 USERS, CODES, BRANDS = table("users"), table("otp_codes"), table("brands")
+REQUESTS = table("access_requests")
 SCANS, MESSAGES, SESSIONS = table("scans"), table("outbox_messages"), table("sessions")
 # Where a person's address, IP and user agent are before the scrub: the scan's positive control.
 HELD_AT = [
-    ["brands.tone_notes", "otp_codes.email", "outbox_messages.recipient_email", "users.email"],
+    [
+        "access_requests.email",
+        "brands.tone_notes",
+        "otp_codes.email",
+        "outbox_messages.recipient_email",
+        "users.email",
+    ],
     ["audit_event_network.ip", "otp_codes.request_ip", "sessions.ip"],
     ["audit_event_network.user_agent", "sessions.user_agent"],
 ]
@@ -57,6 +65,7 @@ def person(conn: Connection, slug: str) -> Person:
     codes, outbox, network = SqlOtpCodes(conn), SqlOutbox(conn), Network(ip, agent)
     used = _code(codes, outbox, email, ip)  # asked for before the account existed: no user
     codes.consume(used, at=NOW)
+    SqlAccessRequests(conn).record(email, at=NOW)  # asked while not invited (ADR-0014)
     user_id = add_user(conn, email)
     live = _code(codes, outbox, email, ip)
     outbox.record(_message(conn, used), OutboxOutcome.SENT, at=NOW)
@@ -99,6 +108,7 @@ def snapshot(conn: Connection, someone: Person) -> list[list[tuple[object, ...]]
         select(CODES).where(CODES.c.id.in_(someone.codes)),
         select(MESSAGES).where(MESSAGES.c.otp_code_id.in_(someone.codes)),
         select(SESSIONS).where(SESSIONS.c.user_id == someone.user_id),
+        select(REQUESTS).where(REQUESTS.c.email == someone.email),
     ]
     return [sorted(tuple(row) for row in conn.execute(q.order_by(None))) for q in queries]
 
@@ -115,7 +125,7 @@ def test_the_scrub_leaves_no_address_ip_or_user_agent_and_spares_everyone_else(
     assert b"sealed" in conn.execute(sealed).scalars().all()  # the live code's, still pending
     accounts = SqlAccounts(conn)
     scrubbed = accounts.scrub(gone.user_id, gone.email.upper(), at=NOW + HOUR)  # citext
-    assert scrubbed == Scrubbed(brands=2, sessions=2, codes=2, messages=2, network=2)
+    assert scrubbed == Scrubbed(brands=2, sessions=2, codes=2, messages=2, network=2, requests=1)
     assert found(conn, gone) == [[], [], []]
     assert conn.execute(sealed).scalars().all() == [None, None]  # bytea: the scan can't see it
     assert found(conn, kept) == HELD_AT and snapshot(conn, kept) == kept_rows

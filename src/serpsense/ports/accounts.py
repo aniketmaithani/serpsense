@@ -48,6 +48,7 @@ class Scrubbed:
     codes: int
     messages: int
     network: int
+    requests: int
 
 
 class Accounts(Protocol):
@@ -68,8 +69,9 @@ class Accounts(Protocol):
     def scrub(self, user_id: uuid.UUID, email: str, *, at: datetime) -> Scrubbed:
         """Delete the account (ADR-0013): its brands archived and their tone notes deleted, its
         sessions deleted, the network details of its audit events (and of its address's
-        pre-login events) deleted, every code issued to its address and every email to it or
-        its address pseudonymised (a live code superseded, its hash zeroed, its IP and sealed
-        content gone), and the user marked deleted under a pseudonym. Pending emails are
-        dropped and queued scans skipped by the caller first, through their own stores."""
+        pre-login events) deleted, every code issued to its address, every email to it or its
+        address and its address's access request pseudonymised (a live code superseded, its hash
+        zeroed, its IP and sealed content gone), and the user marked deleted under a pseudonym.
+        Pending emails are dropped and queued scans skipped by the caller first, through their
+        own stores."""
         ...

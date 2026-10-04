@@ -9,6 +9,7 @@ from ipaddress import IPv6Address
 import pytest
 from sqlalchemy import Connection, Engine, select
 
+from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.accounts import SqlAccounts
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.ports.audit import Network
@@ -25,7 +26,7 @@ MINUTES = timedelta(minutes=1)
 EVENTS, NETWORK_ROWS = table("audit_events"), table("audit_event_network")
 SCANS, TRANSITIONS = table("scans"), table("scan_status_transitions")
 MESSAGES, CODES, SESSIONS = table("outbox_messages"), table("otp_codes"), table("sessions")
-USERS, BRANDS = table("users"), table("brands")
+USERS, BRANDS, REQUESTS = table("users"), table("brands"), table("access_requests")
 
 
 @dataclass
@@ -76,8 +77,10 @@ def found(engine: Engine, account: Account) -> list[list[str]]:
 
 
 def owning(engine: Engine, account: Account) -> uuid.UUID:
-    """A brand of the account's, with notes naming its address, and a queued scan of it."""
+    """A brand of the account's, with notes naming its address, and a queued scan of it; and
+    the access request its address made before it was let in (ADR-0014)."""
     with engine.begin() as conn:
+        SqlAccessRequests(conn).record(account.rig.email, at=NOW)
         slug, notes = f"b-{uuid.uuid4().hex[:8]}", f"Ask {account.rig.email}"
         return add_scan(conn, add_brand(conn, account.user.user_id, slug=slug, tone_notes=notes))
 
@@ -93,6 +96,7 @@ def rows(engine: Engine, account: Account) -> list[list[tuple[object, ...]]]:
         select(CODES).where(CODES.c.email == email),
         select(MESSAGES).where(MESSAGES.c.recipient_email == email),
         select(SESSIONS).where(SESSIONS.c.user_id == user_id),
+        select(REQUESTS).where(REQUESTS.c.email == email),
     ]
     with engine.connect() as conn:
         return [sorted(tuple(row) for row in conn.execute(query)) for query in queries]
@@ -134,7 +138,7 @@ def test_deleting_leaves_nothing_personal_and_touches_nobody_else(
         ).one()
         network = select(NETWORK_ROWS).where(NETWORK_ROWS.c.audit_event_id == event.id)
         assert conn.execute(network).first() is None
-    assert set(event.details) == {"brands", "sessions", "codes", "messages", "network"}
+    assert set(event.details) == {"brands", "sessions", "codes", "messages", "network", "requests"}
 
 
 def test_a_wrong_address_or_code_is_a_wrong_guess_and_deletes_nothing(
