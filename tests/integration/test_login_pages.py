@@ -156,6 +156,18 @@ def test_signing_in_and_out_through_the_pages(committing_engine: Engine) -> None
     assert "Not affiliated with SerpApi" in client.get("/").text  # the public landing page
 
 
+def test_in_invite_mode_everyone_is_told_a_request_waits_for_the_operator(
+    committing_engine: Engine,
+) -> None:
+    said = "Your request to join is with the operator"
+    for settings, shown in ((make_settings(signup_mode="invite"), True), (make_settings(), False)):
+        client = browser(committing_engine, settings=settings)
+        form = token(client.get("/login").text)
+        email = f"{uuid.uuid4().hex[:10]}@example.com"
+        sent = client.post("/login", data={"form_token": form, "email": email})
+        assert sent.status_code == 200 and (said in sent.text) is shown
+
+
 def test_a_malformed_address_is_said_so(committing_engine: Engine) -> None:
     client = browser(committing_engine)
     form = token(client.get("/login").text)
