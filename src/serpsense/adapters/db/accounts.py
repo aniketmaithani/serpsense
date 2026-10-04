@@ -20,6 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert
 
+from serpsense.adapters.db.models.access import AccessRequest
 from serpsense.adapters.db.models.audit import AuditEvent, AuditEventNetwork
 from serpsense.adapters.db.models.brands import Brand
 from serpsense.adapters.db.models.identity import OtpCode, User, UserSession
@@ -29,7 +30,7 @@ from serpsense.ports.accounts import Scrubbed, email_address
 
 USERS, CODES = cast(Table, User.__table__), cast(Table, OtpCode.__table__)
 SESSIONS, BRANDS = cast(Table, UserSession.__table__), cast(Table, Brand.__table__)
-MESSAGES = cast(Table, OutboxMessage.__table__)
+MESSAGES, REQUESTS = cast(Table, OutboxMessage.__table__), cast(Table, AccessRequest.__table__)
 EVENTS, NETWORK = cast(Table, AuditEvent.__table__), cast(Table, AuditEventNetwork.__table__)
 LIVE_USER = USERS.c.deleted_at.is_(None)
 ZEROED = bytes(32)  # an HMAC of a 6-digit code could confirm a guessed address (ADR-0013)
@@ -83,6 +84,11 @@ class SqlAccounts:
             .where(CODES.c.email == email)
             .values(email=_pseudonym(CODES.c.id), request_ip=None, code_hash=ZEROED)
         )
+        requests = self._count(
+            update(REQUESTS)
+            .where(REQUESTS.c.email == email)
+            .values(email=_pseudonym(REQUESTS.c.id))
+        )
         sessions = self._count(delete(SESSIONS).where(SESSIONS.c.user_id == user_id))
         brands = self._count(
             update(BRANDS)
@@ -94,7 +100,7 @@ class SqlAccounts:
             .where(USERS.c.id == user_id)
             .values(email=_pseudonym(USERS.c.id), deleted_at=at)
         )
-        return Scrubbed(brands, sessions, scrubbed_codes, messages, network)
+        return Scrubbed(brands, sessions, scrubbed_codes, messages, network, requests)
 
     def _delete_network(self, user_id: uuid.UUID, codes: ScalarSelect[uuid.UUID]) -> int:
         """Network details of the user's events, and of the pre-login events (no actor yet)
