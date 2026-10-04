@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from serpsense.domain.llm_capabilities import LlmPreset
 
 MIN_SECRET_KEY_LENGTH = 32
+MIN_ADMIN_PASSWORD_LENGTH = 16  # ADR-0014
 FERNET_KEY_BYTES = 32
 # Credentials hard-coded for local development in docker-compose.yml; never valid in production.
 DEV_DATABASE_CREDENTIALS = "serpsense:serpsense@"
@@ -102,8 +103,16 @@ class Settings(BaseSettings):
     smtp_starttls: bool = False
     email_from: str = "SerpSense <no-reply@serpsense.local>"
 
+    # Operator console (ADR-0014): off unless a password is set
+    admin_password: SecretStr | None = None
+
     # Observability
     log_level: LogLevel = LogLevel.INFO
+
+    @field_validator("admin_password", mode="before")
+    @classmethod
+    def _empty_admin_password_is_none(cls, value: object) -> object:
+        return None if value == "" else value  # `ADMIN_PASSWORD=` as copied from .env.example
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -141,6 +150,7 @@ class Settings(BaseSettings):
             self.serpapi_api_key,
             self.anthropic_api_key,
             self.smtp_password,
+            self.admin_password,
         )
         values = [s.get_secret_value() for s in secrets if s is not None]
         values.extend(_split_csv(self.outbox_encryption_keys.get_secret_value()))
@@ -151,6 +161,11 @@ class Settings(BaseSettings):
         if len(self.secret_key.get_secret_value()) < MIN_SECRET_KEY_LENGTH:
             raise ConfigError(f"SECRET_KEY must be at least {MIN_SECRET_KEY_LENGTH} characters")
         _check_fernet_keys(self.outbox_encryption_keys.get_secret_value())
+        admin = self.admin_password
+        if admin is not None and len(admin.get_secret_value()) < MIN_ADMIN_PASSWORD_LENGTH:
+            raise ConfigError(
+                f"ADMIN_PASSWORD must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters"
+            )
         if self.is_production:
             _check_production(self)
         return self
