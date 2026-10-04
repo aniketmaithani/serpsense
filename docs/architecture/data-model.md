@@ -412,7 +412,7 @@ Migration 0024.
 ### `audit_event_network` (mutable: scrubbed on deletion)
 `audit_event_id` pk/fk, `ip inet`, `user_agent text` (≤ 256, `ck_audit_event_network_user_agent_length`). Network details are kept apart so the append-only log never holds raw personal data.
 
-The operator console's logins (`admin.login_succeeded`, `admin.login_failed`, ADR-0014) have no actor, no target and no network row: the operator isn't a user.
+The operator console's events (`admin.login_succeeded`, `admin.login_failed`, `admin.logged_out`, ADR-0014) have no actor, no target and no network row: the operator isn't a user. Failed logins in the last hour cap further attempts, and a session that began before the latest `admin.logged_out` is refused.
 
 Pre-login auth events (`auth.code_requested`, `auth.verify_failed`) have no actor; they set `target_type = 'otp_code'`, `target_id = otp_codes.id`, so deletion can find their network rows through the user's OTP codes. `account.deleted` writes no network row, and its details hold only how many rows the deletion changed per table. A pre-login event with no code to point at (a refused or rate-limited request, a verify with no live code) writes no network row, since deletion couldn't find it.
 

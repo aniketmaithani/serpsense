@@ -267,6 +267,7 @@ class AuditAction(StrEnum):
     ACCOUNT_DELETED = "account.deleted"
     ADMIN_LOGIN_SUCCEEDED = "admin.login_succeeded"  # the operator console (ADR-0014)
     ADMIN_LOGIN_FAILED = "admin.login_failed"
+    ADMIN_LOGGED_OUT = "admin.logged_out"  # ends every console session issued before it
 
 
 class AuditTarget(StrEnum):

@@ -44,6 +44,12 @@ class Audit:
         self.entries.append(entry)
         return uuid.uuid4()
 
+    def operator_events_since(self, action: AuditAction, since: datetime) -> int:
+        return sum(e.action is action and e.at >= since for e in self.entries)
+
+    def last_operator_event(self, action: AuditAction) -> datetime | None:
+        return max((e.at for e in self.entries if e.action is action), default=None)
+
 
 @dataclass
 class Work:
@@ -105,6 +111,30 @@ def test_attempts_are_limited_per_source_and_overall() -> None:
     door, _, _ = gate(v6)
     door.log_in("guess", Network(ip_address("2001:db8:1:2::abcd"), None))
     assert v6.asked[0] == "admin-login:2001:db8:1:2::/64"
+
+
+def test_failures_are_capped_in_postgres_when_redis_lets_everything_through() -> None:
+    open_limiter = Limiter({"admin-login:203.0.113.9": 10**6, "admin-login:all": 10**6})
+    door, _, clock = gate(open_limiter)  # it never refuses, as when Redis is down
+    for minute in range(console.LOGINS_IN_ALL):
+        clock.at = AT + timedelta(minutes=minute)
+        assert door.log_in("guess", HERE) is None
+    with capture_logs() as logs:
+        assert door.log_in(PASSWORD, HERE) is None  # even the right password, for the hour
+    assert [log["event"] for log in logs] == ["admin.login_limited"]
+    clock.at = AT + console.IN_ALL_WINDOW + timedelta(minutes=1)  # the first failures age out
+    assert door.log_in(PASSWORD, HERE) is not None
+
+
+def test_logging_out_ends_every_session_begun_before_it() -> None:
+    door, work, clock = gate()
+    first, second = door.log_in(PASSWORD, HERE), door.log_in(PASSWORD, HERE)
+    clock.at = AT + timedelta(minutes=5)
+    door.log_out()
+    assert not door.signed_in(first) and not door.signed_in(second)  # copied cookies too
+    assert work.audit.entries[-1].action is AuditAction.ADMIN_LOGGED_OUT
+    clock.at = AT + timedelta(minutes=6)
+    assert door.signed_in(door.log_in(PASSWORD, HERE))  # a new session after it
 
 
 def test_console_forms_carry_the_sessions_csrf_token() -> None:

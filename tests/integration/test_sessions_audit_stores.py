@@ -96,3 +96,16 @@ def test_a_session_ends_thirty_days_after_it_began(conn: Connection) -> None:
     sessions.create(NewSession(long.user_id, b"n" * 32, b"c" * 32, NOW, NOW + 40 * day))
     assert sessions.active(b"n" * 32, at=NOW + 29 * day) is not None
     assert sessions.active(b"n" * 32, at=NOW + 30 * day + MINUTE) is None  # too old to open
+
+
+def test_the_operators_events_are_counted_and_dated(conn: Connection) -> None:
+    audit, user = SqlAuditLog(conn), add_user(conn)
+    failed, out = AuditAction.ADMIN_LOGIN_FAILED, AuditAction.ADMIN_LOGGED_OUT
+    for minutes in (0, 10):
+        audit.record(AuditEntry(failed, NOW + timedelta(minutes=minutes)))
+    audit.record(AuditEntry(failed, NOW, actor_user_id=user))  # a user's event, not the operator's
+    assert audit.operator_events_since(failed, NOW) == 2
+    assert audit.operator_events_since(failed, NOW + timedelta(minutes=5)) == 1
+    assert audit.last_operator_event(out) is None
+    audit.record(AuditEntry(out, NOW + timedelta(minutes=30)))
+    assert audit.last_operator_event(out) == NOW + timedelta(minutes=30)
