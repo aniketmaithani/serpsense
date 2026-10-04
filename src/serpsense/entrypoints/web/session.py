@@ -4,7 +4,8 @@ The session cookie holds a random token (HttpOnly, SameSite=Lax; in production S
 __Host-, so no subdomain can set or read it). A signed-in
 write carries the session's CSRF token, in a form field or the X-CSRF-Token header. The two sign-in
 forms come before any session, so they carry a double-submit token instead: a random value in a
-strict cookie that the form must echo.
+strict cookie that the form must echo. The operator console (ADR-0014) has its own cookie, signed
+rather than stored, SameSite=Strict, with the same prefix and flags.
 """
 
 import hmac
@@ -19,7 +20,7 @@ from serpsense.ports.audit import Network
 from serpsense.services.auth import SignIn
 from serpsense.services.sessions import CurrentUser, SessionGuard
 
-SESSION, FORM = "serpsense_session", "serpsense_form"
+SESSION, FORM, CONSOLE = "serpsense_session", "serpsense_form", "serpsense_admin"
 
 
 def container(request: Request) -> Container:
@@ -61,6 +62,22 @@ def set_session(request: Request, response: Response, token: str) -> None:
 
 def clear_session(request: Request, response: Response) -> None:
     _forget(request, response, SESSION, samesite="lax")
+
+
+def console_token(request: Request) -> str | None:
+    return request.cookies.get(cookie_name(request, CONSOLE))
+
+
+def set_console_session(request: Request, response: Response, token: str, *, seconds: int) -> None:
+    secure = container(request).settings.is_production
+    name = cookie_name(request, CONSOLE)
+    response.set_cookie(
+        name, token, max_age=seconds, httponly=True, secure=secure, samesite="strict"
+    )
+
+
+def clear_console_session(request: Request, response: Response) -> None:
+    _forget(request, response, CONSOLE, samesite="strict")
 
 
 def require_csrf(request: Request, user: CurrentUser, submitted: str | None) -> None:

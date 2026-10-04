@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Operator console · SerpSense{% endblock %}
+{% block nav %}
+<form method="post" action="/admin/logout" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="link">Sign out</button>
+</form>
+{% endblock %}
+{% block main %}
+{% set t = view.totals %}
+<div class="page-head">
+  <div>
+    <h1>Operator console</h1>
+    <p class="muted">Every user's brands at a glance, and who is waiting to get in.</p>
+  </div>
+</div>
+<div class="kpis">
+  {% for label, value in [("Users", t.users), ("Brands", t.brands), ("Added this week", t.brands_this_week), ("Archived brands", t.archived_brands), ("Scans in the last 24 h", t.scans_today), ("Searches this month", t.searches_this_month), ("Waiting to get in", t.pending_requests)] %}
+  <div class="kpi"><div class="kpi-label">{{ label }}</div><div class="kpi-value">{{ value }}</div></div>
+  {% endfor %}
+</div>
+<section class="card">
+  <div class="card-head"><h2>Access requests</h2></div>
+  <p class="muted">Approving lets the address ask for a sign-in code; nothing is emailed. Rejecting stops new sign-ins but doesn't end sessions already open.</p>
+  {% if view.requests %}
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Email</th><th>Asked</th><th>Decision</th><th></th></tr></thead>
+    <tbody>
+    {% for r in view.requests %}
+      <tr>
+        <td>{{ r.email }}</td>
+        <td>{{ r.requested_at|when }}</td>
+        <td>{% if r.decision %}{{ r.decision|words }} · {{ r.decided_at|when }}{% else %}Waiting{% endif %}</td>
+        <td class="actions">
+          {% if r.decision != "approved" %}
+          <form method="post" action="/admin/access/{{ r.request_id }}/approve" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Approve</button>
+          </form>
+          {% endif %}
+          {% if r.decision != "rejected" %}
+          <form method="post" action="/admin/access/{{ r.request_id }}/reject" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="secondary">Reject</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No one has asked to get in yet.</p>
+  {% endif %}
+</section>
+<section class="card">
+  <div class="card-head"><h2>Brands</h2><span class="muted">newest first</span></div>
+  {% if view.brands %}
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Brand</th><th>Owner</th><th>Added</th><th>Last scan</th></tr></thead>
+    <tbody>
+    {% for b in view.brands %}
+      <tr>
+        <td>{{ b.name }}{% if b.archived %} <span class="muted">· archived</span>{% endif %}</td>
+        <td>{{ b.owner_email }}</td>
+        <td>{{ b.created_at|when }}</td>
+        <td>{{ b.last_scan_at|when if b.last_scan_at else "never" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No brands yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
