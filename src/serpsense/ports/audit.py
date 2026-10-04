@@ -32,3 +32,12 @@ class AuditEntry:
 
 class AuditLog(Protocol):
     def record(self, entry: AuditEntry) -> uuid.UUID: ...
+
+    def operator_events_since(self, action: AuditAction, since: datetime) -> int:
+        """How many events of this kind with no actor (the operator console's, ADR-0014)
+        happened since then."""
+        ...
+
+    def last_operator_event(self, action: AuditAction) -> datetime | None:
+        """When the latest such event happened; None if none has."""
+        ...

@@ -38,6 +38,15 @@ def test_a_session_lasts_until_it_expires() -> None:
     assert not console.session_valid(KEYS, token, AT + console.SESSION_LENGTH)
 
 
+def test_a_logout_ends_sessions_begun_before_it() -> None:
+    begun = AT
+    token = console.session_token(KEYS, begun + console.SESSION_LENGTH, "n0nce")
+    after = begun + timedelta(minutes=1)
+    assert console.session_valid(KEYS, token, after, ended_at=begun - timedelta(milliseconds=1))
+    assert not console.session_valid(KEYS, token, after, ended_at=begun)
+    assert not console.session_valid(KEYS, token, after, ended_at=after)
+
+
 @pytest.mark.parametrize(
     "tamper",
     [

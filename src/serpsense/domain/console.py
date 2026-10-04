@@ -1,9 +1,10 @@
 """The operator console's password check and signed session (ADR-0014).
 
 Pure: the keys, the time and the random values are given. A typed password is compared with the
-configured one as HMACs, in constant time. A session is `<expiry>.<nonce>.<signature>`, signed
+configured one as HMACs, in constant time. A session is `<expiry ms>.<nonce>.<signature>`, signed
 with a key derived from `SECRET_KEY` and the password, so changing either signs the operator
-out; nothing about it is stored. A console form's CSRF token is an HMAC of the session.
+out; nothing about it is stored. It began `SESSION_LENGTH` before it expires, so a logout can end
+every session that began before it. A console form's CSRF token is an HMAC of the session.
 """
 
 import base64
@@ -45,18 +46,24 @@ def password_matches(keys: ConsoleKeys, typed: str) -> bool:
 
 
 def session_token(keys: ConsoleKeys, expires_at: datetime, nonce: str) -> str:
-    body = f"{int(expires_at.timestamp())}.{nonce}"
+    body = f"{_ms(expires_at)}.{nonce}"
     return f"{body}.{_signature(keys, body)}"
 
 
-def session_valid(keys: ConsoleKeys, token: str, at: datetime) -> bool:
-    """A session this key signed, not yet expired; anything else is just invalid."""
+def session_valid(
+    keys: ConsoleKeys, token: str, at: datetime, *, ended_at: datetime | None = None
+) -> bool:
+    """A session this key signed, not yet expired, and begun after `ended_at` (the latest
+    logout) if there is one; anything else is just invalid."""
     body, _, signature = token.rpartition(".")
     expected = _signature(keys, body).encode()
     if not body or not hmac.compare_digest(expected, signature.encode("utf-8", "replace")):
         return False
     expiry = body.partition(".")[0]
-    return expiry.isascii() and expiry.isdigit() and at.timestamp() < int(expiry)
+    if not (expiry.isascii() and expiry.isdigit()) or _ms(at) >= int(expiry):
+        return False
+    began = int(expiry) - _ms_length(SESSION_LENGTH)
+    return ended_at is None or began > _ms(ended_at)
 
 
 def csrf_token(keys: ConsoleKeys, session: str) -> str:
@@ -74,6 +81,14 @@ def _signature(keys: ConsoleKeys, body: str) -> str:
 
 def _mac(key: bytes, purpose: str, value: bytes) -> bytes:
     return hmac.new(key, purpose.encode() + b"\0" + value, hashlib.sha256).digest()
+
+
+def _ms(at: datetime) -> int:
+    return int(at.timestamp() * 1000)
+
+
+def _ms_length(length: timedelta) -> int:
+    return int(length.total_seconds() * 1000)
 
 
 def _b64(raw: bytes) -> str:

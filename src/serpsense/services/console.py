@@ -2,8 +2,10 @@
 
 One password from the environment, compared as HMACs in constant time; attempts limited per
 source and across all sources; every success and failure an audit event with no actor and no
-network row (the operator isn't a user). A success opens a session that lasts four hours and is
-kept only in a signed cookie. Passwords, cookies and CSRF tokens are never logged.
+network row (the operator isn't a user); the failures are also counted in Postgres, which holds
+when the Redis limiter can't. A success opens a session that lasts four hours and is kept only in
+a signed cookie; logging out ends every session begun before it. Passwords, cookies and CSRF
+tokens are never logged.
 """
 
 import secrets
@@ -48,9 +50,20 @@ class ConsoleGate:
         return console.session_token(self._keys, expires_at, secrets.token_urlsafe(16))
 
     def signed_in(self, token: str | None) -> bool:
-        if not token:
+        """A valid session not ended by a logout; the database is asked only about a token
+        this key signed."""
+        at = self._ports.clock.now()
+        if not token or not console.session_valid(self._keys, token, at):
             return False
-        return console.session_valid(self._keys, token, self._ports.clock.now())
+        with self._ports.unit_of_work() as uow:
+            ended = uow.audit.last_operator_event(AuditAction.ADMIN_LOGGED_OUT)
+        return console.session_valid(self._keys, token, at, ended_at=ended)
+
+    def log_out(self) -> None:
+        """End every console session, copied cookies included."""
+        with self._ports.unit_of_work() as uow:
+            uow.audit.record(AuditEntry(AuditAction.ADMIN_LOGGED_OUT, self._ports.clock.now()))
+        log.info("admin.logged_out")
 
     def csrf_token(self, token: str) -> str:
         return console.csrf_token(self._keys, token)
@@ -61,11 +74,20 @@ class ConsoleGate:
     def _may_try(self, network: Network) -> bool:
         limiter = self._ports.limiter
         source = f"admin-login:{auth.request_source(network.ip)}"
-        if limiter.allow(
-            source, limit=console.LOGINS_PER_SOURCE, window=console.PER_SOURCE_WINDOW
-        ) and limiter.allow(
-            "admin-login:all", limit=console.LOGINS_IN_ALL, window=console.IN_ALL_WINDOW
+        if (
+            limiter.allow(source, limit=console.LOGINS_PER_SOURCE, window=console.PER_SOURCE_WINDOW)
+            and limiter.allow(
+                "admin-login:all", limit=console.LOGINS_IN_ALL, window=console.IN_ALL_WINDOW
+            )
+            and self._failures_below_cap()
         ):
             return True
         log.warning("admin.login_limited")
         return False
+
+    def _failures_below_cap(self) -> bool:
+        """The overall cap again, from the audit log: it holds when Redis is down."""
+        since = self._ports.clock.now() - console.IN_ALL_WINDOW
+        with self._ports.unit_of_work() as uow:
+            failures = uow.audit.operator_events_since(AuditAction.ADMIN_LOGIN_FAILED, since)
+        return failures < console.LOGINS_IN_ALL
