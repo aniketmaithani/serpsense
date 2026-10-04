@@ -6,16 +6,21 @@ network row (the operator isn't a user); the failures are also counted in Postgr
 when the Redis limiter can't. A success opens a session that lasts four hours and is kept only in
 a signed cookie; logging out ends every session begun before it. Passwords, cookies and CSRF
 tokens are never logged.
+
+Behind the door, the console shows totals, access requests and brands across every user, and
+records the operator's decisions on access requests; addresses are never logged.
 """
 
 import secrets
+import uuid
 from dataclasses import dataclass
 
 from serpsense.domain import auth, console
-from serpsense.domain.enums import AuditAction
+from serpsense.domain.enums import AccessDecision, AuditAction
 from serpsense.observability import get_logger
 from serpsense.ports.audit import AuditEntry, Network
 from serpsense.ports.clock import Clock
+from serpsense.ports.console import BrandRow, ConsoleReads, RequestRow, Totals
 from serpsense.ports.rate_limiter import RateLimiter
 from serpsense.ports.unit_of_work import UnitOfWorkFactory
 
@@ -91,3 +96,37 @@ class ConsoleGate:
         with self._ports.unit_of_work() as uow:
             failures = uow.audit.operator_events_since(AuditAction.ADMIN_LOGIN_FAILED, since)
         return failures < console.LOGINS_IN_ALL
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    totals: Totals
+    requests: list[RequestRow]
+    brands: list[BrandRow]
+
+
+class Console:
+    """The console behind its door: what it shows, and the operator's decisions."""
+
+    def __init__(
+        self,
+        gate: ConsoleGate,
+        reads: ConsoleReads,
+        unit_of_work: UnitOfWorkFactory,
+        clock: Clock,
+    ) -> None:
+        self.gate, self._reads = gate, reads
+        self._unit_of_work, self._clock = unit_of_work, clock
+
+    def snapshot(self) -> Snapshot:
+        at = self._clock.now()
+        return Snapshot(self._reads.totals(at), self._reads.requests(), self._reads.brands())
+
+    def decide(self, request_id: uuid.UUID, decision: AccessDecision) -> bool:
+        """Approve or reject a request; False if there is no such request. Rejecting stops
+        future sign-ins; it doesn't end sessions already open (ADR-0014)."""
+        with self._unit_of_work() as uow:
+            known = uow.access.decide(request_id, decision, at=self._clock.now())
+        if known:
+            log.info("access.decided", access_request_id=str(request_id), decision=decision)
+        return known
