@@ -17,7 +17,7 @@ import secrets
 import uuid
 from dataclasses import dataclass, field
 from datetime import timedelta
-from ipaddress import IPv4Address, IPv6Address, ip_network
+from ipaddress import IPv4Address, IPv6Address
 
 from serpsense.domain import auth
 from serpsense.domain.enums import AuditAction, AuditTarget, CodeEmail
@@ -229,6 +229,4 @@ class SignIn:
 
 
 def _key(action: str, ip: IPv4Address | IPv6Address | None) -> str:
-    """One count per IPv4 address, and per IPv6 /64, which one client usually holds whole."""
-    source = ip_network(f"{ip}/64", strict=False) if isinstance(ip, IPv6Address) else ip
-    return f"otp-{action}:{source or 'unknown'}"
+    return f"otp-{action}:{auth.request_source(ip)}"
