@@ -17,6 +17,7 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Protocol, Self
 
+from serpsense.ports.access import AccessRequests
 from serpsense.ports.accounts import Accounts
 from serpsense.ports.alert_store import AlertStore
 from serpsense.ports.audit import AuditLog
@@ -74,6 +75,9 @@ class UnitOfWork(Protocol):
 
     @property
     def otp_codes(self) -> OtpCodes: ...
+
+    @property
+    def access(self) -> AccessRequests: ...
 
     @property
     def sessions(self) -> Sessions: ...
