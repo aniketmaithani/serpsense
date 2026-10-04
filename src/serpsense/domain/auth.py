@@ -10,6 +10,7 @@ import hmac
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from ipaddress import IPv4Address, IPv6Address, ip_network
 
 CODE_DIGITS = 6
 CODE_TTL = timedelta(minutes=10)
@@ -50,6 +51,13 @@ def csrf_valid(key: bytes, session_secret: bytes, token: str) -> bool:
     """Bytes are compared, so a token with any characters is just wrong, never an error."""
     expected = csrf_token(key, session_secret).encode()
     return hmac.compare_digest(expected, token.encode("utf-8", "replace"))
+
+
+def request_source(ip: IPv4Address | IPv6Address | None) -> str:
+    """What a per-source limit counts: an IPv4 address, or an IPv6 /64, which one client usually
+    holds whole."""
+    source = ip_network(f"{ip}/64", strict=False) if isinstance(ip, IPv6Address) else ip
+    return str(source or "unknown")
 
 
 def may_request(recent: Sequence[datetime], at: datetime) -> bool:
