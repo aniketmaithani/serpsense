@@ -1,7 +1,9 @@
 """Sign in with an emailed code (ADR-0009).
 
 One flow signs up and logs in. Asking for a code answers the same way whether the address is
-known, unknown, not invited or rate limited, so the answer reveals nothing. A code is six digits
+known, unknown, not invited or rate limited, so the answer reveals nothing. In invite mode an
+address that isn't invited leaves an access request for the operator, and one whose request was
+last approved is let in like an invited one (ADR-0014). A code is six digits
 from `secrets`, kept only as an HMAC, sealed in its email and sent through the outbox at once
 (the outbox is nudged after commit). Verifying locks the email's live code, refuses an expired one
 or one with five wrong guesses before comparing, and records every comparison; the first
@@ -68,10 +70,14 @@ class SignIn:
         email = email_address(raw_email)
         if not self._may_request(network):
             return
-        if not self._policy.allows(email):
-            log.info("otp.request_refused")
-            return
-        self._send(email, network, CodeEmail.SIGN_IN)
+        with self._ports.unit_of_work() as uow:
+            if self._let_in(uow, email):
+                code_id = self._issue(uow, email, network, CodeEmail.SIGN_IN)
+            else:
+                self._ask_for_access(uow, email)
+                code_id = None
+        if code_id is not None:
+            log.info("otp.requested", otp_code_id=str(code_id))
 
     def send_step_up_code(self, email: str, network: Network, purpose: CodeEmail) -> None:
         """A code to a signed-in user's own address, in an email saying what it is for, to
@@ -95,7 +101,7 @@ class SignIn:
             email = email_address(raw_email)
         except InvalidEmail:
             return None
-        if not self.may_verify(network) or not self._policy.allows(email):
+        if not self.may_verify(network):
             return None
         with self._ports.unit_of_work() as uow:
             signed_in = self._verify(uow, email, code, network)
@@ -182,8 +188,21 @@ class SignIn:
         uow.audit.record(AuditEntry(AuditAction.CODE_REQUESTED, at, target=target, network=network))
         return code_id
 
+    def _ask_for_access(self, uow: UnitOfWork, email: str) -> None:
+        """An access request for the operator, unless too many came in the last hour."""
+        at = self._ports.clock.now()
+        if uow.access.recorded_between(at - auth.HOUR, at) >= auth.ACCESS_REQUESTS_PER_HOUR_IN_ALL:
+            log.warning("access.global_limit")
+        else:
+            uow.access.record(email, at=at)
+        log.info("otp.request_refused")
+
+    def _let_in(self, uow: UnitOfWork, email: str) -> bool:
+        """Invited, or approved by the operator (ADR-0014)."""
+        return self._policy.allows(email) or uow.access.approved(email)
+
     def _verify(self, uow: UnitOfWork, email: str, code: str, network: Network) -> SignedIn | None:
-        if not self.check_code(uow, email, code, network):
+        if not self._let_in(uow, email) or not self.check_code(uow, email, code, network):
             return None
         user_id = uow.accounts.user_for(email, at=self._ports.clock.now())
         return self._open_session(uow, user_id, network)

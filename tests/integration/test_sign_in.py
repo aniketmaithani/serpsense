@@ -10,9 +10,11 @@ import pytest
 from sqlalchemy import Engine, Select, select
 
 from serpsense.adapters.crypto.fernet_box import FernetBox
+from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.domain import auth
 from serpsense.domain.auth import SignupPolicy
+from serpsense.domain.enums import AccessDecision
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.ports.audit import Network
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
@@ -27,6 +29,8 @@ KEYS = AuthKeys(b"o" * 32, b"c" * 32)
 NETWORK = Network(ip_address("203.0.113.7"), "Mozilla/5.0")
 OPEN = SignupPolicy(invite_only=False)
 MESSAGES, CODES, EVENTS = table("outbox_messages"), table("otp_codes"), table("audit_events")
+REQUESTS = table("access_requests")
+INVITE = SignupPolicy(invite_only=True, emails=frozenset({"boss@example.com"}))
 
 
 @dataclass
@@ -76,10 +80,19 @@ class Rig:
             return len(conn.execute(query).all())
 
 
-def rig(engine: Engine, policy: SignupPolicy = OPEN, limiter: Limiter | None = None) -> Rig:
+def rig(
+    engine: Engine,
+    policy: SignupPolicy = OPEN,
+    limiter: Limiter | None = None,
+    *,
+    email: str | None = None,
+) -> Rig:
     clock, jobs, counting = FixedClock(NOW), Jobs(), limiter or Limiter()
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, jobs), BOX, counting, clock)
-    return Rig(SignIn(ports, KEYS, policy, session_days=7), counting, clock, jobs, engine)
+    service = SignIn(ports, KEYS, policy, session_days=7)
+    if email is None:
+        return Rig(service, counting, clock, jobs, engine)
+    return Rig(service, counting, clock, jobs, engine, email)
 
 
 def test_a_code_signs_in_once_and_opens_a_session(committing_engine: Engine) -> None:
@@ -124,6 +137,61 @@ def test_asking_for_a_code_reveals_nothing(committing_engine: Engine) -> None:
     assert limited.limiter.keys == ["otp-request:203.0.113.7"]
     with pytest.raises(InvalidEmail):
         sent.service.request_code("not an address", NETWORK)
+
+
+def requests_from(r: Rig, email: str) -> Select[Any]:
+    return select(REQUESTS.c.id).where(REQUESTS.c.email == email)
+
+
+def decide(r: Rig, email: str, decision: AccessDecision, minutes: int = 0) -> None:
+    with r.engine.begin() as conn:
+        request_id = conn.execute(requests_from(r, email)).scalar_one()
+        at = NOW + timedelta(minutes=minutes)
+        assert SqlAccessRequests(conn).decide(request_id, decision, at=at)
+
+
+def test_an_uninvited_address_asks_and_is_let_in_once_approved(committing_engine: Engine) -> None:
+    r = rig(committing_engine, INVITE)
+    r.service.request_code(r.email.upper(), NETWORK)
+    r.service.request_code(r.email, NETWORK)  # asking again: still one request
+    assert sent_to(r, r.email) == 0 and r.count(requests_from(r, r.email)) == 1
+    decide(r, r.email, AccessDecision.APPROVED)
+    r.service.request_code(r.email, NETWORK)
+    assert r.service.verify(r.email, r.code(), NETWORK) is not None  # in, like an invited one
+    for invited in (
+        rig(committing_engine, INVITE, email="boss@example.com"),
+        rig(committing_engine),
+    ):
+        invited.service.request_code(invited.email, NETWORK)  # invited, or open mode: no request
+        assert sent_to(invited, invited.email) >= 1
+        assert invited.count(requests_from(invited, invited.email)) == 0
+
+
+def test_new_access_requests_are_capped_each_hour(committing_engine: Engine) -> None:
+    r = rig(committing_engine, INVITE)
+    r.clock.at = NOW - timedelta(days=30)  # an hour of its own: no other test's requests count
+    with committing_engine.begin() as conn:
+        access = SqlAccessRequests(conn)
+        taken = access.recorded_between(r.clock.at - auth.HOUR, r.clock.at)
+        room = auth.ACCESS_REQUESTS_PER_HOUR_IN_ALL - taken
+        for _ in range(room - 1):
+            access.record(f"{uuid.uuid4().hex[:10]}@example.com", at=r.clock.at)
+    r.service.request_code(r.email, NETWORK)  # the last one this hour
+    late = rig(committing_engine, INVITE)
+    late.clock.at = r.clock.at
+    late.service.request_code(late.email, NETWORK)  # the same quiet answer, but not recorded
+    assert r.count(requests_from(r, r.email)) == 1
+    assert late.count(requests_from(late, late.email)) == 0
+
+
+def test_a_rejection_stops_a_code_already_sent(committing_engine: Engine) -> None:
+    r = rig(committing_engine, INVITE)
+    r.service.request_code(r.email, NETWORK)
+    decide(r, r.email, AccessDecision.APPROVED)
+    r.service.request_code(r.email, NETWORK)
+    code = r.code()
+    decide(r, r.email, AccessDecision.REJECTED, minutes=1)  # the latest decision counts
+    assert r.service.verify(r.email, code, NETWORK) is None
 
 
 def test_verifying_is_limited_too(committing_engine: Engine) -> None:
