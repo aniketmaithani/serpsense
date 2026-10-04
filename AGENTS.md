@@ -27,7 +27,7 @@ These rules bind every human and agent working in this repo. The reviewer agents
 src/serpsense/
 ├─ entrypoints/        web/ (FastAPI routes, templates), cli.py, jobs/ (Celery tasks)   ← thin: validate, call one service, return
 ├─ services/           use cases: scans, dispatch, sweep, enrichment, scoring_run, alerts, drafts, auth, accounts
-│                      (deletion), brands, settings, usage, llm_gateway, outbox
+│                      (deletion), brands, settings, usage, llm_gateway, outbox, console (ADR-0014)
 ├─ domain/             pure logic, no I/O: enums, value objects, scoring, crisis, diff, alert_rules, settings schemas,
 │                      estimator, llm_capabilities, scan_state, mention model
 ├─ ports/              Protocols the services depend on: SearchProvider, LLMClient, Mailer, Clock, UnitOfWork +
@@ -76,7 +76,7 @@ src/serpsense/
 - **No raw personal data (email, IP, user agent) in append-only tables**; it lives in mutable tables that account deletion scrubs (ADR-0013). FKs from append-only tables use `ON DELETE RESTRICT`.
 - Constraints and indexes are **named** (SQLAlchemy naming convention in `adapters/db/base.py`).
 - Migrations (Alembic) are reversible and follow expand → backfill → contract. The data-model doc is updated in the **same commit** as the migration.
-- User-scoped data is read through **one scoped query path** (`repositories.scoped(user)`); other users' records return **404**, identical to a missing record.
+- User-scoped data is read through **one scoped query path** (`repositories.scoped(user)`); other users' records return **404**, identical to a missing record. The one exception is the operator console's read port (`ports/console.py`, ADR-0014), which serves no user page.
 
 ---
 

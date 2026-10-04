@@ -19,5 +19,6 @@ Accepted ADRs are binding (see `AGENTS.md`). A change that contradicts one needs
 | [0011](0011-no-user-supplied-outbound-urls.md) | No user-supplied outbound URLs (webhooks dropped) | Accepted |
 | [0012](0012-observability-logs-metrics-runbooks.md) | Observability: structured logs, Prometheus metrics, runbooks | Accepted |
 | [0013](0013-account-deletion-and-pii.md) | Account deletion and personal-data handling | Accepted |
+| [0014](0014-operator-console-and-access-requests.md) | An operator console behind one password, and access requests | Accepted |
 
 Template: [template.md](template.md)
