@@ -17,7 +17,7 @@ Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the 
 - **No raw personal data in append-only tables.** Emails, IP addresses and user agents live only in mutable tables that the account-deletion flow can scrub (ADR-0013).
 - **Derived values are not stored.** Computed by query or by pure domain functions: a mention's first/last seen scan, searches used, billable flag, health score, crisis score and level, narrative activity, enrichment "pending", OTP message expiry.
 - **Changing facts are rows**: budgets, settings, schedules, status transitions, observations.
-- **Scoped access:** every user-owned row is reachable from `brands.owner_id` or `user_id`; repositories expose only `scoped(user)` query paths; out-of-scope reads return 404.
+- **Scoped access:** every user-owned row is reachable from `brands.owner_id` or `user_id`; repositories expose only `scoped(user)` query paths; out-of-scope reads return 404. The one exception is the operator console's read port (`ports/console.py`, ADR-0014), which reads across users and serves no user page.
 
 ### Named exceptions to "no derived values"
 | Column | Why it is stored | Guard |
@@ -37,7 +37,7 @@ Source of truth for the PostgreSQL schema (ADR-0003). **Update this file in the 
 | created_at | timestamptz | when the user was created: at their first successful OTP verification, or when an operator seeded them (`serpsense seed-demo`, ADR-0009 amendment) |
 | deleted_at | timestamptz null | set by the account-deletion flow (ADR-0013) |
 
-No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
+No roles/admin flag (RBAC out of scope). The operator console (ADR-0014) signs in with `ADMIN_PASSWORD`, not as a user; other operational tasks are CLI-only.
 
 ### `otp_codes` (mutable: scrubbed on deletion)
 | Column | Type | Notes |
@@ -69,6 +69,20 @@ No roles/admin flag (RBAC out of scope). Operational admin tasks are CLI-only.
 | user_agent | text null | truncated to 256 (`ck_sessions_user_agent_length`); scrubbed on deletion |
 
 `ck_sessions_expires_after_created`. Account deletion deletes the user's session rows (nothing references `sessions`).
+
+### `access_requests` (mutable: scrubbed on deletion)
+Migration 0028 (ADR-0014).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| email | citext | `uq_access_requests_email`: one request per address; pseudonymised when the account with this address is deleted; never logged |
+| requested_at | timestamptz | the first time the address asked for a code while not invited |
+
+Written only in invite mode, when an address that isn't on the invite lists asks for a code, at most 50 new ones an hour across all addresses; a repeat is `ON CONFLICT DO NOTHING`.
+
+### 🔒 `access_decisions`
+`id`, `access_request_id` fk → access_requests (RESTRICT), `decision` enum `access_decision` (`approved`, `rejected`; mirrors `domain.enums.AccessDecision`), `decided_at`. **`uq_access_decisions_access_request_id_decided_at`**: one decision per request per instant, so the latest always has a single answer (a repeat is `ON CONFLICT DO NOTHING`). The operator's decisions; the latest per request counts, none means pending. An address may sign in if it is invited or its latest decision is `approved`. No personal data.
 
 ### 🔒 `user_search_budgets` / 🔒 `user_llm_budgets`
 | Table | Columns |
