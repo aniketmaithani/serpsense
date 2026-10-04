@@ -46,6 +46,7 @@ from serpsense.adapters.serp.client import SerpApiSearchProvider
 from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.serp.replay import ReplaySearchProvider
 from serpsense.adapters.system_clock import SystemClock
+from serpsense.composition_console import build_console
 from serpsense.config import AppEnv, ConfigError, EmailBackend, RunMode, Settings, SignupMode
 from serpsense.domain.auth import SignupPolicy
 from serpsense.domain.enums import LlmTask
@@ -67,6 +68,7 @@ from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
 from serpsense.services.brand_settings import BrandSettings
 from serpsense.services.brands import BrandCreator
 from serpsense.services.collection import CollectorRunner
+from serpsense.services.console import Console
 from serpsense.services.crisis_tuning import CrisisTuner
 from serpsense.services.demo import Seeded, seed_demo
 from serpsense.services.dispatch import Dispatcher
@@ -141,6 +143,7 @@ class Container:
     crisis_tuning: CrisisTuner
     ai_settings: AiSettings
     drafts: Drafter
+    console: Console | None = None  # off without ADMIN_PASSWORD (ADR-0014)
 
 
 def build_settings(settings: Settings | None = None) -> Settings:
@@ -183,6 +186,7 @@ def build_container(settings: Settings | None = None) -> Container:
             fallback=resolved.default_llm_preset,
         ),
         drafts=build_drafter(resolved, engine, celery),
+        console=build_console(resolved, engine, celery),
     )
 
 
