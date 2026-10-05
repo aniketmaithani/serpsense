@@ -32,4 +32,5 @@ def build_console(settings: Settings, engine: Engine, celery: Celery) -> Console
         SystemClock(),
     )
     reads = SqlConsoleReads(engine.connect)
-    return Console(ConsoleGate(ports, keys), reads, ports.unit_of_work, ports.clock)
+    gate = ConsoleGate(ports, keys)
+    return Console(gate, reads, ports.unit_of_work, ports.clock, default_mode=settings.signup_mode)
