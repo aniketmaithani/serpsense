@@ -1,4 +1,5 @@
-"""Access requests and the operator's decisions on them (data-model §1, ADR-0014)."""
+"""Who may sign up: access requests, the operator's decisions on them, and the sign-up mode
+(data-model §1, ADR-0014, ADR-0015)."""
 
 import uuid
 from datetime import datetime
@@ -8,7 +9,7 @@ from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from serpsense.adapters.db.base import TIMESTAMPTZ, Base, pg_enum
-from serpsense.domain.enums import AccessDecision
+from serpsense.domain.enums import AccessDecision, SignupMode
 
 
 class AccessRequest(Base):
@@ -34,3 +35,14 @@ class AccessRequestDecision(Base):
     )
     decision: Mapped[AccessDecision] = mapped_column(pg_enum(AccessDecision, "access_decision"))
     decided_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ)
+
+
+class SignupModeChange(Base):
+    """Append-only (database trigger): the operator's switches; the latest counts, and with none
+    the environment's SIGNUP_MODE applies (ADR-0015). One per instant, so the latest is one row."""
+
+    __tablename__ = "signup_mode_changes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    mode: Mapped[SignupMode] = mapped_column(pg_enum(SignupMode, "signup_mode"))
+    changed_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, unique=True)

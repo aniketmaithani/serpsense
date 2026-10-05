@@ -1,6 +1,10 @@
 """ORM models. Importing this package registers every table on `Base.metadata`."""
 
-from serpsense.adapters.db.models.access import AccessRequest, AccessRequestDecision
+from serpsense.adapters.db.models.access import (
+    AccessRequest,
+    AccessRequestDecision,
+    SignupModeChange,
+)
 from serpsense.adapters.db.models.alerts import Alert, Notification, NotificationRead
 from serpsense.adapters.db.models.audit import AuditEvent, AuditEventNetwork
 from serpsense.adapters.db.models.brands import (
@@ -91,6 +95,7 @@ __all__ = [
     "ScoringVersion",
     "ScoringWeight",
     "SerpCall",
+    "SignupModeChange",
     "SurfaceScore",
     "TrendsObservation",
     "User",
