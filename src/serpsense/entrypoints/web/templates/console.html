@@ -20,6 +20,27 @@
   {% endfor %}
 </div>
 <section class="card">
+  <div class="card-head"><h2>Sign-up</h2></div>
+  {% if view.signup.mode == "open" %}
+  <p><strong>Open to everyone.</strong> Anyone with an email address can sign up, and each new account gets the default monthly search and AI budgets. People who sign up now stay in after you close it.</p>
+  {% else %}
+  <p><strong>Approval required.</strong> Only invited addresses and the ones you approve below can sign up.</p>
+  {% endif %}
+  <p class="muted">{% if view.signup.since %}Since {{ view.signup.since|when }}.{% else %}The server's default; not switched here yet.{% endif %}</p>
+  {% if view.signup.mode == "open" %}
+  <form method="post" action="/admin/signup/approval">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Require approval</button>
+  </form>
+  {% else %}
+  <p class="muted">Opening lets anyone sign up straight away. Each new account gets the default monthly search and AI budgets, inside the daily caps across all users.</p>
+  <form method="post" action="/admin/signup/open">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary">Open sign-up to everyone</button>
+  </form>
+  {% endif %}
+</section>
+<section class="card">
   <div class="card-head"><h2>Access requests</h2></div>
   <p class="muted">Approving lets the address ask for a sign-in code; nothing is emailed. Rejecting stops new sign-ins but doesn't end sessions already open.</p>
   {% if view.requests %}

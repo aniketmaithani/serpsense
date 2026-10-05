@@ -1,4 +1,4 @@
-"""The operator console's pages at /admin (ADR-0014): off (404) without ADMIN_PASSWORD.
+"""The operator console's pages at /admin (ADR-0014, ADR-0015): off (404) without ADMIN_PASSWORD.
 
 The login form carries the sign-in pages' double-submit token; the session is a signed cookie
 (SameSite=Strict), and every write carries its CSRF token. Nothing here is cached or indexed.
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from serpsense.domain.console import SESSION_LENGTH
-from serpsense.domain.enums import AccessDecision
+from serpsense.domain.enums import AccessDecision, SignupMode
 from serpsense.entrypoints.web.pages import page
 from serpsense.entrypoints.web.session import (
     clear_console_session,
@@ -29,6 +29,8 @@ router = APIRouter(prefix="/admin")
 SEE_OTHER = status.HTTP_303_SEE_OTHER
 Field = Annotated[str, Form()]
 DECISIONS = {"approve": AccessDecision.APPROVED, "reject": AccessDecision.REJECTED}
+# The operator sees "approval required" where the code says invite mode (ADR-0015).
+MODES = {"open": SignupMode.OPEN, "approval": SignupMode.INVITE}
 
 
 @router.get("/login")
@@ -84,6 +86,20 @@ def decide(request: Request, request_id: uuid.UUID, verb: str, csrf_token: Field
     decision = DECISIONS.get(verb)
     if decision is None or not console.decide(request_id, decision):
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return _private(RedirectResponse("/admin", SEE_OTHER))
+
+
+@router.post("/signup/{choice}")
+def switch_signup(request: Request, choice: str, csrf_token: Field = "") -> Response:
+    console = _console(request)
+    token = _session(request, console)
+    if token is None:
+        return _private(RedirectResponse("/admin/login", SEE_OTHER))
+    _require_csrf(console, token, csrf_token)
+    mode = MODES.get(choice)
+    if mode is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    console.switch_signup(mode)
     return _private(RedirectResponse("/admin", SEE_OTHER))
 
 
