@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
+from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.inbox import SqlInbox
 from serpsense.adapters.db.leases import SqlLeases
 from serpsense.adapters.db.llm_ledger import SqlLlmLedger
@@ -20,6 +21,7 @@ from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.adapters.llm.unavailable import UnavailableClient
 from serpsense.composition import Container
 from serpsense.config import Settings
+from serpsense.domain.enums import SignupMode
 from serpsense.domain.llm_capabilities import LlmPreset
 from serpsense.entrypoints.web.app import create_app
 from serpsense.ports.llm_client import LLMClient
@@ -52,7 +54,7 @@ def browser(
 ) -> TestClient:
     clock = clock or FixedClock(NOW)
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, Jobs()), BOX, Limiter(), clock)
-    sign_in = SignIn(ports, KEYS, OPEN, session_days=7)
+    sign_in = SignIn(ports, KEYS, OPEN, session_days=7, follow_switches=True)
     guard = SessionGuard(ports.unit_of_work, clock, KEYS.csrf, session_days=7)
     unit_of_work = lambda: SqlUnitOfWork(engine, ScanJobs())  # noqa: E731 (one line, one use)
     scan_now = ScanNow(unit_of_work, SqlSearchLedger(engine.begin), clock, ScanNowLimits(20, 240))
@@ -156,16 +158,21 @@ def test_signing_in_and_out_through_the_pages(committing_engine: Engine) -> None
     assert "Not affiliated with SerpApi" in client.get("/").text  # the public landing page
 
 
-def test_in_invite_mode_everyone_is_told_a_request_waits_for_the_operator(
-    committing_engine: Engine,
-) -> None:
+def test_while_approval_is_needed_everyone_is_told_a_request_waits(fresh_engine: Engine) -> None:
     said = "Your request to join is with the operator"
-    for settings, shown in ((make_settings(signup_mode="invite"), True), (make_settings(), False)):
-        client = browser(committing_engine, settings=settings)
+    client = browser(fresh_engine)  # the environment's mode here is open
+
+    def shown() -> bool:
         form = token(client.get("/login").text)
         email = f"{uuid.uuid4().hex[:10]}@example.com"
         sent = client.post("/login", data={"form_token": form, "email": email})
-        assert sent.status_code == 200 and (said in sent.text) is shown
+        return sent.status_code == 200 and said in sent.text
+
+    assert not shown()
+    for minutes, mode, expected in ((1, SignupMode.INVITE, True), (2, SignupMode.OPEN, False)):
+        with fresh_engine.begin() as conn:  # the operator's switch (ADR-0015)
+            SqlAccessRequests(conn).switch_signup_mode(mode, at=NOW + timedelta(minutes=minutes))
+        assert shown() is expected
 
 
 def test_a_malformed_address_is_said_so(committing_engine: Engine) -> None:
