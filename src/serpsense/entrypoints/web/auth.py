@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from serpsense.config import SignupMode
+from serpsense.domain.enums import SignupMode
 from serpsense.entrypoints.web.pages import page
 from serpsense.entrypoints.web.session import (
     clear_session,
