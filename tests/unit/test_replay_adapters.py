@@ -183,6 +183,7 @@ DRAFTED = RecordedDraft(
     kind=DraftKind.HOLDING_STATEMENT,
     prompt_version="draft_response/v1",
     text="We're aware of reports of the charging case overheating, and are looking into it.",
+    cites=tuple(text_id(MentionSource.NEWS, f"Report {n}") for n in (2, 3, 4, 5)),
 )
 
 
@@ -222,8 +223,11 @@ def test_a_draft_is_the_recorded_text_citing_the_mentions_it_was_shown() -> None
     gateway = replaying(MemoryLedger(), story_recording())
     draft = LlmTask.DRAFT_RESPONSE
     asked = output_call(draft, "draft_response/v1", story_label=SWELLING, kind="holding_statement")
-    drafted = gateway.run(asked, Drafted).output
-    assert (drafted.text, drafted.cited) == (DRAFTED.text, ["m1", "m2", "m3"])
+    drafted = gateway.run(asked, Drafted).output  # cites the recorded texts among those shown
+    assert (drafted.text, drafted.cited) == (DRAFTED.text, ["m2", "m3", "m4"])
+    shown_none = [{"id": "m1", "source": "news", "text": "Something else"}]
+    with pytest.raises(LlmCallFailed):
+        gateway.run(replace(asked, variables={**asked.variables, "mentions": shown_none}), Drafted)
     for other in ({"kind": "review_reply"}, {"story_label": "Late delivery"}):
         with pytest.raises(LlmCallFailed):
             gateway.run(replace(asked, variables={**asked.variables, **other}), Drafted)

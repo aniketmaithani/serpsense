@@ -8,8 +8,9 @@ recorded, and only when it was said by the prompt version asked for (provenance,
 - grouping: the recorded story, joining the open narrative with the same label or starting it;
   a text the recording put in no story is placed in none, as a one-off;
 - explaining an alert: the words recorded for its rule, the level reached and its story;
-- drafting: the reply recorded for the story and the kind of draft, citing the first mentions
-  it was shown (the drafter shows the worst first).
+- drafting: the reply recorded for the story and the kind of draft, citing the texts it
+  recorded among the mentions it was shown (the first few: the drafter shows the worst first);
+  with none of them shown, it fails as an unrecorded answer does.
 Nothing is made up. Every answer is recorded honestly: served by the model `replay`, with no
 tokens and no cost, so no usage page shows a Claude call that didn't happen, and the exporter
 can leave replayed output out of a new recording. A task with nothing recorded fails as an API
@@ -62,8 +63,7 @@ class ReplayLlm:
         elif request.task is LlmTask.EXPLAIN_CRISIS:
             output = {"explanation": self._explanation(brand, request).text}
         elif request.task is LlmTask.DRAFT_RESPONSE:
-            cited = [record["id"] for record in mentions[:CITED]]
-            output = {"text": self._draft(brand, request).text, "cited": cited}
+            output = _drafted(self._draft(brand, request), mentions)
         else:
             raise _unrecorded()
         return LlmResponse(
@@ -132,6 +132,17 @@ def _same_prompt(found: Said | None, request: LlmRequest) -> Said:
     if found is None or found.prompt_version != request.prompt_version:
         raise _unrecorded()
     return found
+
+
+def _drafted(draft: RecordedDraft, mentions: Records) -> dict[str, Any]:
+    cited = [
+        record["id"]
+        for record in mentions
+        if text_id(MentionSource(record["source"]), record["text"]) in draft.cites
+    ][:CITED]
+    if not cited:
+        raise _unrecorded()
+    return {"text": draft.text, "cited": cited}
 
 
 def _unrecorded() -> LlmCallFailed:
