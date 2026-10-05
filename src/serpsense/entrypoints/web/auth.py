@@ -2,8 +2,9 @@
 
 The verify page is rendered straight from the request-code form, so the email never travels in a
 URL (and so never in a log). Every answer to "send me a code" looks the same, and no sign-in page
-is cached; in invite mode it also tells newcomers their request waits for the operator
-(ADR-0014), which it tells everyone alike. Signing in ends any session the browser already had.
+is cached; while sign-up needs approval it also tells newcomers their request waits for the
+operator (ADR-0014, ADR-0015), which it tells everyone alike. Signing in ends any session the
+browser already had.
 """
 
 from typing import Annotated
@@ -11,11 +12,9 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from serpsense.domain.enums import SignupMode
 from serpsense.entrypoints.web.pages import page
 from serpsense.entrypoints.web.session import (
     clear_session,
-    container,
     current_user,
     drop_form_token,
     form_token,
@@ -50,11 +49,10 @@ def login_form(request: Request) -> Response:
 def request_code(request: Request, form_token: Field = "", email: Field = "") -> Response:
     require_form_token(request, form_token)
     try:
-        sign_in(request).request_code(email, network(request))
+        invite_only = sign_in(request).request_code(email, network(request))
     except InvalidEmail:
         error = "That doesn't look like an email address."
         return _form(request, "login.html", status_code=400, email=email, error=error)
-    invite_only = container(request).settings.signup_mode is SignupMode.INVITE
     return _form(request, "verify.html", email=email.strip(), asked=ASKED if invite_only else "")
 
 
