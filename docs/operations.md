@@ -105,7 +105,15 @@ brands and scans there are, every brand with its owner, and the access requests:
 mode, an address that isn't invited and asks for a code leaves one. **Approve** lets that address
 sign in (it asks for a code again; nothing is emailed), **Reject** keeps it out, and a later
 decision replaces an earlier one. The invite lists (`ALLOWED_EMAILS`, `ALLOWED_DOMAINS`) still
-work alongside; rejecting doesn't end sessions already open. A console session lasts 4 hours;
+work alongside; rejecting doesn't end sessions already open. **Sign-up** switches between
+*approval required* (the above) and *open to everyone*, where anyone with an email address gets an
+account straight away and no requests are left (ADR-0015). People who sign up while it's open are
+approved as they do, so closing it again stops newcomers only; reject someone to stop them. Each
+switch is kept with its time; with none, `SIGNUP_MODE` from the environment applies, which
+production requires to be `invite`. Switches count only while the console is on: to close sign-up
+without the console, remove `ADMIN_PASSWORD` and restart. While sign-up is open every new account
+gets the default monthly search and LLM budgets, inside the daily caps across all users
+(`SERPAPI_DAILY_GLOBAL_CAP`, `LLM_DAILY_GLOBAL_CAP_MICROS`). A console session lasts 4 hours;
 **Sign out** ends every console session (copies of the cookie included), and so does changing the
 password or `SECRET_KEY`. Thirty failed logins in an hour, from anywhere, lock the console for
 the rest of that hour, the right password included: if that happens, wait it out, then change
