@@ -1,10 +1,9 @@
-"""The replay recordings the package ships hold only what the parsers read: no key, nothing
-key-shaped, no reviewer or creator, no link to a review, no tracking parameter on a link
-(AGENTS §6). Every file is checked as it is committed."""
+"""The demo story replay mode plays holds only what the parsers read and nothing real: no key,
+nothing key-shaped, no reviewer or creator, no link to a review, no tracking parameter, and every
+link on example.com, so it names no real site, company or person (AGENTS §6)."""
 
 import re
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
@@ -13,17 +12,17 @@ import pytest
 from serpsense.adapters.replay.recording import (
     ANY_HOST,
     LINK_PARAMS,
-    RECORDINGS,
     REVIEW_ID,
     Recording,
     cleaned,
+    dump,
 )
+from serpsense.adapters.replay.story.build import BRANDS, recordings
 from serpsense.adapters.serp.redaction import IDENTITY_FIELDS, REVIEWER_FIELDS
-from serpsense.services.demo import DEMO_BRANDS
 
 pytestmark = pytest.mark.security
 
-FILES = sorted(RECORDINGS.glob("*.json"))
+RECORDINGS = recordings()
 NEVER = IDENTITY_FIELDS | REVIEWER_FIELDS | {"avatar", "thumbnail", "favicon", "serpapi_link"}
 
 
@@ -48,16 +47,15 @@ def links(value: Any) -> Iterator[str]:
             yield from links(item)
 
 
-def test_the_demo_brands_are_recorded() -> None:
-    assert {path.stem for path in FILES} == {demo.slug for demo in DEMO_BRANDS}
+def test_every_brand_of_the_story_is_recorded() -> None:
+    assert [r.brand for r in RECORDINGS] == [brand.slug for brand in BRANDS]
 
 
-@pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)
-def test_a_recording_holds_only_what_the_parsers_read(path: Path) -> None:
-    text = path.read_text(encoding="utf-8")
+@pytest.mark.parametrize("recording", RECORDINGS, ids=lambda r: r.brand)
+def test_a_recording_holds_only_what_the_parsers_read(recording: Recording) -> None:
+    text = dump(recording)
     assert "api_key" not in text and not re.search(r"\b[0-9a-fA-F]{64}\b", text)
-    recording = Recording.model_validate_json(text)  # refuses anything key-shaped too
-    assert recording.brand == path.stem
+    assert Recording.model_validate_json(text) == recording  # refuses anything key-shaped too
     engines = {a.payload: a.engine for scan in recording.scans for a in scan.answers}
     assert set(engines) == set(range(len(recording.payloads)))  # no payload kept unasked
     for index, payload in enumerate(recording.payloads):
@@ -66,8 +64,8 @@ def test_a_recording_holds_only_what_the_parsers_read(path: Path) -> None:
         reviews = payload.get("reviews", [])
         assert all(REVIEW_ID.match(review["id"]) for review in reviews)  # no link to a review
         assert all(set(review) <= {"id", "snippet", "rating", "iso_date"} for review in reviews)
-        for link in links(payload):  # no tracking, sharing or language parameter
+        for link in links(payload):  # fictional, with no tracking or sharing parameter
             parts = urlsplit(link)
+            assert parts.scheme == "https" and parts.netloc.endswith("example.com"), link
             names = {name for name, _ in parse_qsl(parts.query, keep_blank_values=True)}
             assert names <= LINK_PARAMS.get(parts.netloc.lower(), ANY_HOST), link
-            assert not parts.fragment or parts.fragment.startswith(("/", "!")), link

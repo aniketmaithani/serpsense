@@ -21,11 +21,12 @@ from serpsense.composition import (
     build_seeder,
     build_settings,
 )
-from serpsense.composition_replay import build_recording_export, build_replayer
+from serpsense.composition_replay import STORY_BRANDS, build_recording_export, build_replayer
 from serpsense.config import ConfigError, RunMode, Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.services.demo import DEMO_BRANDS
+from serpsense.services.drafts import Outcome
 from serpsense.services.evals import GoldenBrand, GoldenItem, Split, report
 from serpsense.services.grouping_eval import GoldenMention, GroupingBrand, grouping_report
 from serpsense.services.output_evals import DraftCase, ExplainCase, OutputResult
@@ -33,7 +34,7 @@ from serpsense.services.output_report import output_report
 from serpsense.services.replay import Played
 
 GOLDEN, REPORTS = Path("evals/golden"), Path("evals/reports")
-RECORDINGS = Path("src/serpsense/adapters/replay/recordings")  # shipped with the package
+RECORDINGS = Path("recordings")  # where `replay export` writes, from where it runs
 
 app = typer.Typer(help="SerpSense command-line tools.", no_args_is_help=True)
 replay = typer.Typer(help="Replay mode: recorded scans, played back with no API keys.")
@@ -60,7 +61,8 @@ def seed_demo(
     owner: str = typer.Option(..., help="The demo owner's email address; created if new."),
 ) -> None:
     """Set up the Ola demo (BUILD_PLAN §22): Ola and four competitors on a schedule. In replay
-    mode they are scanned on request only, and the recorded scans are played in."""
+    mode, the demo story instead: VoltBox and SoundNest, two weeks of scans played in, and
+    scanned on request only."""
     settings = build_settings()
     if settings.serpsense_mode is RunMode.REPLAY:
         _replay(settings, owner)
@@ -79,7 +81,7 @@ def seed_demo(
 def replay_load(
     owner: str = typer.Option(..., help="The demo owner's email address; created if new."),
 ) -> None:
-    """Seed the demo and play every recorded scan into it, in order (SERPSENSE_MODE=replay)."""
+    """Seed the demo story and play every scan of it, in order (SERPSENSE_MODE=replay)."""
     settings = build_settings()
     if settings.serpsense_mode is not RunMode.REPLAY:
         typer.echo("Recordings are played only with SERPSENSE_MODE=replay.", err=True)
@@ -94,12 +96,21 @@ def _replay(settings: Settings, owner: str) -> None:
         typer.echo("That isn't an email address.", err=True)
         raise typer.Exit(2) from None
     played = replayed.played
-    typer.echo(f"Seeded Ola ({replayed.seeded.brand_id}) and its competitors for replay.")
+    main, *rivals = STORY_BRANDS
+    names = ", ".join(rival.name for rival in rivals)
+    typer.echo(f"Seeded the demo story: {main.name} ({replayed.seeded.brand_id}) and {names}.")
     typer.echo(
         f"Played {played[Played.PLAYED]} recorded scans"
         f" ({played[Played.ALREADY]} played before, {played[Played.BUSY]} left for later);"
         " brands are scanned on request only."
     )
+    if replayed.drafted is Outcome.DRAFTED:
+        typer.echo("Drafted a holding statement for its largest story.")
+    elif replayed.drafted is not None:
+        typer.echo(
+            f"Couldn't draft a holding statement ({replayed.drafted}); run it again to retry.",
+            err=True,
+        )
 
 
 @app.command("score-backlog")
@@ -206,8 +217,9 @@ def replay_export(
     ] = None,
     out: Annotated[Path, typer.Option(help="Where the recordings go.")] = RECORDINGS,
 ) -> None:
-    """Record brands' stored scans as replay recordings, one file each. Read-only on the
-    database; run it from the repository root, then commit the files in a pull request."""
+    """Record brands' stored scans as replay recordings, one file each, to look at a brand's
+    real answers or build a story from them. Read-only on the database. Replay mode itself
+    plays the built-in demo story (adapters/replay/story)."""
     exporter = build_recording_export(build_settings())  # outside the try: never echo settings
     slugs = brand or [demo.slug for demo in DEMO_BRANDS]
     out.mkdir(parents=True, exist_ok=True)
