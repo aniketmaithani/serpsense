@@ -7,16 +7,18 @@ when the Redis limiter can't. A success opens a session that lasts four hours an
 a signed cookie; logging out ends every session begun before it. Passwords, cookies and CSRF
 tokens are never logged.
 
-Behind the door, the console shows totals, access requests and brands across every user, and
-records the operator's decisions on access requests; addresses are never logged.
+Behind the door, the console shows totals, access requests and brands across every user,
+records the operator's decisions on access requests, and switches the sign-up mode (ADR-0015);
+addresses are never logged.
 """
 
 import secrets
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from serpsense.domain import auth, console
-from serpsense.domain.enums import AccessDecision, AuditAction
+from serpsense.domain.enums import AccessDecision, AuditAction, SignupMode
 from serpsense.observability import get_logger
 from serpsense.ports.audit import AuditEntry, Network
 from serpsense.ports.clock import Clock
@@ -99,10 +101,17 @@ class ConsoleGate:
 
 
 @dataclass(frozen=True)
+class SignupState:
+    mode: SignupMode
+    since: datetime | None  # None: the environment's SIGNUP_MODE, never switched
+
+
+@dataclass(frozen=True)
 class Snapshot:
     totals: Totals
     requests: list[RequestRow]
     brands: list[BrandRow]
+    signup: SignupState
 
 
 class Console:
@@ -114,13 +123,30 @@ class Console:
         reads: ConsoleReads,
         unit_of_work: UnitOfWorkFactory,
         clock: Clock,
+        *,
+        default_mode: SignupMode,
     ) -> None:
         self.gate, self._reads = gate, reads
         self._unit_of_work, self._clock = unit_of_work, clock
+        self._default_mode = default_mode
 
     def snapshot(self) -> Snapshot:
         at = self._clock.now()
-        return Snapshot(self._reads.totals(at), self._reads.requests(), self._reads.brands())
+        with self._unit_of_work() as uow:
+            switch = uow.access.signup_mode()
+        signup = (
+            SignupState(self._default_mode, None)
+            if switch is None
+            else SignupState(switch.mode, switch.at)
+        )
+        reads = self._reads
+        return Snapshot(reads.totals(at), reads.requests(), reads.brands(), signup)
+
+    def switch_signup(self, mode: SignupMode) -> None:
+        """Open sign-up to everyone, or require an invitation or approval again (ADR-0015)."""
+        with self._unit_of_work() as uow:
+            uow.access.switch_signup_mode(mode, at=self._clock.now())
+        log.info("signup.mode_switched", mode=mode)
 
     def decide(self, request_id: uuid.UUID, decision: AccessDecision) -> bool:
         """Approve or reject a request; False if there is no such request. Rejecting stops
