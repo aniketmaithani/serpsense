@@ -53,3 +53,6 @@ Thumbs.db
 
 # scripts/dev.sh: local Postgres, Redis and Mailpit data
 .dev/
+
+# `serpsense replay export` output: real scans, kept out of the repo (replay plays the built-in story)
+/recordings/

@@ -1,4 +1,4 @@
-"""Replay recordings (BUILD_PLAN §21, §23): real scans kept so the demo runs with no SerpApi or
+"""Replay recordings (BUILD_PLAN §21, §23): scans kept so the demo runs with no SerpApi or
 Anthropic key (`SERPSENSE_MODE=replay`).
 
 A recording is one brand's scans in the order they ran. Each scan keeps its settings and the
@@ -8,7 +8,8 @@ repeats them. The model's output is kept per text, by `text_id` (its source and 
 the text): the label it gave the text, and the story it put the text in, each with its prompt
 version. A recording may also keep what the model said about an alert (by its rule, the level
 reached and its story) and the replies it drafted for a story (by the story and the kind of
-draft). Recordings live in the package, so the image ships them, and are parsed once here.
+draft). Replay mode plays the demo story, built in this format in code (adapters/replay/story);
+`replay export` writes a brand's real scans in it, one file each, read back by `load`.
 
 A payload keeps only what the parsers read (`cleaned`, an allow-list per engine): no SerpApi
 links or tokens, no images, nothing that names a reviewer or a creator; a link keeps only the
@@ -32,7 +33,6 @@ from serpsense.domain.enums import AlertRule, DraftKind, MentionSource, SerpEngi
 from serpsense.domain.search import contains_api_key, params_hash
 
 FORMAT = 1
-RECORDINGS = Path(__file__).parent / "recordings"
 KEY_SHAPED = re.compile(r"\b[0-9a-fA-F]{64}\b")  # a SerpApi key, or any sha256 hex
 REVIEW_ID = re.compile(r"^review-[0-9a-f]{24}$")
 
@@ -234,7 +234,7 @@ def _item(element: Any, spec: Spec | None) -> Any:
     return _kept(element, spec) if isinstance(element, Mapping) and spec is not None else element
 
 
-def load(directory: Path = RECORDINGS) -> tuple[Recording, ...]:
+def load(directory: Path) -> tuple[Recording, ...]:
     """Every recording in the directory, by file name."""
     return tuple(
         Recording.model_validate_json(path.read_text(encoding="utf-8"))

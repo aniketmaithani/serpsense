@@ -41,7 +41,7 @@ from serpsense.adapters.llm.replay import ReplayLlm
 from serpsense.adapters.llm.unavailable import UnavailableClient
 from serpsense.adapters.mail.console import ConsoleMailer
 from serpsense.adapters.mail.smtp import SmtpMailer, SmtpSettings
-from serpsense.adapters.replay.recording import load as load_recordings
+from serpsense.adapters.replay.story.build import recordings as story_recordings
 from serpsense.adapters.serp.client import SerpApiSearchProvider
 from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.serp.replay import ReplaySearchProvider
@@ -192,7 +192,7 @@ def build_container(settings: Settings | None = None) -> Container:
 
 def _draft_client(settings: Settings) -> LLMClient:
     if settings.serpsense_mode is RunMode.REPLAY:
-        return ReplayLlm(load_recordings())
+        return ReplayLlm(story_recordings())
     key = settings.anthropic_api_key
     return AnthropicClient(key.get_secret_value(), PromptLibrary()) if key else UnavailableClient()
 
@@ -327,7 +327,7 @@ class _Sources:
 
 def _sources(settings: Settings, engine: Engine, clock: Clock) -> _Sources:
     if settings.serpsense_mode is RunMode.REPLAY:
-        recordings = load_recordings()
+        recordings = story_recordings()
         return _Sources(
             ReplaySearchProvider(recordings, clock), NullResponseCache(), ReplayLlm(recordings)
         )

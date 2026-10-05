@@ -18,6 +18,7 @@ from serpsense.entrypoints.cli import app
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.ports.llm_client import LlmCallFailed, LlmRequest
 from serpsense.services.demo import Seeded
+from serpsense.services.drafts import Outcome
 from serpsense.services.evals import EvalResult, Evaluator, GoldenBrand, GoldenItem, Split
 from serpsense.services.replay import Played
 from tests.factories import make_settings
@@ -90,8 +91,9 @@ def replaying(asked: list[str], *, refuse: bool = False) -> Callable[..., Callab
             if refuse:
                 raise InvalidEmail("not an email address")
             asked.append(email)
-            seeded = Seeded(uuid.uuid4(), uuid.uuid4(), tuple(uuid.uuid4() for _ in range(4)))
-            return Replayed(seeded, Counter({Played.PLAYED: 9, Played.ALREADY: 2}))
+            seeded = Seeded(uuid.uuid4(), uuid.uuid4(), (uuid.uuid4(),))
+            played = Counter({Played.PLAYED: 9, Played.ALREADY: 2})
+            return Replayed(seeded, played, Outcome.FAILED)
 
         return replay
 
@@ -107,7 +109,9 @@ def test_in_replay_mode_seeding_plays_the_recordings(
     monkeypatch.setattr(cli, "build_replayer", replaying(asked))
     result = runner.invoke(app, [*command, "--owner", "demo@example.com"])
     assert result.exit_code == 0 and asked == ["demo@example.com"]
+    assert "Seeded the demo story: VoltBox (" in result.stdout and "and SoundNest." in result.stdout
     assert "Played 9 recorded scans (2 played before, 0 left for later)" in result.stdout
+    assert "Couldn't draft a holding statement (failed)" in result.stderr
     assert "demo@example.com" not in result.stdout + result.stderr  # never echoed
     monkeypatch.setattr(cli, "build_replayer", replaying([], refuse=True))
     refused = runner.invoke(app, [*command, "--owner", "nobody"])
