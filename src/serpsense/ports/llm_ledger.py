@@ -49,6 +49,10 @@ class LlmLedger(Protocol):
         """Insert one `llm_calls` row in a transaction of its own; returns its id."""
         ...
 
+    def spent_in_all_since(self, since: datetime) -> int:
+        """Micros spent since then by every user together: the global daily cap's count."""
+        ...
+
     def spent_since(self, user_id: uuid.UUID, since: datetime) -> int:
         """The user's model spend since a time, in micros, for the monthly budget."""
         ...

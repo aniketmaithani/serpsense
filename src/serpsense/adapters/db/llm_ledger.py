@@ -50,6 +50,13 @@ class SqlLlmLedger:
             conn.execute(insert(CALLS).values(row))
         return call_id
 
+    def spent_in_all_since(self, since: datetime) -> int:
+        query = select(func.coalesce(func.sum(CALLS.c.cost_micros), 0)).where(
+            CALLS.c.created_at >= since
+        )
+        with self._transaction() as conn:
+            return int(conn.execute(query).scalar_one())
+
     def spent_since(self, user_id: uuid.UUID, since: datetime) -> int:
         query = select(func.coalesce(func.sum(CALLS.c.cost_micros), 0)).where(
             CALLS.c.user_id == user_id, CALLS.c.created_at >= since

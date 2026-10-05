@@ -91,6 +91,9 @@ class MemoryLedger:
     def spent_since(self, user_id: uuid.UUID, since: datetime) -> int:
         return 0
 
+    def spent_in_all_since(self, since: datetime) -> int:
+        return 0
+
 
 @dataclass
 class EvalResult:

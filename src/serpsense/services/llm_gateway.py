@@ -1,6 +1,7 @@
 """The LLM gateway: every model call goes through it (BUILD_PLAN §7.4, ADR-0008).
 
-Settings are checked against the model, the user's monthly budget is checked, the call is made,
+Settings are checked against the model, the user's monthly budget and the day's spend across
+all users (a global cap, like SerpApi's) are checked, the call is made,
 its stop reason classified and its structured output validated, and the call is priced on the
 model that served it and recorded before anything uses the output. The model labels, groups,
 explains and drafts; nothing it returns is acted on without a deterministic rule or a person.
@@ -83,7 +84,8 @@ class _Ended:
 
 
 class LlmBudgetExhausted(Exception):
-    """The user's monthly model budget is spent: a hard stop (ADR-0008)."""
+    """The user's monthly model budget, or the day's cap across all users, is spent: a hard
+    stop (ADR-0008)."""
 
 
 class LlmOutputRejected(Exception):
@@ -103,11 +105,15 @@ class LlmGateway:
         clock: Clock,
         *,
         monthly_budget_micros: Callable[[uuid.UUID], int],
+        daily_cap_micros: int | None = None,
     ) -> None:
+        """`daily_cap_micros` caps a UTC day's spend across all users; None for evals, whose
+        ledger is in memory."""
         self._client = client
         self._ledger = ledger
         self._clock = clock
         self._budget = monthly_budget_micros
+        self._daily_cap = daily_cap_micros
 
     def run(self, call: Call, output: type[T]) -> Answer[T]:
         shape = request_shape(call.settings)  # UnsupportedSetting before anything is spent
@@ -115,6 +121,9 @@ class LlmGateway:
         month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         if self._ledger.spent_since(call.user_id, month) >= self._budget(call.user_id):
             log.warning("llm_budget.exhausted", user_id=str(call.user_id), task=call.task.value)
+            raise LlmBudgetExhausted(call.task.value)
+        if self._daily_cap is not None and self._spent_today(now) >= self._daily_cap:
+            log.warning("llm_budget.global_exhausted", task=call.task.value)
             raise LlmBudgetExhausted(call.task.value)
         request = _request(call, shape, output)
         try:
@@ -130,6 +139,10 @@ class LlmGateway:
             raise LlmOutputRejected(outcome, call_id)
         summary = response.reasoning_summary
         return Answer(call_id, call.prompt_version, parsed, response.served_model, summary)
+
+    def _spent_today(self, now: datetime) -> int:
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return self._ledger.spent_in_all_since(day)
 
     def _record(
         self,

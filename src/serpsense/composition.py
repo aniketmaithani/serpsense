@@ -205,6 +205,7 @@ def build_drafter(settings: Settings, engine: Engine, celery: Celery) -> Drafter
         SqlLlmLedger(engine.begin),
         SystemClock(),
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
+        daily_cap_micros=settings.llm_daily_global_cap_micros,
     )
     queue = CeleryJobQueue(celery)
     profiles = SqlLlmProfiles(engine, settings.default_llm_preset)
@@ -279,6 +280,7 @@ def build_scans(
         SqlLlmLedger(engine.begin),
         clock,
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
+        daily_cap_micros=settings.llm_daily_global_cap_micros,
     )
     ports = ScanPorts(
         unit_of_work=unit_of_work,
@@ -307,6 +309,7 @@ def _explainer(
         SqlLlmLedger(engine.begin),
         clock,
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,
+        daily_cap_micros=settings.llm_daily_global_cap_micros,
     )
     profiles = SqlLlmProfiles(engine, settings.default_llm_preset)
     return Explainer(unit_of_work, gateway, profiles, clock)
