@@ -6,7 +6,9 @@ SerpApi answers it got, keyed by the request the collectors made (engine and par
 key); answers are kept once in `payloads` and referred to by index, as a scan served from cache
 repeats them. The model's output is kept per text, by `text_id` (its source and a short hash of
 the text): the label it gave the text, and the story it put the text in, each with its prompt
-version. Recordings live in the package, so the image ships them, and are parsed once here.
+version. A recording may also keep what the model said about an alert (by its rule, the level
+reached and its story) and the replies it drafted for a story (by the story and the kind of
+draft). Recordings live in the package, so the image ships them, and are parsed once here.
 
 A payload keeps only what the parsers read (`cleaned`, an allow-list per engine): no SerpApi
 links or tokens, no images, nothing that names a reviewer or a creator; a link keeps only the
@@ -26,7 +28,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from serpsense.domain.enums import MentionSource, SerpEngine, Topic
+from serpsense.domain.enums import AlertRule, DraftKind, MentionSource, SerpEngine, Topic
 from serpsense.domain.search import contains_api_key, params_hash
 
 FORMAT = 1
@@ -121,6 +123,26 @@ class RecordedNarrative(_Frozen):
     summary: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
 
 
+class RecordedExplanation(_Frozen):
+    """What the model said about an alert: found by its rule, the crisis level it reached
+    ("none" before warm-up ends) and its story ("" when it is about none)."""
+
+    rule: AlertRule
+    level: Literal["none", "low", "medium", "high"]
+    story_label: Annotated[str, StringConstraints(max_length=120)] = ""
+    prompt_version: PromptVersion
+    text: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+
+
+class RecordedDraft(_Frozen):
+    """A reply the model drafted for a story, found by the story and the kind of draft."""
+
+    story_label: Annotated[str, StringConstraints(min_length=1, max_length=120)]
+    kind: DraftKind
+    prompt_version: PromptVersion
+    text: Annotated[str, StringConstraints(min_length=1, max_length=4000)]
+
+
 class Recording(_Frozen):
     format: Literal[1]
     brand: str  # the brand's slug
@@ -129,6 +151,8 @@ class Recording(_Frozen):
     scans: tuple[RecordedScan, ...]
     labels: tuple[RecordedLabel, ...]
     narratives: tuple[RecordedNarrative, ...] = ()
+    explanations: tuple[RecordedExplanation, ...] = ()
+    drafts: tuple[RecordedDraft, ...] = ()
 
     @model_validator(mode="after")
     def _check(self) -> "Recording":

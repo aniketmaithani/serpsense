@@ -1,5 +1,6 @@
 """Replay mode's search provider and model client: each scan's recorded answers by the clock,
-and only the recorded model output, of the right brand and prompt, at no cost."""
+and only the recorded model output (labels, stories, alert explanations, drafts), of the right
+brand and prompt, at no cost."""
 
 import uuid
 from dataclasses import replace
@@ -12,6 +13,8 @@ from serpsense.adapters.cache.null_cache import NullResponseCache
 from serpsense.adapters.llm.replay import REPLAY_MODEL, ReplayLlm
 from serpsense.adapters.replay.recording import (
     RecordedAnswer,
+    RecordedDraft,
+    RecordedExplanation,
     RecordedLabel,
     RecordedScan,
     Recording,
@@ -19,6 +22,8 @@ from serpsense.adapters.replay.recording import (
 )
 from serpsense.adapters.serp.replay import ReplaySearchProvider
 from serpsense.domain.enums import (
+    AlertRule,
+    DraftKind,
     LlmTask,
     MentionSource,
     SerpEngine,
@@ -30,6 +35,8 @@ from serpsense.domain.labelling import PROMPTS
 from serpsense.domain.llm_capabilities import OPUS, Effort, TaskSettings
 from serpsense.ports.llm_client import LlmCallFailed
 from serpsense.ports.search_provider import SearchFailed, SearchRequest
+from serpsense.services.drafts import Drafted
+from serpsense.services.explanations import Explanation
 from serpsense.services.labelling import Labels
 from serpsense.services.llm_gateway import Call, LlmGateway
 from tests.fakes import FixedClock, MemoryLedger
@@ -161,6 +168,68 @@ def test_a_label_is_used_only_for_the_prompt_version_that_made_it() -> None:
     older = recording("Ola", label(LATE, -1, prompt="label_mentions/v2"))
     answer = replaying(MemoryLedger(), older).run(label_call("Ola", LATE), Labels)
     assert answer.output.labels == []
+
+
+SWELLING = "Battery swelling"
+EXPLAINED = RecordedExplanation(
+    rule=AlertRule.NARRATIVE_SPREAD,
+    level="high",
+    story_label=SWELLING,
+    prompt_version="explain_crisis/v1",
+    text="Reports of the charging case swelling spread from reviews to the news.",
+)
+DRAFTED = RecordedDraft(
+    story_label=SWELLING,
+    kind=DraftKind.HOLDING_STATEMENT,
+    prompt_version="draft_response/v1",
+    text="We're aware of reports of the charging case overheating, and are looking into it.",
+)
+
+
+def output_call(task: LlmTask, prompt: str, **variables: object) -> Call:
+    mentions = [{"id": f"m{n}", "source": "news", "text": f"Report {n}"} for n in range(1, 6)]
+    return Call(
+        task=task,
+        prompt_version=prompt,
+        variables={"brand": "VoltBox", "mentions": mentions, **variables},  # type: ignore[dict-item]  # test builder: strings and records
+        settings=TaskSettings(OPUS, Effort.LOW, 8000),
+        user_id=uuid.uuid4(),
+    )
+
+
+def story_recording() -> Recording:
+    update = {"explanations": (EXPLAINED,), "drafts": (DRAFTED,)}
+    return recording("VoltBox").model_copy(update=update)
+
+
+def test_an_alert_is_explained_with_the_words_recorded_for_its_rule_level_and_story() -> None:
+    gateway = replaying(MemoryLedger(), story_recording())
+    explain = LlmTask.EXPLAIN_CRISIS
+    asked = output_call(explain, "explain_crisis/v1", rule="narrative_spread", level="high",
+                        story_label=SWELLING)  # fmt: skip
+    assert gateway.run(asked, Explanation).output.explanation == EXPLAINED.text
+    for other in (
+        {"level": "medium"},
+        {"story_label": "Late delivery"},
+        {"rule": "level_increase"},
+    ):
+        unrecorded = replace(asked, variables={**asked.variables, **other})
+        with pytest.raises(LlmCallFailed):
+            gateway.run(unrecorded, Explanation)
+
+
+def test_a_draft_is_the_recorded_text_citing_the_mentions_it_was_shown() -> None:
+    gateway = replaying(MemoryLedger(), story_recording())
+    draft = LlmTask.DRAFT_RESPONSE
+    asked = output_call(draft, "draft_response/v1", story_label=SWELLING, kind="holding_statement")
+    drafted = gateway.run(asked, Drafted).output
+    assert (drafted.text, drafted.cited) == (DRAFTED.text, ["m1", "m2", "m3"])
+    for other in ({"kind": "review_reply"}, {"story_label": "Late delivery"}):
+        with pytest.raises(LlmCallFailed):
+            gateway.run(replace(asked, variables={**asked.variables, **other}), Drafted)
+    older = replace(asked, prompt_version="draft_response/v2")
+    with pytest.raises(LlmCallFailed):
+        gateway.run(older, Drafted)
 
 
 def test_a_task_with_nothing_recorded_fails_without_a_retry() -> None:
