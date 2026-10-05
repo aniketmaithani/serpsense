@@ -42,6 +42,7 @@ SerpSense must turn hundreds of heterogeneous mentions (reviews, headlines, auto
 | Narrative grouping + crisis explanation, per scan | ≤ US$0.15 |
 | Draft, per draft at `xhigh` ("High thinking") | ≤ US$0.75 |
 | Per user per month (default budget, configurable) | US$30 — hard stop + notification |
+| Every user together per UTC day (`LLM_DAILY_GLOBAL_CAP_MICROS`; amendment 2026-10-05) | US$5 — hard stop, like SerpApi's daily cap; bounds the total when sign-up is open (ADR-0015) |
 Amounts are stored as integer micros (see data model).
 
 ### When the model is down or slow

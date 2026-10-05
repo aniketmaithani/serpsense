@@ -82,7 +82,8 @@ variable and holds no values.
   global daily cap (`SERPAPI_DAILY_GLOBAL_CAP`) and each scan's own estimate, all counted from the
   `serp_calls` ledger ([`serpapi-usage.md`](serpapi-usage.md)).
 - Claude: each user's monthly LLM budget in micros of a currency, counted from the `llm_calls`
-  ledger; when it runs out, scans go on without labels.
+  ledger; when it runs out, scans go on without labels. Every user's calls together stop for the
+  rest of the UTC day at `LLM_DAILY_GLOBAL_CAP_MICROS` (default 5,000,000 micros = US$5).
 
 ## Backups
 
