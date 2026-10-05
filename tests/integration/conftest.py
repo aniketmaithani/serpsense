@@ -1,6 +1,7 @@
 """Shared Postgres for integration tests, migrated with the real Alembic migrations."""
 
 import os
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -82,18 +83,48 @@ def committing_engine(postgres_url: str) -> Iterator[Engine]:
     """A second migrated database for tests that must commit (units of work, two connections).
     Committed rows outlive the test, so these tests use brands of their own and never count rows
     they didn't make; the rolled-back `conn` tests never see them."""
-    committed = f"{make_url(postgres_url).database}_committed"
-    admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
-    with admin.connect() as connection:
-        connection.execute(text(f'CREATE DATABASE "{committed}"'))
-    admin.dispose()
-    url = make_url(postgres_url).set(database=committed).render_as_string(hide_password=False)
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("DATABASE_URL", url)
-        command.upgrade(alembic_config(), "head")
-    engine = create_db_engine(url)
+    engine = create_db_engine(_migrated_database(postgres_url, "committed"))
     yield engine
     engine.dispose()
+
+
+@pytest.fixture
+def fresh_engine(postgres_url: str) -> Iterator[Engine]:
+    """A migrated database of the test's own, for state every unit of work reads (the sign-up
+    mode, ADR-0015): switches are append-only, so on a shared database one test's switch would
+    hold for every test after it."""
+    suffix = f"fresh_{uuid.uuid4().hex[:8]}"
+    engine = create_db_engine(_migrated_database(postgres_url, suffix))
+    yield engine
+    engine.dispose()
+    _drop_database(postgres_url, suffix)
+
+
+def _migrated_database(postgres_url: str, suffix: str) -> str:
+    """A new database next to the throwaway one, migrated to head; its URL."""
+    name = f"{make_url(postgres_url).database}_{suffix}"
+    admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
+    admin.dispose()
+    url = make_url(postgres_url).set(database=name).render_as_string(hide_password=False)
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setenv("DATABASE_URL", url)
+            command.upgrade(alembic_config(), "head")
+    except Exception:
+        _drop_database(postgres_url, suffix)  # a failed migration leaves no database behind
+        raise
+    return url
+
+
+def _drop_database(postgres_url: str, suffix: str) -> None:
+    """FORCE, so a connection a failing test left open can't keep it alive."""
+    name = f"{make_url(postgres_url).database}_{suffix}"
+    admin = create_db_engine(postgres_url).execution_options(isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    admin.dispose()
 
 
 @pytest.fixture
