@@ -1,4 +1,5 @@
-"""Access request and decision rules enforced by Postgres itself (data-model §1, ADR-0014)."""
+"""Access request, decision and sign-up mode rules enforced by Postgres itself (data-model §1,
+ADR-0014, ADR-0015)."""
 
 import uuid
 
@@ -74,6 +75,33 @@ def test_decisions_are_append_only(conn: Connection, mutation: str) -> None:
         "update": update(DECISIONS).values(decision="rejected"),
         "delete": delete(DECISIONS),
         "truncate": text("TRUNCATE access_decisions"),
+    }
+    with pytest.raises(IntegrityError) as exc:
+        conn.execute(statements[mutation])
+    assert violation(exc).sqlstate == RESTRICT_VIOLATION
+
+
+CHANGES = table("signup_mode_changes")
+
+
+def switch(conn: Connection, mode: str = "open") -> uuid.UUID:
+    return add(conn, CHANGES, mode=mode, changed_at=NOW)
+
+
+def test_the_sign_up_mode_switches_once_per_instant(conn: Connection) -> None:
+    switch(conn, "open")
+    with pytest.raises(IntegrityError) as exc:
+        switch(conn, "invite")  # the same instant: which would be the latest?
+    assert violation(exc).constraint_name == "uq_signup_mode_changes_changed_at"
+
+
+@pytest.mark.parametrize("mutation", ["update", "delete", "truncate"])
+def test_sign_up_mode_switches_are_append_only(conn: Connection, mutation: str) -> None:
+    switch(conn)
+    statements: dict[str, Executable] = {
+        "update": update(CHANGES).values(mode="invite"),
+        "delete": delete(CHANGES),
+        "truncate": text("TRUNCATE signup_mode_changes"),
     }
     with pytest.raises(IntegrityError) as exc:
         conn.execute(statements[mutation])

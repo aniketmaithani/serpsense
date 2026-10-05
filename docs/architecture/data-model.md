@@ -84,6 +84,9 @@ Written only in invite mode, when an address that isn't on the invite lists asks
 ### 🔒 `access_decisions`
 `id`, `access_request_id` fk → access_requests (RESTRICT), `decision` enum `access_decision` (`approved`, `rejected`; mirrors `domain.enums.AccessDecision`), `decided_at`. **`uq_access_decisions_access_request_id_decided_at`**: one decision per request per instant, so the latest always has a single answer (a repeat is `ON CONFLICT DO NOTHING`). The operator's decisions; the latest per request counts, none means pending. An address may sign in if it is invited or its latest decision is `approved`. No personal data.
 
+### 🔒 `signup_mode_changes`
+Migration 0029 (ADR-0015). `id`, `mode` enum `signup_mode` (`open`, `invite`; mirrors `domain.enums.SignupMode`), `changed_at` (**`uq_signup_mode_changes_changed_at`**: one switch per instant, so the latest is one row; a repeat is `ON CONFLICT DO NOTHING`). The operator's switches from the console; the latest counts, and with none the environment's `SIGNUP_MODE` applies. No personal data.
+
 ### 🔒 `user_search_budgets` / 🔒 `user_llm_budgets`
 | Table | Columns |
 |---|---|
