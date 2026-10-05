@@ -135,12 +135,14 @@ class RecordedExplanation(_Frozen):
 
 
 class RecordedDraft(_Frozen):
-    """A reply the model drafted for a story, found by the story and the kind of draft."""
+    """A reply the model drafted for a story, found by the story and the kind of draft, with the
+    texts it cites."""
 
     story_label: Annotated[str, StringConstraints(min_length=1, max_length=120)]
     kind: DraftKind
     prompt_version: PromptVersion
     text: Annotated[str, StringConstraints(min_length=1, max_length=4000)]
+    cites: tuple[TextId, ...] = Field(min_length=1)
 
 
 class Recording(_Frozen):
