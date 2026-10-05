@@ -18,6 +18,7 @@ from serpsense.composition import (
     build_account_deletion,
     build_celery,
     build_container,
+    build_drafter,
     build_evaluator,
     build_grouping_evaluator,
     build_outbox,
@@ -137,6 +138,13 @@ def test_build_sign_in_wires_sign_in_without_connecting() -> None:
     sign_in = build_sign_in(settings, build_celery(settings))
     assert sign_in._policy.allows("a@serpsense.in") and not sign_in._policy.allows("a@x.in")
     assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
+
+
+def test_the_web_drafter_spends_under_the_daily_cap_across_all_users() -> None:
+    settings = make_settings(llm_daily_global_cap_micros=1_234_567)
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    drafter = build_drafter(settings, engine, build_celery(settings))
+    assert drafter._ports.gateway._daily_cap == 1_234_567
 
 
 def test_the_console_is_built_only_with_a_password_and_without_connecting() -> None:

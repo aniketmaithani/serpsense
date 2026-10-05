@@ -167,6 +167,32 @@ def test_a_timed_out_call_counts_at_its_worst_case() -> None:
     assert worst > 0 and record.request_settings["max_retries"] == 0
 
 
+class SharedLedger(Ledger):
+    """Every user's spend today, against the global daily cap."""
+
+    def __init__(self, today: int) -> None:
+        super().__init__()
+        self.today = today
+
+    def spent_in_all_since(self, since: datetime) -> int:
+        assert since == datetime(2026, 10, 3, tzinfo=UTC)  # the UTC day so far
+        return self.today
+
+
+def test_the_daily_cap_across_all_users_stops_the_call_before_it_is_made() -> None:
+    client, ledger = Scripted(response()), SharedLedger(today=5_000_000)
+    capped = LlmGateway(
+        client, ledger, Clock(), monthly_budget_micros=lambda user: 30_000_000,
+        daily_cap_micros=5_000_000,
+    )  # fmt: skip
+    with capture_logs() as logs, pytest.raises(LlmBudgetExhausted):
+        capped.run(CALL, Labels)
+    assert client.requests == [] and ledger.calls == []  # nothing asked, nothing recorded
+    assert [log["event"] for log in logs] == ["llm_budget.global_exhausted"]
+    ledger.today = 4_999_999
+    assert capped.run(CALL, Labels).call_id == uuid.UUID(int=1)
+
+
 def test_a_spent_budget_stops_the_call_before_it_is_made() -> None:
     client, ledger = Scripted(response()), Ledger(spent=30_000_000)
     with pytest.raises(LlmBudgetExhausted):

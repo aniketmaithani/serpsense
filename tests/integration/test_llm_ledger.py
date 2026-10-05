@@ -79,3 +79,5 @@ def test_spend_counts_the_users_calls_since_a_time(conn: Connection, ledger: Llm
     ledger.record(call(other))
     assert ledger.spent_since(owner, NOW - timedelta(days=1)) == 39_600
     assert ledger.spent_since(add_user(conn, "new@example.com"), NOW) == 0
+    assert ledger.spent_in_all_since(NOW - timedelta(days=1)) == 2 * 39_600  # both users'
+    assert ledger.spent_in_all_since(NOW + timedelta(seconds=1)) == 0
