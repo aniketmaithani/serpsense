@@ -586,5 +586,6 @@ Before recording, make sure no `.env`, keys, raw payloads or real personal email
 | **Edited reviews keep their history**: each distinct text a scan sees is a revision, and labels attach to the revision they were made for |
 | **Preview runs only configured templates**, so no free text persists in the append-only `serp_calls` ledger |
 | **Demo brand: Ola** with Uber, Rapido, Namma Yatri and inDrive; the demo fits the SerpApi free plan (250 searches/month) through `.env` overrides (`DEFAULT_MONTHLY_SEARCH_BUDGET=200`, `SERPAPI_DAILY_GLOBAL_CAP=40`) and custom settings (§22), while the product defaults stay |
+| **Replay demo: a built-in, fictional story** (VoltBox and SoundNest, issue #233), for local installs and judges only, never production; its search results and model output are written for the demo and replay-mode pages say so. Live `seed-demo` still seeds Ola for real scans |
 
 Also deferred to P2 (not in the data model): a per-user "email alerts on/off" setting. Alerts always go to email + in-app.

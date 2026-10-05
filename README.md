@@ -37,19 +37,24 @@ uv run serpsense gen-secrets >> .env          # SECRET_KEY and OUTBOX_ENCRYPTION
 
 Then choose a mode in `.env`:
 
-- **Replay** (no keys, spends nothing): add `SERPSENSE_MODE=replay`. Recorded, redacted scans of
-  Ola, Uber, Rapido, Namma Yatri and inDrive go through the same pipeline as live mode.
+- **Replay** (no keys, spends nothing): add `SERPSENSE_MODE=replay`. `seed-demo` then loads a
+  ten-day demo story about two fictional brands, VoltBox and its competitor SoundNest, and plays
+  it through the same pipeline as live mode: VoltBox's charging cases start overheating, the
+  complaint spreads from reviews to the news and the search page, its crisis climbs to high and
+  the alerts fire. Every page has something to show, a draft included. The story's search
+  results and the AI's words in it were written for the demo, and every page says so in replay
+  mode: it calls neither SerpApi nor an AI model.
 - **Live**: set `SERPAPI_API_KEY` and `ANTHROPIC_API_KEY` (`SERPSENSE_MODE=live` is the default).
 
 **Start it:**
 
 ```bash
 scripts/dev.sh                                         # app on http://127.0.0.1:8000
-scripts/dev.sh cli seed-demo --owner you@example.com   # optional, in a second terminal: the Ola demo
+scripts/dev.sh cli seed-demo --owner you@example.com   # optional, in a second terminal: the demo
 ```
 
-In live mode `seed-demo` puts the demo brands on a schedule, so they make real (budgeted)
-searches; in replay mode they are scanned on request only.
+In live mode `seed-demo` instead puts Ola and four competitors on a schedule, so they make real
+(budgeted) searches; in replay mode the story's brands are scanned on request only.
 
 Open http://127.0.0.1:8000, sign in with your email and enter the code you're sent. With Mailpit
 the code is at http://127.0.0.1:8026; without it, the code prints in the `[outbox]` log lines.

@@ -75,6 +75,7 @@ Outbound HTTP goes to `serpapi.com` only (ADR-0011); nothing a user types become
 
 ## Replay mode
 
-`SERPSENSE_MODE=replay` runs the same pipeline with no SerpApi key: recorded, redacted answers
-from the demo brands' real scans stand in for the network, and replayed answers are recorded as
-served from SerpApi's cache, so they are never billed. See the README's quick start.
+`SERPSENSE_MODE=replay` runs the same pipeline with no SerpApi key: the built-in demo story
+(fictional VoltBox and SoundNest, `adapters/replay/story/`) answers each search the collectors
+make, in SerpApi's answer shapes, and replayed answers are recorded as served from SerpApi's
+cache, so they are never billed. See the README's quick start.
