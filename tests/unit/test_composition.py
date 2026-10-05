@@ -136,7 +136,11 @@ def test_build_outbox_sends_through_the_configured_mailer_without_connecting() -
 def test_build_sign_in_wires_sign_in_without_connecting() -> None:
     settings = make_settings(signup_mode="invite", allowed_domains="serpsense.in")
     sign_in = build_sign_in(settings, build_celery(settings))
-    assert sign_in._policy.allows("a@serpsense.in") and not sign_in._policy.allows("a@x.in")
+    policy = sign_in._policy
+    assert policy.allows("a@serpsense.in", None) and not policy.allows("a@x.in", None)
+    assert not sign_in._follow_switches  # no console, so the environment's mode holds
+    console_on = build_sign_in(make_settings(admin_password="p" * 16), build_celery(settings))
+    assert console_on._follow_switches
     assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
 
 

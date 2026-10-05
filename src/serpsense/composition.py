@@ -410,7 +410,8 @@ def build_sign_in(settings: Settings, celery: Celery) -> SignIn:
         frozenset(settings.allowed_email_list),
         frozenset(settings.allowed_domain_list),
     )
-    return SignIn(ports, keys, policy, session_days=settings.session_days)
+    follow = settings.admin_password is not None  # the console can switch the mode (ADR-0015)
+    return SignIn(ports, keys, policy, session_days=settings.session_days, follow_switches=follow)
 
 
 def build_account_deletion(settings: Settings, celery: Celery, sign_in: SignIn) -> AccountDeletion:

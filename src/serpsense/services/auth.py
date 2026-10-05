@@ -20,7 +20,7 @@ from datetime import timedelta
 from ipaddress import IPv4Address, IPv6Address
 
 from serpsense.domain import auth
-from serpsense.domain.enums import AuditAction, AuditTarget, CodeEmail
+from serpsense.domain.enums import AuditAction, AuditTarget, CodeEmail, SignupMode
 from serpsense.observability import get_logger
 from serpsense.ports.accounts import InvalidEmail, email_address
 from serpsense.ports.audit import AuditEntry, Network
@@ -59,25 +59,43 @@ class SignedIn:
 
 class SignIn:
     def __init__(
-        self, ports: SignInPorts, keys: AuthKeys, policy: auth.SignupPolicy, *, session_days: int
+        self,
+        ports: SignInPorts,
+        keys: AuthKeys,
+        policy: auth.SignupPolicy,
+        *,
+        session_days: int,
+        follow_switches: bool = False,
     ) -> None:
+        """`follow_switches`: the operator console is on, so its sign-up mode switches count;
+        off, the environment's mode holds whatever was switched (ADR-0015)."""
         self._ports, self._keys, self._policy = ports, keys, policy
         self._session_length = timedelta(days=session_days)
+        self._follow_switches = follow_switches
 
-    def request_code(self, raw_email: str, network: Network) -> None:
+    def request_code(self, raw_email: str, network: Network) -> bool:
         """Send a code if the address may have one; raises InvalidEmail for a malformed address
-        (saying so reveals nothing), and otherwise answers nothing."""
+        (saying so reveals nothing). Answers only whether signing up needs an invitation or
+        approval right now, the same for every address (ADR-0015)."""
         email = email_address(raw_email)
         if not self._may_request(network):
-            return
+            return self.invite_only()
         with self._ports.unit_of_work() as uow:
-            if self._let_in(uow, email):
+            mode = self._mode(uow)
+            if self._let_in(uow, email, mode):
                 code_id = self._issue(uow, email, network, CodeEmail.SIGN_IN)
             else:
                 self._ask_for_access(uow, email)
                 code_id = None
         if code_id is not None:
             log.info("otp.requested", otp_code_id=str(code_id))
+        return self._policy.invite_only_under(mode)
+
+    def invite_only(self) -> bool:
+        """Whether signing up needs an invitation or the operator's approval right now: the
+        operator's latest switch, else the environment's mode (ADR-0015)."""
+        with self._ports.unit_of_work() as uow:
+            return self._policy.invite_only_under(self._mode(uow))
 
     def send_step_up_code(self, email: str, network: Network, purpose: CodeEmail) -> None:
         """A code to a signed-in user's own address, in an email saying what it is for, to
@@ -197,14 +215,23 @@ class SignIn:
             uow.access.record(email, at=at)
         log.info("otp.request_refused")
 
-    def _let_in(self, uow: UnitOfWork, email: str) -> bool:
-        """Invited, or approved by the operator (ADR-0014)."""
-        return self._policy.allows(email) or uow.access.approved(email)
+    def _mode(self, uow: UnitOfWork) -> SignupMode | None:
+        """The operator's latest switch, if the console is on and they made one."""
+        switch = uow.access.signup_mode() if self._follow_switches else None
+        return None if switch is None else switch.mode
+
+    def _let_in(self, uow: UnitOfWork, email: str, mode: SignupMode | None) -> bool:
+        """Let in by the sign-up mode (ADR-0015), or approved by the operator (ADR-0014)."""
+        return self._policy.allows(email, mode) or uow.access.approved(email)
 
     def _verify(self, uow: UnitOfWork, email: str, code: str, network: Network) -> SignedIn | None:
-        if not self._let_in(uow, email) or not self.check_code(uow, email, code, network):
+        mode = self._mode(uow)
+        if not self._let_in(uow, email, mode) or not self.check_code(uow, email, code, network):
             return None
-        user_id = uow.accounts.user_for(email, at=self._ports.clock.now())
+        at = self._ports.clock.now()
+        if mode is SignupMode.OPEN and not self._let_in(uow, email, SignupMode.INVITE):
+            uow.access.admit(email, at=at)  # stays in once sign-up closes (ADR-0015)
+        user_id = uow.accounts.user_for(email, at=at)
         return self._open_session(uow, user_id, network)
 
     def _open_session(self, uow: UnitOfWork, user_id: uuid.UUID, network: Network) -> SignedIn:
