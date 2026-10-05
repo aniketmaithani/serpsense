@@ -7,6 +7,7 @@ import pytest
 from serpsense.adapters.replay.story import words
 from serpsense.adapters.replay.story.content import STORIES, Content, StoryBrand
 from serpsense.adapters.replay.story.soundnest import RIVAL
+from serpsense.adapters.replay.story.voltbox import MAIN
 from serpsense.domain.model_text import has_contact
 from serpsense.domain.settings.search import resolve
 
@@ -43,3 +44,11 @@ def test_what_the_model_says_names_no_one_and_fits_its_alerts() -> None:
     assert {story for story, _, _ in words.DRAFTS} == set(STORIES)
     for _, level, story, said in words.EXPLANATIONS:
         assert level in words.LEVELS and (story == "" or story in STORIES) and said
+
+
+def test_voltbox_builds_to_a_crisis_and_stops_at_its_peak() -> None:
+    check(MAIN)
+    shown = [item.at for item in [*tagged(MAIN.content), *MAIN.content.suggestions]]  # type: ignore[attr-defined]  # every item has a time
+    assert max(shown) == 20  # the story ends on the morning the crisis peaks
+    swelling = [item for item in tagged(MAIN.content) if item.tag.story]  # type: ignore[attr-defined]  # tagged
+    assert len(swelling) >= 5 and all(item.tag.sentiment < 0 for item in swelling)  # type: ignore[attr-defined]  # tagged
