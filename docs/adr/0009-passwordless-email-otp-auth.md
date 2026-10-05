@@ -28,7 +28,7 @@ Users need accounts that own brands. Requirement: sign-up and log-in via a one-t
 - **CSRF:** per-session secret; token = HMAC(K_csrf, secret); required on every state-changing request (form field or `X-CSRF-Token` for HTMX).
 
 ### Policy and logging
-- `SIGNUP_MODE=open|invite` + `ALLOWED_EMAILS`/`ALLOWED_DOMAINS`; `invite` required in production. Since ADR-0014, invite mode also admits addresses the operator approved from an access request, and the operator console's session is the one not stored server-side.
+- `SIGNUP_MODE=open|invite` + `ALLOWED_EMAILS`/`ALLOWED_DOMAINS`; `invite` required in production. Since ADR-0014, invite mode also admits addresses the operator approved from an access request, and the operator console's session is the one not stored server-side. Since ADR-0015, the operator can switch the mode from the console; the environment's value is where it starts.
 - Console mailer refused in production (ADR-0010).
 - Never logged or put in audit details: codes, tokens, emails. Audit events: `auth.code_requested`, `auth.login_succeeded`, `auth.verify_failed`, `auth.logged_out`, `auth.sessions_revoked`; IP/user agent go to `audit_event_network` (ADR-0013).
 
