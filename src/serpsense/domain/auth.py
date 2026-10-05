@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from ipaddress import IPv4Address, IPv6Address, ip_network
 
+from serpsense.domain.enums import SignupMode
+
 CODE_DIGITS = 6
 CODE_TTL = timedelta(minutes=10)
 MAX_ATTEMPTS = 5  # guesses per code
@@ -77,14 +79,19 @@ def clean_user_agent(raw: str | None) -> str | None:
 @dataclass(frozen=True)
 class SignupPolicy:
     """Who may get a code: anyone, or in invite mode the listed addresses and domains
-    (ADR-0009; production runs invite mode), and those the operator approved (ADR-0014, read
-    from the database by the sign-in service)."""
+    (ADR-0009; production starts in invite mode), and those the operator approved (ADR-0014,
+    read from the database by the sign-in service). The environment's mode holds until the
+    operator switches it (ADR-0015); `mode` is their latest switch, if any."""
 
     invite_only: bool
     emails: frozenset[str] = frozenset()
     domains: frozenset[str] = frozenset()
 
-    def allows(self, email: str) -> bool:
+    def invite_only_under(self, mode: SignupMode | None) -> bool:
+        return self.invite_only if mode is None else mode is SignupMode.INVITE
+
+    def allows(self, email: str, mode: SignupMode | None) -> bool:
         address = email.lower()
         domain = address.rpartition("@")[2]
-        return not self.invite_only or address in self.emails or domain in self.domains
+        listed = address in self.emails or domain in self.domains
+        return not self.invite_only_under(mode) or listed

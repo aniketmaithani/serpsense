@@ -14,7 +14,7 @@ from serpsense.adapters.db.access import SqlAccessRequests
 from serpsense.adapters.db.unit_of_work import SqlUnitOfWork
 from serpsense.domain import auth
 from serpsense.domain.auth import SignupPolicy
-from serpsense.domain.enums import AccessDecision
+from serpsense.domain.enums import AccessDecision, SignupMode
 from serpsense.ports.accounts import InvalidEmail
 from serpsense.ports.audit import Network
 from serpsense.services.auth import AuthKeys, SignIn, SignInPorts
@@ -86,10 +86,11 @@ def rig(
     limiter: Limiter | None = None,
     *,
     email: str | None = None,
+    console_on: bool = False,
 ) -> Rig:
     clock, jobs, counting = FixedClock(NOW), Jobs(), limiter or Limiter()
     ports = SignInPorts(lambda: SqlUnitOfWork(engine, jobs), BOX, counting, clock)
-    service = SignIn(ports, KEYS, policy, session_days=7)
+    service = SignIn(ports, KEYS, policy, session_days=7, follow_switches=console_on)
     if email is None:
         return Rig(service, counting, clock, jobs, engine)
     return Rig(service, counting, clock, jobs, engine, email)
@@ -182,6 +183,48 @@ def test_new_access_requests_are_capped_each_hour(committing_engine: Engine) -> 
     late.service.request_code(late.email, NETWORK)  # the same quiet answer, but not recorded
     assert r.count(requests_from(r, r.email)) == 1
     assert late.count(requests_from(late, late.email)) == 0
+
+
+def switch(engine: Engine, mode: SignupMode, minutes: int = 0) -> None:
+    with engine.begin() as conn:  # the operator's switch from the console (ADR-0015)
+        at = NOW + timedelta(minutes=minutes)
+        SqlAccessRequests(conn).switch_signup_mode(mode, at=at)
+
+
+def test_opened_by_the_operator_anyone_signs_in_and_stays_in(fresh_engine: Engine) -> None:
+    r = rig(fresh_engine, INVITE, console_on=True)  # the environment says invite
+    switch(fresh_engine, SignupMode.OPEN)
+    assert not r.service.invite_only()
+    assert r.service.request_code(r.email, NETWORK) is False  # nobody waits for the operator
+    assert r.service.verify(r.email, r.code(), NETWORK) is not None
+    switch(fresh_engine, SignupMode.INVITE, minutes=1)  # closed again
+    r.clock.at = NOW + timedelta(minutes=2)
+    assert r.service.request_code(r.email, NETWORK) is True
+    assert r.service.verify(r.email, r.code(), NETWORK) is not None  # approved as it signed up
+
+
+def test_closing_stops_a_code_sent_while_open(fresh_engine: Engine) -> None:
+    r = rig(fresh_engine, INVITE, console_on=True)
+    switch(fresh_engine, SignupMode.OPEN)
+    r.service.request_code(r.email, NETWORK)
+    code = r.code()
+    switch(fresh_engine, SignupMode.INVITE, minutes=1)  # before they used it
+    assert r.service.verify(r.email, code, NETWORK) is None
+
+
+def test_closed_by_the_operator_an_uninvited_address_waits(fresh_engine: Engine) -> None:
+    r = rig(fresh_engine, console_on=True)  # the environment says open
+    assert not r.service.invite_only()
+    switch(fresh_engine, SignupMode.INVITE)
+    assert r.service.request_code(r.email, NETWORK) is True
+    assert sent_to(r, r.email) == 0 and r.count(requests_from(r, r.email)) == 1
+
+
+def test_with_the_console_off_the_environments_mode_holds(fresh_engine: Engine) -> None:
+    switch(fresh_engine, SignupMode.OPEN)  # switched while the console was on
+    r = rig(fresh_engine, INVITE)  # then ADMIN_PASSWORD was removed: the brake (ADR-0015)
+    assert r.service.request_code(r.email, NETWORK) is True
+    assert sent_to(r, r.email) == 0
 
 
 def test_a_rejection_stops_a_code_already_sent(committing_engine: Engine) -> None:
