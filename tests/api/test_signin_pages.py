@@ -47,3 +47,10 @@ def test_a_malformed_address_marks_the_field_and_says_why() -> None:
     assert '<p class="error" id="problem" role="alert">' in answer.text
     assert 'aria-invalid="true" aria-describedby="problem"' in answer.text
     assert 'value="not an address"' in answer.text  # kept, to correct
+
+
+def test_replay_mode_says_on_every_page_that_the_demo_is_fictional() -> None:
+    said = "VoltBox and SoundNest are fictional"
+    replay = TestClient(create_app(make_container(make_settings(serpsense_mode="replay"))))
+    assert said in replay.get("/login").text  # and in base.html, on every signed-in page
+    assert said not in visitor().get("/login").text  # live mode shows real brands only

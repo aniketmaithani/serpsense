@@ -36,6 +36,7 @@
     <p class="muted">Seven Google surfaces in one scan, and an alert when a story starts.</p>
   </aside>
   <section class="s-card">
+    {% if replaying %}<p class="notice demo-note" role="note"><strong>Demo mode.</strong> VoltBox and SoundNest are fictional brands. Their search results, and the AI's labels, stories, explanations and drafts, were written for this demo: replay mode calls neither SerpApi nor an AI model.</p>{% endif %}
     {% block card %}{% endblock %}
   </section>
 </main>

@@ -12,6 +12,7 @@
     {% block nav %}{% endblock %}
   </header>
   <main>
+    {% if replaying %}<p class="notice demo-note" role="note"><strong>Demo mode.</strong> VoltBox and SoundNest are fictional brands. Their search results, and the AI's labels, stories, explanations and drafts, were written for this demo: replay mode calls neither SerpApi nor an AI model.</p>{% endif %}
     {% block main %}{% endblock %}
   </main>
   <footer class="site-foot">Created by Aniket Maithani. Built with SerpApi for the SerpApi India Hackathon 2026. Not affiliated with SerpApi, LLC.</footer>
