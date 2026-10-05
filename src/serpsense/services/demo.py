@@ -6,24 +6,27 @@ AI Overview, one autocomplete prefix, English news, the Trends comparison with a
 competitors plus Ola's related queries, and its Play rating with a page of newest reviews. Each
 competitor is scanned every 24 hours with 3: its search page, news and Play rating. Seeding again
 changes nothing, unless the brands' settings or schedules were edited since: those are put back to
-the demo's as new versions. In replay mode (`SERPSENSE_MODE=replay`) every brand gets the settings
-its recordings were made with, and is scanned only on request: the replay loader plays the
-recorded scans (services/replay.py), and repeating them on a schedule would add nothing.
+the demo's as new versions. Replay mode (`SERPSENSE_MODE=replay`) seeds the demo story's brands
+instead (composition gives them), each with the settings its recordings were made with and
+scanned only on request: the replay loader plays the recorded scans (services/replay.py), and
+repeating them on a schedule would add nothing.
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from serpsense.domain.enums import AppStore
+from serpsense.domain.enums import AppStore, DraftKind, DraftPreset
 from serpsense.domain.schedule import Schedule
 from serpsense.domain.settings.search import resolve
 from serpsense.observability import get_logger
 from serpsense.ports.brand_store import NewBrand
 from serpsense.ports.clock import Clock
+from serpsense.ports.stories import Stories
 from serpsense.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
+from serpsense.services.drafts import Drafter, DraftResult
 
 log = get_logger(__name__)
 
@@ -100,18 +103,19 @@ def seed_demo(
     *,
     owner_email: str,
     replay: Mapping[str, Mapping[str, Any]] | None = None,
+    brands: Sequence[DemoBrand] = DEMO_BRANDS,
 ) -> Seeded:
-    """Ola and its competitors under the owner with this email (created if new), in one unit
-    of work. For replay mode, `replay` gives each brand's recorded settings by slug, and no
-    brand is scheduled."""
+    """The demo's main brand and its competitors (`brands`, main first; Ola's by default)
+    under the owner with this email (created if new), in one unit of work. For replay mode,
+    `replay` gives each brand's recorded settings by slug, and no brand is scheduled."""
     with unit_of_work() as uow:
         owner = uow.accounts.user_for(owner_email, at=clock.now())
-        ola, *rest = (_brand(uow, owner, demo, clock, replay) for demo in DEMO_BRANDS)
+        main, *rest = (_brand(uow, owner, demo, clock, replay) for demo in brands)
         rivals = tuple(rest)
         for rival in rivals:
-            uow.brands.link_competitor(ola, rival)
-    log.info("demo.seeded", user_id=str(owner), brand_id=str(ola))
-    return Seeded(owner, ola, rivals)
+            uow.brands.link_competitor(main, rival)
+    log.info("demo.seeded", user_id=str(owner), brand_id=str(main))
+    return Seeded(owner, main, rivals)
 
 
 def _brand(
@@ -131,3 +135,20 @@ def _brand(
     resolve(settings)  # a document the dispatcher can use, or ValidationError
     uow.brands.set_search_settings(brand_id, settings, at=now)
     return brand_id
+
+
+def draft_a_reply(stories: Stories, drafter: Drafter, seeded: Seeded) -> DraftResult | None:
+    """A holding statement for the main brand's largest story, as its owner would ask for one,
+    so the demo's Drafts page has a draft; None when the brand has no story or the owner has a
+    draft already, so seeding again adds none and a failed draft is tried again."""
+    largest = stories.of_brand(seeded.owner_id, seeded.brand_id, limit=1) or []
+    if not largest or drafter.recent(seeded.owner_id, limit=1):
+        return None
+    story = largest[0].narrative_id
+    return drafter.draft(
+        seeded.owner_id,
+        seeded.brand_id,
+        story,
+        kind=DraftKind.HOLDING_STATEMENT,
+        preset=DraftPreset.STANDARD,
+    )
