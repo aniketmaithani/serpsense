@@ -98,7 +98,7 @@ src/serpsense/
 - Secrets come from env via `config.py`, are listed by name in `.env.example`, and never appear in the repo, fixtures, logs, metrics, error messages or the demo video. **Leaking an API key disqualifies the hackathon entry.**
 - SerpApi payloads are redacted before storage (strip `search_metadata` URLs, any `*_link`/URL containing `api_key`, anything matching the key pattern, and reviewer/author identity). Tests assert the key and reviewer identities never reach the DB, logs or committed fixtures.
 - Auth per ADR-0009: hashed OTPs and session tokens, constant-time compare, expiry, single use, attempt limits, resend cooldown, CSRF on cookie-authenticated writes, same response for known/unknown emails.
-- The console mail backend (prints OTPs) **refuses to start when `APP_ENV=production`**; production also requires `SIGNUP_MODE=invite` and an https `BASE_URL` (Secure cookies).
+- The console mail backend (prints OTPs) **refuses to start when `APP_ENV=production`**; production also requires `SIGNUP_MODE=invite` (the starting point: only the operator console can open sign-up, ADR-0015) and an https `BASE_URL` (Secure cookies).
 - Account deletion (ADR-0013) requires a fresh OTP and leaves no email, IP or user agent for the deleted user in any table.
 - Security headers + CSP (no inline scripts) on every HTML response.
 - New dependencies: maintained, permissive licence, pinned, `pip-audit` clean.
