@@ -2,9 +2,9 @@
 into, with its mentions and the response drafts a person may copy, all labelled AI-generated;
 and the drafts page, every draft of the user's newest first.
 Drafting is a CSRF-checked form that runs in the request (ADR-0008: the model never sends
-anything), offered only in live mode with an Anthropic key, and only at the presets the user's
-draft model can take. A draft carrying a link or contact details is flagged for checking. The
-owner's only; anything else is a 404."""
+anything), offered in live mode with an Anthropic key and in replay mode (which drafts only what
+its recordings hold), and only at the presets the user's draft model can take. A draft carrying
+a link or contact details is flagged for checking. The owner's only; anything else is a 404."""
 
 import uuid
 from collections.abc import Mapping
@@ -30,7 +30,8 @@ SAID: Mapping[str, str] = {  # what the page says after a draft was asked for, b
     Outcome.BUSY: "A draft of yours is still being written. Wait for it, then ask again.",
     Outcome.LIMITED: "Today's High thinking and Max drafts are used up; Standard ones still work.",
     Outcome.UNSUPPORTED: "Your draft model can't think that hard: change it in AI settings.",
-    "unavailable": "Drafting needs live mode with the model set up; this server isn't.",
+    "unavailable": "Drafting needs an Anthropic key, and this server has none.",
+    "unrecorded": "Replay mode drafts only what its recordings hold, and has no such draft here.",
 }
 
 
@@ -73,7 +74,9 @@ def ask_for_a_draft(
     result = drafter.draft(user.user_id, brand, narrative, kind=form.kind, preset=form.preset)
     if result.outcome is Outcome.MISSING:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    return RedirectResponse(f"{page}?draft={result.outcome.value}", SEE_OTHER)
+    replaying = container(request).settings.serpsense_mode is RunMode.REPLAY
+    said = "unrecorded" if replaying and result.outcome is Outcome.FAILED else result.outcome.value
+    return RedirectResponse(f"{page}?draft={said}", SEE_OTHER)
 
 
 @router.get("/drafts")
@@ -86,9 +89,10 @@ def all_drafts(request: Request) -> Response:
 
 
 def can_draft(request: Request) -> bool:
-    """Whether a live model is configured to draft with: replay mode never drafts (ADR-0008)."""
+    """Whether there is a model to draft with: live mode with an Anthropic key, or replay mode,
+    whose model answers with the drafts its recordings hold (ADR-0008)."""
     settings = container(request).settings
-    return settings.serpsense_mode is RunMode.LIVE and settings.anthropic_api_key is not None
+    return settings.serpsense_mode is RunMode.REPLAY or settings.anthropic_api_key is not None
 
 
 def _ids(brand_id: str, narrative_id: str) -> tuple[uuid.UUID, uuid.UUID]:

@@ -190,18 +190,19 @@ def build_container(settings: Settings | None = None) -> Container:
     )
 
 
-def build_drafter(settings: Settings, engine: Engine, celery: Celery) -> Drafter:
-    """Drafting for the web app, in the request (ADR-0008: a person copies the draft). In replay
-    mode or without an Anthropic key every call fails at once and the page says drafting needs
-    live mode."""
+def _draft_client(settings: Settings) -> LLMClient:
+    if settings.serpsense_mode is RunMode.REPLAY:
+        return ReplayLlm(load_recordings())
     key = settings.anthropic_api_key
-    live = key is not None and settings.serpsense_mode is RunMode.LIVE
-    client: LLMClient = (
-        AnthropicClient(key.get_secret_value(), PromptLibrary()) if key and live
-        else UnavailableClient()
-    )  # fmt: skip
+    return AnthropicClient(key.get_secret_value(), PromptLibrary()) if key else UnavailableClient()
+
+
+def build_drafter(settings: Settings, engine: Engine, celery: Celery) -> Drafter:
+    """Drafting for the web app, in the request (ADR-0008: a person copies the draft). Replay
+    mode drafts what the recordings hold; live mode without an Anthropic key fails every call
+    at once, and the page says drafting needs a key."""
     gateway = LlmGateway(
-        client,
+        _draft_client(settings),
         SqlLlmLedger(engine.begin),
         SystemClock(),
         monthly_budget_micros=lambda user_id: settings.default_monthly_llm_budget_micros,

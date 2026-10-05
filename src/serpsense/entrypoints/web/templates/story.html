@@ -26,7 +26,7 @@
   {% endfor %}
   {% if presets|length < 3 %}<p class="muted">High thinking and Max need Opus 5.5 or Sonnet 5.5 for drafts; your AI settings use a model that can't think that hard.</p>{% endif %}
   {% else %}
-  <p class="muted">Drafting needs live mode with the model set up; this server isn't (replay mode, or no key).</p>
+  <p class="muted">Drafting needs an Anthropic key, and this server has none.</p>
   {% endif %}
   {% for d in drafts %}
   <article class="draft">

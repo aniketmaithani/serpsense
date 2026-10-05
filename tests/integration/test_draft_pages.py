@@ -14,7 +14,7 @@ from serpsense.config import Settings
 from serpsense.domain.enums import LlmTask
 from serpsense.domain.llm_capabilities import HAIKU, Effort, LlmPreset
 from serpsense.domain.settings.llm import LlmProfile, TaskChoice
-from serpsense.ports.llm_client import LlmRequest
+from serpsense.ports.llm_client import LlmCallFailed, LlmRequest
 from tests.factories import make_settings
 from tests.fakes import ScriptedLlm
 from tests.integration.db_helpers import NOW, add_brand, add_user, table
@@ -25,12 +25,16 @@ from tests.integration.test_story_pages import assign, mention, story
 pytestmark = [pytest.mark.integration, pytest.mark.api, pytest.mark.security]
 
 LIVE = make_settings(anthropic_api_key="sk-ant-test-only")
-Answer = Callable[[LlmRequest], str]
+Answer = Callable[[LlmRequest], str | LlmCallFailed]
 
 
 def reply(request: LlmRequest) -> str:
     text = f"We're sorry about the airport pickup. {HOSTILE}"
     return json.dumps({"text": text, "cited": ["m1"]})
+
+
+def unrecorded(request: LlmRequest) -> LlmCallFailed:
+    return LlmCallFailed("llm.replay_unrecorded", retryable=False, latency_ms=0)
 
 
 def signed_in(
@@ -85,16 +89,22 @@ def test_the_owner_drafts_and_copies_a_reply_citing_what_it_answers(
         assert client.post(target, data=ask).status_code == 404
 
 
-def test_replay_mode_never_drafts_even_with_a_key(committing_engine: Engine) -> None:
-    replay = make_settings(anthropic_api_key="sk-ant-test-only", serpsense_mode="replay")
-    client, owner = signed_in(committing_engine, live=True, settings=replay)
+def test_replay_mode_drafts_with_no_key_from_what_it_recorded(committing_engine: Engine) -> None:
+    replay = make_settings(serpsense_mode="replay")  # no Anthropic key: the recordings answer
+    client, owner = signed_in(committing_engine, live=False, settings=replay)
     ola, fares = ola_story(committing_engine, owner)
     page_url = f"/brands/{ola}/narratives/{fares}"
     page = client.get(page_url).text
-    assert "Drafting needs live mode" in page and "Draft</button>" not in page
+    assert "Drafting needs an Anthropic key" not in page and "Draft</button>" in page
     ask = {"csrf_token": token(page), "kind": "faq_entry", "preset": "standard"}
     asked = client.post(f"{page_url}/drafts", data=ask)
-    assert asked.headers["location"] == f"{page_url}?draft=unavailable"
+    assert asked.headers["location"] == f"{page_url}?draft=drafted"
+    unrecorded_client, other = signed_in(committing_engine, False, replay, answer=unrecorded)
+    brand, story_id = ola_story(committing_engine, other)
+    other_url = f"/brands/{brand}/narratives/{story_id}"
+    form = {**ask, "csrf_token": token(unrecorded_client.get(other_url).text)}
+    nothing = unrecorded_client.post(f"{other_url}/drafts", data=form)
+    assert nothing.headers["location"] == f"{other_url}?draft=unrecorded"
     signed_out = browser(committing_engine).post(f"{page_url}/drafts", data=ask)
     assert signed_out.status_code == 303 and signed_out.headers["location"] == "/login"
 
@@ -128,7 +138,7 @@ def test_without_a_live_model_drafting_says_so_instead_of_failing(
     ola, fares = ola_story(committing_engine, owner)
     page_url = f"/brands/{ola}/narratives/{fares}"
     page = client.get(page_url).text
-    assert "Drafting needs live mode" in page and "High thinking</button>" not in page
+    assert "Drafting needs an Anthropic key" in page and "High thinking</button>" not in page
     ask = {"csrf_token": token(page), "kind": "faq_entry", "preset": "standard"}
     asked = client.post(f"{page_url}/drafts", data=ask)
     assert asked.headers["location"] == f"{page_url}?draft=unavailable"
