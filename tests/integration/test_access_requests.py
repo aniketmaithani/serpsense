@@ -1,4 +1,5 @@
-"""Access requests and decisions on real Postgres (data-model §1, ADR-0014)."""
+"""Access requests, decisions and sign-up mode switches on real Postgres (data-model §1,
+ADR-0014, ADR-0015)."""
 
 import uuid
 from datetime import timedelta
@@ -7,8 +8,9 @@ import pytest
 from sqlalchemy import Connection, func, select
 
 from serpsense.adapters.db.access import REQUESTS, SqlAccessRequests
-from serpsense.domain.enums import AccessDecision
-from tests.integration.db_helpers import NOW
+from serpsense.domain.enums import AccessDecision, SignupMode
+from serpsense.ports.access import ModeSwitch
+from tests.integration.db_helpers import NOW, table
 
 pytestmark = pytest.mark.integration
 
@@ -61,3 +63,21 @@ def test_unknown_addresses_and_requests(conn: Connection) -> None:
     access = SqlAccessRequests(conn)
     assert not access.approved("nobody@example.com")
     assert not access.decide(uuid.uuid4(), APPROVED, at=NOW)
+
+
+def test_the_latest_sign_up_mode_switch_counts(conn: Connection) -> None:
+    access = SqlAccessRequests(conn)
+    assert access.signup_mode() is None  # never switched: the environment's mode applies
+    access.switch_signup_mode(SignupMode.OPEN, at=NOW)
+    access.switch_signup_mode(SignupMode.INVITE, at=NOW)  # a double click: the first one stands
+    access.switch_signup_mode(SignupMode.INVITE, at=NOW + timedelta(minutes=1))
+    assert access.signup_mode() == ModeSwitch(SignupMode.INVITE, NOW + timedelta(minutes=1))
+
+
+def test_admitting_approves_an_address_once(conn: Connection) -> None:
+    access = SqlAccessRequests(conn)
+    access.admit("Open@Example.com", at=NOW)
+    access.admit("open@example.com", at=NOW + timedelta(minutes=1))  # already approved: no new row
+    assert access.approved("open@example.com")
+    decisions = table("access_decisions")
+    assert conn.execute(select(func.count()).select_from(decisions)).scalar_one() == 1
