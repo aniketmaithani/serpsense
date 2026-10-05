@@ -248,6 +248,14 @@ class OutboxOutcome(StrEnum):
     DROPPED = "dropped"
 
 
+class SignupMode(StrEnum):
+    """Who may sign up (ADR-0009): anyone, or only the invited and the approved (ADR-0014). The
+    environment's `SIGNUP_MODE` is where it starts; the operator can switch it (ADR-0015)."""
+
+    OPEN = "open"
+    INVITE = "invite"
+
+
 class AccessDecision(StrEnum):
     """The operator's answer to an access request (`access_decision`; ADR-0014); the latest
     decision counts, and none yet means the request is pending."""

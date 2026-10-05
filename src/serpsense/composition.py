@@ -47,9 +47,9 @@ from serpsense.adapters.serp.collectors import COLLECTORS
 from serpsense.adapters.serp.replay import ReplaySearchProvider
 from serpsense.adapters.system_clock import SystemClock
 from serpsense.composition_console import build_console
-from serpsense.config import AppEnv, ConfigError, EmailBackend, RunMode, Settings, SignupMode
+from serpsense.config import AppEnv, ConfigError, EmailBackend, RunMode, Settings
 from serpsense.domain.auth import SignupPolicy
-from serpsense.domain.enums import LlmTask
+from serpsense.domain.enums import LlmTask, SignupMode
 from serpsense.domain.llm_capabilities import preset_settings
 from serpsense.observability import configure_logging
 from serpsense.ports.clock import Clock
