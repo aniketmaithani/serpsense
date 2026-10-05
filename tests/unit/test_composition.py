@@ -144,6 +144,15 @@ def test_build_sign_in_wires_sign_in_without_connecting() -> None:
     assert sign_in._keys.otp != sign_in._keys.csrf  # one key per purpose
 
 
+def test_the_web_drafter_drafts_from_the_recordings_in_replay_mode() -> None:
+    settings = make_settings(serpsense_mode="replay")
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    drafter = build_drafter(settings, engine, build_celery(settings))
+    assert isinstance(drafter._ports.gateway._client, ReplayLlm)
+    live = build_drafter(make_settings(), engine, build_celery(settings))  # no key: fails fast
+    assert isinstance(live._ports.gateway._client, UnavailableClient)
+
+
 def test_the_web_drafter_spends_under_the_daily_cap_across_all_users() -> None:
     settings = make_settings(llm_daily_global_cap_micros=1_234_567)
     engine = create_db_engine(settings.database_url.get_secret_value())
