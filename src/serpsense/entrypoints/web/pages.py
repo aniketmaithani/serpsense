@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from serpsense.config import RunMode
 from serpsense.domain.model_text import has_contact
 from serpsense.entrypoints.web.session import container, sessions
 from serpsense.services.sessions import CurrentUser
@@ -55,8 +56,10 @@ def page(
     request: Request, template: str, *, status_code: int = 200, **context: Any
 ) -> HTMLResponse:
     """A rendered page, never cached: pages are personal, carry a form token, or (`/`) differ
-    between a signed-in visitor and anyone else at the same address."""
-    html = TEMPLATES.get_template(template).render(request=request, **context)
+    between a signed-in visitor and anyone else at the same address. In replay mode the layout
+    says the demo is fictional and its model output written for it (ADR-0008)."""
+    replaying = container(request).settings.serpsense_mode is RunMode.REPLAY
+    html = TEMPLATES.get_template(template).render(request=request, replaying=replaying, **context)
     return HTMLResponse(html, status_code=status_code, headers={"Cache-Control": "no-store"})
 
 
